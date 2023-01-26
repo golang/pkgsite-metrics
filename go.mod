@@ -5,6 +5,7 @@ go 1.18
 require (
 	cloud.google.com/go/errorreporting v0.3.0
 	github.com/client9/misspell v0.3.4
+	golang.org/x/mod v0.7.0
 	honnef.co/go/tools v0.3.3
 	mvdan.cc/unparam v0.0.0-20230125043941-70a0ce6e7b95
 )
@@ -20,7 +21,6 @@ require (
 	github.com/googleapis/gax-go/v2 v2.7.0 // indirect
 	go.opencensus.io v0.23.0 // indirect
 	golang.org/x/exp/typeparams v0.0.0-20220218215828-6cf2b201936e // indirect
-	golang.org/x/mod v0.7.0 // indirect
 	golang.org/x/net v0.5.0 // indirect
 	golang.org/x/oauth2 v0.0.0-20221014153046-6fdb5e3db783 // indirect
 	golang.org/x/sync v0.1.0 // indirect
