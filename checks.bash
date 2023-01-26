@@ -83,7 +83,7 @@ check_staticcheck() {
 # check_misspell runs misspell on source files.
 check_misspell() {
   ensure_go_binary github.com/client9/misspell/cmd/misspell
-  runcmd misspell -error $(find . -name .git -prune -o -type f -not -name drydock-20220802.csv -not -name modules.txt)
+  runcmd misspell -error $(find . -name .git -prune -o -type f -not -name modules.txt)
 }
 
 go_linters() {
