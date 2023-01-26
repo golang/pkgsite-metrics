@@ -14,6 +14,29 @@ import (
 	"cloud.google.com/go/errorreporting"
 )
 
+var (
+	// NotFound indicates that a requested entity was not found (HTTP 404).
+	NotFound = errors.New("not found")
+
+	// NotFetched means that the proxy returned "not found" with the
+	// Disable-Module-Fetch header set. We don't know if the module really
+	// doesn't exist, or the proxy just didn't fetch it.
+	NotFetched = errors.New("not fetched by proxy")
+
+	// InvalidArgument indicates that the input into the request is invalid in
+	// some way (HTTP 400).
+	InvalidArgument = errors.New("invalid argument")
+
+	// BadModule indicates a problem with a module.
+	BadModule = errors.New("bad module")
+
+	// ProxyTimedOut indicates that a request timed out when fetching from the Module Mirror.
+	ProxyTimedOut = errors.New("proxy timed out")
+
+	// ProxyError is used to capture non-actionable server errors returned from the proxy.
+	ProxyError = errors.New("proxy error")
+)
+
 // Wrap adds context to the error and allows
 // unwrapping the result to recover the original error.
 //

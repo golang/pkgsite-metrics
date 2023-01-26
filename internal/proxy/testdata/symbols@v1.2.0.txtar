@@ -1,0 +1,176 @@
+A module used for testing the symbols logic.
+
+-- go.mod --
+module example.com/symbols
+
+-- README.md --
+This is the README for a test module.
+
+-- LICENSE --
+$MITLicense
+
+-- symbols.go --
+package symbols
+
+// const
+const C = 1
+
+// const iota
+const (
+	AA = iota + 1
+	_
+	BB
+	CC
+)
+
+type Num int
+
+const (
+	DD Num = iota
+	_
+	EE
+	FF
+)
+
+// var
+var V = 2
+
+// Multiple variables on the same line.
+var A, B string
+
+// func
+func F() {}
+
+// type
+type T int
+
+// typeConstant
+const CT T = 3
+
+// typeVariable
+var VT T
+
+// multi-line var
+var (
+	ErrA = errors.New("error A")
+	ErrB = errors.New("error B")
+)
+
+// typeFunc
+func TF() T { return T(0) }
+
+// method
+// BUG(uid): this verifies that notes are rendered
+func (T) M() {}
+
+type S1 struct {
+	F int // field
+}
+
+type S2 struct {
+	S1 // embedded struct; should have an id
+	G  int
+}
+
+type I1 interface {
+	M1()
+}
+
+type I2 interface {
+	I1 // embedded interface; should not have an id
+	M2()
+}
+
+type (
+	Int int
+	String bool
+)
+
+-- hello/hello.go --
+package hello
+
+// Hello returns a greeting.
+func Hello() string {
+	return "Hello"
+}
+
+-- hello/hello_js.go --
+// +build js,wasm
+
+package hello
+
+// HelloJS returns a greeting when the build context is js/wasm.
+func HelloJS() string {
+	return "Hello"
+}
+
+-- multigoos/multigoos_windows.go --
+// +build windows
+
+package multigoos
+
+func CloseOnExec(foo string) error {
+    return nil
+}
+
+type FD struct {}
+
+// FD was introduced in v1.1.0 for linux, darwin and windows.
+// MyWindowsMethod is introduced only for windows in this version.
+func (*FD) MyWindowsMethod() {
+}
+
+-- multigoos/multigoos_unix.go --
+// +build aix darwin dragonfly freebsd linux netbsd openbsd solaris
+
+package multigoos
+
+func CloseOnExec(num int) (int, error) {
+    return num, nil
+}
+
+type FD struct {}
+
+// FD was introduced in v1.1.0 for linux, darwin and windows.
+// MyMethod is introduced only for darwin and linux in this version.
+func (*FD) MyMethod() {
+}
+
+-- multigoos/multigoos_js.go --
+// +build js,wasm
+
+package multigoos
+
+func CloseOnExec(n int) {
+}
+
+-- duplicate/duplicate.go --
+// +build linux darwin
+
+package duplicate
+
+type TokenType int
+
+// Token types.
+const (
+	TokenShort TokenType = iota
+)
+
+-- duplicate/duplicate_windows.go --
+// +build windows
+
+package duplicate
+
+// Constant here, type for JS, linux and darwin.
+const TokenType = 3
+
+-- duplicate/duplicate_js.go --
+// +build js
+
+package duplicate
+
+// Exported here, unexported in v1.1.0.
+type TokenType struct {
+}
+
+func TokenShort() TokenType { return &TokenType{} }
