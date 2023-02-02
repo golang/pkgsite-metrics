@@ -5,6 +5,7 @@ go 1.18
 require (
 	cloud.google.com/go v0.105.0
 	cloud.google.com/go/bigquery v1.43.0
+	cloud.google.com/go/cloudtasks v1.8.0
 	cloud.google.com/go/errorreporting v0.1.0
 	cloud.google.com/go/logging v1.6.1
 	github.com/GoogleCloudPlatform/opentelemetry-operations-go v1.0.0
@@ -25,6 +26,8 @@ require (
 	golang.org/x/tools v0.5.1-0.20230117180257-8aba49bb5ea2
 	google.golang.org/api v0.103.0
 	google.golang.org/genproto v0.0.0-20221201164419-0e50fba7f41c
+	google.golang.org/grpc v1.50.1
+	google.golang.org/protobuf v1.28.1
 	honnef.co/go/tools v0.2.2
 	mvdan.cc/unparam v0.0.0-20220926085101-66de63301820
 )
@@ -69,7 +72,5 @@ require (
 	golang.org/x/text v0.6.0 // indirect
 	golang.org/x/xerrors v0.0.0-20220907171357-04be3eba64a2 // indirect
 	google.golang.org/appengine v1.6.7 // indirect
-	google.golang.org/grpc v1.50.1 // indirect
-	google.golang.org/protobuf v1.28.1 // indirect
 	gopkg.in/warnings.v0 v0.1.2 // indirect
 )
