@@ -1,0 +1,18 @@
+<!--
+  Copyright 2021 The Go Authors. All rights reserved.
+  Use of this source code is governed by a BSD-style
+  license that can be found in the LICENSE file.
+-->
+
+{{define "vuln-message"}}
+  <div class="go-Message go-Message--alert">
+    <img
+        class="go-Icon"
+        height="24"
+        width="24"
+        src="/static/shared/icon/alert_gm_grey_24dp.svg"
+        alt="Alert"
+    />&nbsp;
+    <a href="/vuln/{{.ID}}">{{.ID}}</a>: {{.Details}}
+  </div>
+{{end}}
