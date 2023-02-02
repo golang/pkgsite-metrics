@@ -35,6 +35,10 @@ var (
 
 	// ProxyError is used to capture non-actionable server errors returned from the proxy.
 	ProxyError = errors.New("proxy error")
+
+	// ScanModuleOSError is used to capture issues with writing the module zip
+	// to disk during the scan setup process. This is not an error with vulncheck.
+	ScanModuleOSError = errors.New("scan module OS error")
 )
 
 // Wrap adds context to the error and allows
