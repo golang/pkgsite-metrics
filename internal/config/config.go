@@ -117,7 +117,7 @@ func Init(ctx context.Context) (_ *Config, err error) {
 		VersionID:             os.Getenv("DOCKER_IMAGE"),
 		LocationID:            "us-central1",
 		StaticPath:            ts,
-		BigQueryDataset:       GetEnv("GO_ECOSYSTEM_BIGQUERY_DATASET", "test"),
+		BigQueryDataset:       GetEnv("GO_ECOSYSTEM_BIGQUERY_DATASET", "disable"),
 		QueueName:             os.Getenv("GO_ECOSYSTEM_QUEUE_NAME"),
 		QueueURL:              os.Getenv("GO_ECOSYSTEM_QUEUE_URL"),
 		VulnDBBucketProjectID: os.Getenv("GO_ECOSYSTEM_VULNDB_BUCKET_PROJECT"),
