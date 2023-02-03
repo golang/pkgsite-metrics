@@ -2,6 +2,8 @@
 // Use of this source code is governed by a BSD-style
 // license that can be found in the LICENSE file.
 
+// Package config resolves shared configuration for services, and
+// provides functions to access this configuration.
 package config
 
 import (
