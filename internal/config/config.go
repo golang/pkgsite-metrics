@@ -74,6 +74,13 @@ type Config struct {
 	// DevMode indicates whether the server is running in development mode.
 	DevMode bool
 
+	// VulnDBBucketProjectID is the project ID for the vuln DB bucket and its
+	// associated load balancer.
+	VulnDBBucketProjectID string
+
+	// BinaryBucket holds binaries for vulncheck scanning.
+	BinaryBucket string
+
 	// The host, port and user of the pkgsite database used to find
 	// modules to scan.
 	PkgsiteDBHost string
@@ -86,8 +93,11 @@ type Config struct {
 	// Run analysis binaries without sandbox.
 	Insecure bool
 
-	// ProxyURL is the URL of the module proxy.
+	// ProxyURL is the url for the Go module proxy.
 	ProxyURL string
+
+	// VulnDBURL is the url for the Go vulnerability database.
+	VulnDBURL string
 }
 
 // Init resolves all configuration values provided by the config package. It
@@ -102,20 +112,23 @@ func Init(ctx context.Context) (_ *Config, err error) {
 		ts = template.TrustedSourceFromFlag(f.Value)
 	}
 	cfg := &Config{
-		ProjectID:       GetEnv("GOOGLE_CLOUD_PROJECT", "go-ecosystem"),
-		ServiceID:       "go-ecosystem-worker",
-		VersionID:       os.Getenv("DOCKER_IMAGE"),
-		LocationID:      "us-central1",
-		StaticPath:      ts,
-		BigQueryDataset: GetEnv("GO_ECOSYSTEM_BIGQUERY_DATASET", "test"),
-		QueueName:       os.Getenv("GO_ECOSYSTEM_QUEUE_NAME"),
-		QueueURL:        os.Getenv("GO_ECOSYSTEM_QUEUE_URL"),
-		PkgsiteDBHost:   GetEnv("GO_ECOSYSTEM_PKGSITE_DB_HOST", "localhost"),
-		PkgsiteDBPort:   GetEnv("GO_ECOSYSTEM_PKGSITE_DB_PORT", "5432"),
-		PkgsiteDBName:   GetEnv("GO_ECOSYSTEM_PKGSITE_DB_NAME", "discovery-db"),
-		PkgsiteDBUser:   GetEnv("GO_ECOSYSTEM_PKGSITE_DB_USER", "postgres"),
-		PkgsiteDBSecret: os.Getenv("GO_ECOSYSTEM_PKGSITE_DB_SECRET"),
-		ProxyURL:        GetEnv("GO_ECOSYSTEM_PROXY_URL", "https://proxy.golang.org"),
+		ProjectID:             os.Getenv("GOOGLE_CLOUD_PROJECT"),
+		ServiceID:             "go-ecosystem-worker",
+		VersionID:             os.Getenv("DOCKER_IMAGE"),
+		LocationID:            "us-central1",
+		StaticPath:            ts,
+		BigQueryDataset:       GetEnv("GO_ECOSYSTEM_BIGQUERY_DATASET", "test"),
+		QueueName:             os.Getenv("GO_ECOSYSTEM_QUEUE_NAME"),
+		QueueURL:              os.Getenv("GO_ECOSYSTEM_QUEUE_URL"),
+		VulnDBBucketProjectID: os.Getenv("GO_ECOSYSTEM_VULNDB_BUCKET_PROJECT"),
+		BinaryBucket:          os.Getenv("GO_ECOSYSTEM_BINARY_BUCKET"),
+		PkgsiteDBHost:         GetEnv("GO_ECOSYSTEM_PKGSITE_DB_HOST", "localhost"),
+		PkgsiteDBPort:         GetEnv("GO_ECOSYSTEM_PKGSITE_DB_PORT", "5432"),
+		PkgsiteDBName:         GetEnv("GO_ECOSYSTEM_PKGSITE_DB_NAME", "discovery-db"),
+		PkgsiteDBUser:         GetEnv("GO_ECOSYSTEM_PKGSITE_DB_USER", "postgres"),
+		PkgsiteDBSecret:       os.Getenv("GO_ECOSYSTEM_PKGSITE_DB_SECRET"),
+		ProxyURL:              GetEnv("GO_MODULE_PROXY_URL", "https://proxy.golang.org"),
+		VulnDBURL:             GetEnv("GO_VULNDB_URL", "https://vuln.go.dev"),
 	}
 	if OnCloudRun() {
 		sa, err := gceMetadata(ctx, "instance/service-accounts/default/email")

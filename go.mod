@@ -9,6 +9,7 @@ require (
 	cloud.google.com/go/errorreporting v0.1.0
 	cloud.google.com/go/logging v1.6.1
 	cloud.google.com/go/secretmanager v1.9.0
+	cloud.google.com/go/storage v1.27.0
 	github.com/GoogleCloudPlatform/opentelemetry-operations-go v1.0.0
 	github.com/GoogleCloudPlatform/opentelemetry-operations-go/exporter/metric v0.26.0
 	github.com/GoogleCloudPlatform/opentelemetry-operations-go/exporter/trace v1.0.0
@@ -26,6 +27,7 @@ require (
 	golang.org/x/mod v0.7.0
 	golang.org/x/net v0.5.0
 	golang.org/x/tools v0.5.1-0.20230117180257-8aba49bb5ea2
+	golang.org/x/vuln v0.0.0-20230201222900-4c848edceff1
 	google.golang.org/api v0.103.0
 	google.golang.org/genproto v0.0.0-20221201164419-0e50fba7f41c
 	google.golang.org/grpc v1.50.1

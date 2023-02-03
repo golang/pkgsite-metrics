@@ -22,7 +22,7 @@ var (
 	workers  = flag.Int("workers", 10, "number of concurrent requests to the fetch service, when running locally")
 	devMode  = flag.Bool("dev", false, "enable developer mode (reload templates on each page load, serve non-minified JS/CSS, etc.)")
 	port     = flag.String("port", config.GetEnv("PORT", "8080"), "port to listen to")
-	dataset  = flag.String("dataset", "", "dataset (overrides GO_ECOSYSTEM_METRICS_BIGQUERY_DATASET env var); use 'disable' for no BQ")
+	dataset  = flag.String("dataset", "", "dataset (overrides GO_ECOSYSTEM_BIGQUERY_DATASET env var); use 'disable' for no BQ")
 	insecure = flag.Bool("insecure", false, "bypass sandbox in order to compare with old code")
 	// flag used in call to safehtml/template.TrustedSourceFromFlag
 	_ = flag.String("static", "static", "path to folder containing static files served")

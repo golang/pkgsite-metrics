@@ -1,0 +1,159 @@
+<!--
+  Copyright 2022 The Go Authors. All rights reserved.
+  Use of this source code is governed by a BSD-style
+  license that can be found in the LICENSE file.
+-->
+
+<!DOCTYPE html>
+<html lang="en">
+<meta charset="utf-8">
+<link href="/static/static.css" rel="stylesheet">
+<title>Go Vulnerability Management - Metrics</title>
+
+<body>
+<main class="go-Container">
+<div class="go-Content">
+  <h1>Go Vulnerability Management - Metrics</h1>
+  <div class="Container">
+    <p>Results are from {{.TableName}}</p>
+    {{template "vulncheck" .}}
+  </div>
+</div>
+</main>
+</body>
+</html>
+
+{{define "vulncheck"}}
+{{/* . is VulncheckPage */}}
+<div>
+  {{template "corpus" .}}
+  {{template "errors" .}}
+  {{template "vulnerabilities" .}}
+</div>
+{{end}}
+
+{{define "corpus"}}
+{{/* . is VulncheckPage */}}
+<div>
+  <h2>Scan Results</h2>
+  <table>
+    <tbody>
+      <tr>
+        <th>Mode</th>
+        <th>Imports Only</th>
+        <th>VTA</th>
+        <th>VTA - Stacks</th>
+      </tr>
+      <tr>
+        <td># Modules Scanned</td>
+        <td>{{.ImportsResult.NumModulesScanned}}</td>
+        <td>{{.VTAResult.NumModulesScanned}}</td>
+        <td>{{.VTAStacksResult.NumModulesScanned}}</td>
+      </tr>
+      <tr>
+        <td># Modules Success</td>
+        <td>{{.ImportsResult.NumModulesSuccess}}</td>
+        <td>{{.VTAResult.NumModulesSuccess}}</td>
+        <td>{{.VTAStacksResult.NumModulesSuccess}}</td>
+      </tr>
+      <tr>
+        <td>% Modules Success</td>
+        <td>{{round .ImportsResult.PercentSuccess}}%</td>
+        <td>{{round .VTAResult.PercentSuccess}}%</td>
+        <td>{{round .VTAStacksResult.PercentSuccess}}%</td>
+      </tr>
+      <tr>
+        <td># Modules Failed</td>
+        <td>{{.ImportsResult.NumModulesError}}</td>
+        <td>{{.VTAResult.NumModulesError}}</td>
+        <td>{{.VTAStacksResult.NumModulesError}}</td>
+      </tr>
+      <tr>
+        <td>Avg Scan Seconds</td>
+        <td>{{round .ImportsResult.AverageScanSeconds}}s</td>
+        <td>{{round .VTAResult.AverageScanSeconds}}s</td>
+        <td>{{round .VTAStacksResult.AverageScanSeconds}}s</td>
+      </tr>
+      <tr>
+        <td>Max Scan Seconds</td>
+        <td>{{round .ImportsResult.MaxScanSeconds}}s</td>
+        <td>{{round .VTAResult.MaxScanSeconds}}s</td>
+        <td>{{round .VTAStacksResult.MaxScanSeconds}}s</td>
+      </tr>
+      <tr>
+        <td>Avg Scan Memory (MB)</td>
+	    <td>{{round .ImportsResult.AverageScanMemory}}MB</td>
+	    <td>{{round .VTAResult.AverageScanMemory}}MB</td>
+	    <td>{{round .VTAStacksResult.AverageScanMemory}}MB</td>
+      </tr>
+      <tr>
+        <td>Max Scan Memory (MB)</td>
+	    <td>{{round .ImportsResult.MaxScanMemory}}MB</td>
+	    <td>{{round .VTAResult.MaxScanMemory}}MB</td>
+	    <td>{{round .VTAStacksResult.MaxScanMemory}}MB</td>
+      </tr>
+    </tbody>
+  </table>
+</div>
+{{end}}
+
+{{define "vulnerabilities"}}
+{{/* . is VulncheckPage */}}
+<div>
+  <h2>Vulnerabilities</h2>
+  <p><strong>VTA: {{.VTAResult.NumModulesSuccess}}</strong> scans succeeded (<strong>{{round .VTAResult.PercentSuccess}}%</strong>)</p>
+  <p><strong>Imports: {{.ImportsResult.NumModulesSuccess}}</strong> scans succeeded (<strong>{{round .ImportsResult.PercentSuccess}}%</strong>)</p>
+  <div>
+    <table>
+      <tbody>
+        <tr>
+          <th>Category</th>
+          <th>VTA</br># modules calls</th>
+          <th>Imports Only</br># modules imports</th>
+          <th>VTA</br>% of success</th>
+          <th>Imports Only</br>% of success</th>
+        </tr>
+        <tr>
+          <td>0 vulns</td>
+          <td>{{.VTAResult.NumModulesNoVuln}}</td>
+          <td>{{.ImportsResult.NumModulesNoVuln}}</td>
+          <td>{{round .VTAResult.PercentNoVuln}}%</td>
+          <td>{{round .ImportsResult.PercentNoVuln}}%</td>
+        </tr>
+        <tr>
+          <td>1+ vulns</td>
+          <td>{{.VTAResult.NumModulesVuln}}</td>
+          <td>{{.ImportsResult.NumModulesVuln}}</td>
+          <td>{{round .VTAResult.PercentVuln}}%</td>
+          <td>{{round .ImportsResult.PercentVuln}}%</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+</div>
+{{end}}
+
+{{define "errors"}}
+{{/* . is VulncheckPage */}}
+<div>
+  <h2>Errors</h2>
+  <p><strong>VTA: {{.VTAResult.NumModulesError}}</strong> scans failed (<strong>{{round .VTAResult.PercentFailed}}%</strong>)</p>
+  <p><strong>Imports: {{.ImportsResult.NumModulesError}}</strong> scans failed (<strong>{{round .ImportsResult.PercentFailed}}%</strong>)</p>
+  <table>
+    <tbody>
+      <tr>
+        <th>Category</th>
+        <th>VTA</br># Modules</th>
+        <th>Imports Only</br># Modules</th>
+      </tr>
+      {{range .Errors}}
+      <tr>
+        <td>{{.Name}}</td>
+        <td>{{.VTANumModules}}</td>
+        <td>{{.ImportsNumModules}}</td>
+      </tr>
+      {{end}}
+    </tbody>
+  </table>
+</div>
+{{end}}

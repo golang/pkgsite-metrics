@@ -1,4 +1,4 @@
-// Copyright 2023 The Go Authors. All rights reserved.
+// Copyright 2021 The Go Authors. All rights reserved.
 // Use of this source code is governed by a BSD-style
 // license that can be found in the LICENSE file.
 
@@ -10,9 +10,12 @@ import (
 	"errors"
 	"fmt"
 	"runtime"
+	"strings"
 
 	"cloud.google.com/go/errorreporting"
 )
+
+//lint:file-ignore ST1012 prefixing error values with Err would stutter
 
 var (
 	// NotFound indicates that a requested entity was not found (HTTP 404).
@@ -36,9 +39,59 @@ var (
 	// ProxyError is used to capture non-actionable server errors returned from the proxy.
 	ProxyError = errors.New("proxy error")
 
+	// BigQueryError is used to capture server errors returned by BigQuery.
+	BigQueryError = errors.New("BigQuery error")
+
+	// ScanModulePanicError is used to capture panic issues.
+	ScanModulePanicError = errors.New("scan module panic")
+
 	// ScanModuleOSError is used to capture issues with writing the module zip
 	// to disk during the scan setup process. This is not an error with vulncheck.
 	ScanModuleOSError = errors.New("scan module OS error")
+
+	// ScanModuleLoadPackagesError is used to capture general unclassified issues
+	// with load packages during the scan setup process. This is not an error with
+	// vulncheck. There are specific load packages errors that are categorized
+	// separately, e.g., ScanModuleLoadPackagesNoGoModError.
+	ScanModuleLoadPackagesError = errors.New("scan module load packages error")
+
+	// ScanModuleLoadPackagesGoVersionError is used to capture issues with loading
+	// packages where the module is not supported by the current Go version. This
+	// is not an error with any specific scan technique.
+	ScanModuleLoadPackagesGoVersionError = errors.New("scan module load packages error: Go version mismatch")
+
+	// ScanModuleLoadPackagesNoGoModError is used to capture a specific issue
+	// with loading packages during the scan setup process where a go.mod file
+	// is missing. This is not an error with vulncheck.
+	ScanModuleLoadPackagesNoGoModError = errors.New("scan module load packages error: does not have go.mod")
+
+	// ScanModuleLoadPackagesNoGoSumError is used to capture a specific issue
+	// with loading packages during the scan setup process where a go.sum file
+	// is missing. This is not an error with vulncheck.
+	ScanModuleLoadPackagesNoGoSumError = errors.New("scan module load packages error: does not have go.sum")
+
+	// ScanModuleLoadPackagesNoRequiredModuleError is used to capture a specific
+	// issue with loading packages during the scan setup process where a package
+	// is imported but no required module is provided. This is not an error with
+	// vulncheck and is likely happening due to outdated go.sum file.
+	ScanModuleLoadPackagesNoRequiredModuleError = errors.New("scan module load packages error: no required module provided")
+
+	// ScanModuleLoadPackagesMissingGoSumEntryError is used to capture a specific
+	// issue with loading packages during the scan setup process where a package
+	// is imported but some of its go.sum entries are missing. This is not an error
+	// with vulncheck and is likely happening due to outdated go.sum file.
+	ScanModuleLoadPackagesMissingGoSumEntryError = errors.New("scan module load packages error: missing go.sum entry")
+
+	// ScanModuleVulncheckDBConnectionError is used to capture a specific
+	// vulncheck scan error where a connection to vuln db failed.
+	ScanModuleVulncheckDBConnectionError = errors.New("scan module vulncheck error: communication with vuln db failed")
+
+	// ScanModuleVulncheckError is used to capture general issues where
+	// vulncheck.Source fails due to an uncategorized error.
+	ScanModuleVulncheckError = errors.New("scan module vulncheck error")
+
+	// ScanModuleMemoryLimitExceeded occurs when scanning uses too much memory.
+	ScanModuleMemoryLimitExceeded = errors.New("scan module memory limit exceeded")
 )
 
 // Wrap adds context to the error and allows
@@ -113,4 +166,41 @@ func Report(err error) {
 	if repClient != nil {
 		repClient.Report(errorreporting.Entry{Error: err})
 	}
+}
+
+// CategorizeError returns the category for a given error.
+func CategorizeError(err error) string {
+	switch {
+	case errors.Is(err, ScanModuleVulncheckError):
+		return "VULNCHECK - MISC"
+	case errors.Is(err, ScanModuleVulncheckDBConnectionError):
+		return "VULNCHECK - DB CONNECTION"
+	case errors.Is(err, ScanModuleLoadPackagesError):
+		return "LOAD"
+	case errors.Is(err, ScanModuleLoadPackagesGoVersionError):
+		return "LOAD - WRONG GO VERSION"
+	case errors.Is(err, ScanModuleLoadPackagesNoGoModError):
+		return "LOAD - NO GO.MOD"
+	case errors.Is(err, ScanModuleLoadPackagesNoGoSumError):
+		return "LOAD - NO GO.SUM"
+	case errors.Is(err, ScanModuleLoadPackagesNoRequiredModuleError):
+		return "LOAD - NO REQUIRED MODULE"
+	case errors.Is(err, ScanModuleLoadPackagesMissingGoSumEntryError):
+		return "LOAD - NO GO.SUM ENTRY"
+	case errors.Is(err, ScanModuleOSError):
+		return "OS"
+	case errors.Is(err, ScanModulePanicError):
+		return "PANIC"
+	case errors.Is(err, ScanModuleMemoryLimitExceeded):
+		return "MEM LIMIT EXCEEDED"
+	case errors.Is(err, ProxyError):
+		return "PROXY"
+	case errors.Is(err, BigQueryError):
+		return "BIGQUERY"
+	}
+	return ""
+}
+
+func IsGoVersionMismatchError(msg string) bool {
+	return strings.Contains(msg, "can't be built on Go")
 }

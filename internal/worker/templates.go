@@ -1,4 +1,4 @@
-// Copyright 2023 The Go Authors. All rights reserved.
+// Copyright 2022 The Go Authors. All rights reserved.
 // Use of this source code is governed by a BSD-style
 // license that can be found in the LICENSE file.
 
@@ -18,7 +18,8 @@ import (
 )
 
 const (
-	indexTemplate = "worker.tmpl"
+	indexTemplate     = "index.tmpl"
+	vulncheckTemplate = "vulncheck.tmpl"
 )
 
 type basePage struct {
@@ -33,8 +34,13 @@ func (s *Server) loadTemplates() error {
 	if err != nil {
 		return err
 	}
+	vulncheck, err := s.parseTemplate(template.TrustedSourceFromConstant(vulncheckTemplate))
+	if err != nil {
+		return err
+	}
 	s.templates = map[string]*template.Template{
-		indexTemplate: index,
+		indexTemplate:     index,
+		vulncheckTemplate: vulncheck,
 	}
 	return nil
 }

@@ -1,4 +1,4 @@
-// Copyright 2023 The Go Authors. All rights reserved.
+// Copyright 2022 The Go Authors. All rights reserved.
 // Use of this source code is governed by a BSD-style
 // license that can be found in the LICENSE file.
 
@@ -24,14 +24,19 @@ import (
 	"golang.org/x/pkgsite-metrics/internal/log"
 	"golang.org/x/pkgsite-metrics/internal/observe"
 	"golang.org/x/pkgsite-metrics/internal/proxy"
+	"golang.org/x/pkgsite-metrics/internal/queue"
+	"golang.org/x/pkgsite-metrics/internal/scan"
+	vulnc "golang.org/x/vuln/client"
 )
 
 type Server struct {
-	cfg         *config.Config
-	observer    *observe.Observer
-	bqClient    *bigquery.Client
-	proxyClient *proxy.Client
-	staticPath  template.TrustedSource
+	cfg          *config.Config
+	observer     *observe.Observer
+	bqClient     *bigquery.Client
+	vulndbClient vulnc.Client
+	proxyClient  *proxy.Client
+	queue        queue.Queue
+	staticPath   template.TrustedSource
 
 	devMode   bool
 	mu        sync.Mutex
@@ -64,22 +69,38 @@ func NewServer(ctx context.Context, cfg *config.Config) (_ *Server, err error) {
 		}
 	}
 
+	q, err := queue.New(ctx, cfg,
+		func(ctx context.Context, sreq *scan.Request) (int, error) {
+			// When running locally, only the module path and version are
+			// printed for now.
+			log.Infof(ctx, "enqueuing %s", sreq.URLPathAndParams())
+			return 0, nil
+		})
+	if err != nil {
+		return nil, err
+	}
+	dbClient, err := vulnc.NewClient([]string{cfg.VulnDBURL}, vulnc.Options{})
+	if err != nil {
+		return nil, err
+	}
 	proxyClient, err := proxy.New(cfg.ProxyURL)
 	if err != nil {
 		return nil, err
 	}
 	s := &Server{
-		cfg:         cfg,
-		bqClient:    bq,
-		proxyClient: proxyClient,
-		devMode:     cfg.DevMode,
-		staticPath:  cfg.StaticPath,
+		cfg:          cfg,
+		bqClient:     bq,
+		vulndbClient: dbClient,
+		queue:        q,
+		proxyClient:  proxyClient,
+		devMode:      cfg.DevMode,
+		staticPath:   cfg.StaticPath,
 	}
 	if err := s.loadTemplates(); err != nil {
 		return nil, err
 	}
 
-	s.observer, err = observe.NewObserver(ctx, cfg.ProjectID, "go-metrics-worker")
+	s.observer, err = observe.NewObserver(ctx, cfg.ProjectID, "go-ecosystem-worker")
 	if err != nil {
 		return nil, err
 	}
@@ -111,10 +132,18 @@ func NewServer(ctx context.Context, cfg *config.Config) (_ *Server, err error) {
 		return nil
 	})
 	s.handle("/", s.handleIndexPage)
+
+	if err := s.registerVulncheckHandlers(ctx); err != nil {
+		return nil, err
+	}
+
+	s.handle("/test-vulncheck-sandbox/", s.handleTestVulncheckSandbox)
+	s.handle("/test-db", s.handleTestDB)
+
 	return s, nil
 }
 
-const metricNamespace = "ecosystem/worker"
+const metricNamespace = "metrics/worker"
 
 type handlerFunc func(w http.ResponseWriter, r *http.Request) error
 
@@ -136,6 +165,21 @@ func (s *Server) handle(pattern string, handler handlerFunc) {
 			Infof(ctx, "request end")
 	})
 	http.Handle(pattern, s.observer.Observe(h))
+}
+
+func (s *Server) registerVulncheckHandlers(ctx context.Context) error {
+	h, err := newVulncheckServer(ctx, s)
+	if err != nil {
+		return err
+	}
+	// returns an HTML page displaying information about vulncheck.
+	s.handle("/vulncheck", h.handlePage)
+
+	s.handle("/vulncheck/enqueueall", h.handleEnqueueAll)
+	s.handle("/vulncheck/enqueue", h.handleEnqueue)
+	s.handle("/vulncheck/scan/", h.handleScan)
+	s.handle("/vulncheck/insert-results", h.handleInsertResults)
+	return nil
 }
 
 type serverError struct {
