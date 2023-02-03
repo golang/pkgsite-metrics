@@ -16,6 +16,7 @@ import (
 	"cloud.google.com/go/civil"
 	"github.com/google/go-cmp/cmp"
 	"github.com/google/go-cmp/cmp/cmpopts"
+	"golang.org/x/exp/slices"
 	"golang.org/x/pkgsite-metrics/internal/version"
 	"google.golang.org/api/iterator"
 )
@@ -196,6 +197,39 @@ func TestIntegration(t *testing.T) {
 		}
 
 	})
+	t.Run("request counts", func(t *testing.T) {
+		date := func(y, m, d int) civil.Date {
+			return civil.Date{Year: y, Month: time.Month(m), Day: d}
+		}
+
+		must(client.CreateTable(ctx, VulnDBRequestTableName))
+		defer client.Table(VulnDBRequestTableName).Delete(ctx)
+		counts := []*VulnDBRequestCount{
+			{Date: date(2022, 10, 1), Count: 1},
+			{Date: date(2022, 10, 3), Count: 3},
+			{Date: date(2022, 10, 4), Count: 4},
+		}
+		for _, row := range counts {
+			must(client.Upload(ctx, VulnDBRequestTableName, row))
+		}
+		// Insert duplicates with a later time; we expect to get these, not the originals.
+		time.Sleep(50 * time.Millisecond)
+		for _, row := range counts {
+			row.Count++
+			must(client.Upload(ctx, VulnDBRequestTableName, row))
+		}
+
+		got, err := readVulnDBRequestCounts(ctx, client)
+		if err != nil {
+			t.Fatal(err)
+		}
+		want := slices.Clone(counts)
+		slices.SortFunc(want, func(c1, c2 *VulnDBRequestCount) bool { return c1.Date.After(c2.Date) })
+		if diff := cmp.Diff(want, got, cmpopts.IgnoreFields(VulnDBRequestCount{}, "InsertedAt")); diff != "" {
+			t.Errorf("mismatch (-want, +got):\n%s", diff)
+		}
+	})
+
 }
 
 func readTable[T any](ctx context.Context, table *bq.Table, newT func() *T) ([]*T, error) {
