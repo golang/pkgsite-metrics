@@ -8,8 +8,8 @@ import (
 	"testing"
 
 	"github.com/google/go-cmp/cmp"
-	"golang.org/x/pkgsite-metrics/internal"
 	"golang.org/x/pkgsite-metrics/internal/config"
+	"golang.org/x/pkgsite-metrics/internal/scan"
 	taskspb "google.golang.org/genproto/googleapis/cloud/tasks/v2"
 	"google.golang.org/protobuf/proto"
 	"google.golang.org/protobuf/types/known/durationpb"
@@ -63,7 +63,7 @@ func TestNewTaskRequest(t *testing.T) {
 		Namespace:      "test",
 		TaskNameSuffix: "suf",
 	}
-	sreq := &internal.ScanRequest{
+	sreq := &scan.Request{
 		Module:     "mod",
 		Version:    "v1.2.3",
 		ImportedBy: 0,

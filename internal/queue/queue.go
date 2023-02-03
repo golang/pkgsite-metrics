@@ -17,10 +17,10 @@ import (
 	"time"
 
 	cloudtasks "cloud.google.com/go/cloudtasks/apiv2"
-	"golang.org/x/pkgsite-metrics/internal"
 	"golang.org/x/pkgsite-metrics/internal/config"
 	"golang.org/x/pkgsite-metrics/internal/derrors"
 	"golang.org/x/pkgsite-metrics/internal/log"
+	"golang.org/x/pkgsite-metrics/internal/scan"
 	taskspb "google.golang.org/genproto/googleapis/cloud/tasks/v2"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
@@ -31,7 +31,7 @@ import (
 type Queue interface {
 	// Enqueue a scan request.
 	// Reports whether a new task was actually added.
-	EnqueueScan(context.Context, *internal.ScanRequest, *Options) (bool, error)
+	EnqueueScan(context.Context, *scan.Request, *Options) (bool, error)
 }
 
 // New creates a new Queue with name queueName based on the configuration
@@ -100,7 +100,7 @@ func newGCP(cfg *config.Config, client *cloudtasks.Client, queueID string) (_ *G
 // EnqeueuScan enqueues a task on GCP to fetch the given modulePath and
 // version. It returns an error if there was an error hashing the task name, or
 // an error pushing the task to GCP. If the task was a duplicate, it returns (false, nil).
-func (q *GCP) EnqueueScan(ctx context.Context, sreq *internal.ScanRequest, opts *Options) (enqueued bool, err error) {
+func (q *GCP) EnqueueScan(ctx context.Context, sreq *scan.Request, opts *Options) (enqueued bool, err error) {
 	defer derrors.WrapStack(&err, "queue.EnqueueScan(%v, %v)", sreq, opts)
 	if opts == nil {
 		opts = &Options{}
@@ -151,7 +151,7 @@ const (
 	DisableProxyFetchValue = "off"
 )
 
-func (q *GCP) newTaskRequest(sreq *internal.ScanRequest, opts *Options) (_ *taskspb.CreateTaskRequest, err error) {
+func (q *GCP) newTaskRequest(sreq *scan.Request, opts *Options) (_ *taskspb.CreateTaskRequest, err error) {
 	defer derrors.Wrap(&err, "newTaskRequest(%v, %v)", sreq, opts)
 
 	if sreq.Mode == "" {
@@ -231,18 +231,18 @@ func newTaskID(modulePath, version string) string {
 //
 // This should only be used for local development.
 type InMemory struct {
-	queue chan *internal.ScanRequest
+	queue chan *scan.Request
 	done  chan struct{}
 }
 
-type inMemoryProcessFunc func(context.Context, *internal.ScanRequest) (int, error)
+type inMemoryProcessFunc func(context.Context, *scan.Request) (int, error)
 
 // NewInMemory creates a new InMemory that asynchronously fetches
 // from proxyClient and stores in db. It uses workerCount parallelism to
 // execute these fetches.
 func NewInMemory(ctx context.Context, workerCount int, processFunc inMemoryProcessFunc) *InMemory {
 	q := &InMemory{
-		queue: make(chan *internal.ScanRequest, 1000),
+		queue: make(chan *scan.Request, 1000),
 		done:  make(chan struct{}),
 	}
 	sem := make(chan struct{}, workerCount)
@@ -256,7 +256,7 @@ func NewInMemory(ctx context.Context, workerCount int, processFunc inMemoryProce
 
 			// If a worker is available, make a request to the fetch service inside a
 			// goroutine and wait for it to finish.
-			go func(r *internal.ScanRequest) {
+			go func(r *scan.Request) {
 				defer func() { <-sem }()
 
 				log.Infof(ctx, "Fetch requested: %v (workerCount = %d)", r, cap(sem))
@@ -283,7 +283,7 @@ func NewInMemory(ctx context.Context, workerCount int, processFunc inMemoryProce
 
 // EnqeueuScan pushes a fetch task into the local queue to be processed
 // asynchronously.
-func (q *InMemory) EnqueueScan(ctx context.Context, req *internal.ScanRequest, _ *Options) (bool, error) {
+func (q *InMemory) EnqueueScan(ctx context.Context, req *scan.Request, _ *Options) (bool, error) {
 	q.queue <- req
 	return true, nil
 }

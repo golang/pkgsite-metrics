@@ -2,7 +2,7 @@
 // Use of this source code is governed by a BSD-style
 // license that can be found in the LICENSE file.
 
-package internal
+package scan
 
 import (
 	"bufio"
@@ -16,9 +16,9 @@ import (
 	"golang.org/x/pkgsite-metrics/internal/version"
 )
 
-// ScanRequest contains information passed
+// Request contains information passed
 // to a scan endpoint.
-type ScanRequest struct {
+type Request struct {
 	Module     string
 	Version    string
 	Suffix     string
@@ -29,23 +29,23 @@ type ScanRequest struct {
 	// TODO: support optional parameters?
 }
 
-func (s *ScanRequest) URLPathAndParams() string {
-	suf := s.Suffix
+func (r *Request) URLPathAndParams() string {
+	suf := r.Suffix
 	if suf != "" {
 		suf = "/" + suf
 	}
-	return fmt.Sprintf("%s/@v/%s%s?importedby=%d&mode=%s&insecure=%t", s.Module, s.Version, suf, s.ImportedBy, s.Mode, s.Insecure)
+	return fmt.Sprintf("%s/@v/%s%s?importedby=%d&mode=%s&insecure=%t", r.Module, r.Version, suf, r.ImportedBy, r.Mode, r.Insecure)
 }
 
-func (s *ScanRequest) Path() string {
-	p := s.Module + "@" + s.Version
-	if s.Suffix != "" {
-		p += "/" + s.Suffix
+func (r *Request) Path() string {
+	p := r.Module + "@" + r.Version
+	if r.Suffix != "" {
+		p += "/" + r.Suffix
 	}
 	return p
 }
 
-// ParseScanRequest parses an http request r for an endpoint
+// ParseRequest parses an http request r for an endpoint
 // scanPrefix and produces a corresponding ScanRequest.
 //
 // The module and version should have one of the following three forms:
@@ -54,7 +54,7 @@ func (s *ScanRequest) Path() string {
 //   - <module>/@latest
 //
 // (These are the same forms that the module proxy accepts.)
-func ParseScanRequest(r *http.Request, scanPrefix string) (*ScanRequest, error) {
+func ParseRequest(r *http.Request, scanPrefix string) (*Request, error) {
 	mod, vers, suff, err := ParseModuleVersionSuffix(strings.TrimPrefix(r.URL.Path, scanPrefix))
 	if err != nil {
 		return nil, err
@@ -67,7 +67,7 @@ func ParseScanRequest(r *http.Request, scanPrefix string) (*ScanRequest, error) 
 	if err != nil {
 		return nil, err
 	}
-	return &ScanRequest{
+	return &Request{
 		Module:     mod,
 		Version:    vers,
 		Suffix:     suff,
