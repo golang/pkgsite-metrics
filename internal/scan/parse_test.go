@@ -138,8 +138,6 @@ func TestParseScanRequestError(t *testing.T) {
 }
 
 func TestParseCorpusFile(t *testing.T) {
-	t.Skip()
-
 	const file = "testdata/modules.txt"
 	got, err := ParseCorpusFile(file, 1)
 	if err != nil {
