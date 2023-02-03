@@ -101,7 +101,7 @@ func NewServer(ctx context.Context, cfg *config.Config) (_ *Server, err error) {
 		return nil, err
 	}
 
-	s.observer, err = observe.NewObserver(ctx, cfg.ProjectID, "go-ecosystem-worker")
+	s.observer, err = observe.NewObserver(ctx, cfg.ProjectID, cfg.ServiceID)
 	if err != nil {
 		return nil, err
 	}

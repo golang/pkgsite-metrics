@@ -115,7 +115,7 @@ func Init(ctx context.Context) (_ *Config, err error) {
 	}
 	cfg := &Config{
 		ProjectID:             os.Getenv("GOOGLE_CLOUD_PROJECT"),
-		ServiceID:             "go-ecosystem-worker",
+		ServiceID:             os.Getenv("GO_ECOSYSTEM_SERVICE_ID"),
 		VersionID:             os.Getenv("DOCKER_IMAGE"),
 		LocationID:            "us-central1",
 		StaticPath:            ts,
