@@ -6,11 +6,14 @@
 package log
 
 import (
+	"bytes"
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"log"
 	"os"
+	"os/exec"
 	"reflect"
 	"strings"
 	"sync"
@@ -279,4 +282,14 @@ func toLevel(v string) logging.Severity {
 	// Default log level in case of invalid input.
 	log.Printf("Error: %s is invalid LogLevel. Possible values are [debug, info, warning, error, fatal]", v)
 	return logging.Default
+}
+
+// IncludeStderr includes the stderr with an *exec.ExitError.
+// If err is not an *exec.ExitError, it returns err.Error().
+func IncludeStderr(err error) string {
+	var eerr *exec.ExitError
+	if errors.As(err, &eerr) {
+		return fmt.Sprintf("%v: %s", eerr, bytes.TrimSpace(eerr.Stderr))
+	}
+	return err.Error()
 }

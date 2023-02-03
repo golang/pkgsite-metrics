@@ -12,7 +12,7 @@ import (
 	"strings"
 	"testing"
 
-	"golang.org/x/pkgsite-metrics/internal"
+	"golang.org/x/pkgsite-metrics/internal/log"
 )
 
 // These tests require a minimal bundle, in testdata/bundle.
@@ -32,7 +32,7 @@ func Test(t *testing.T) {
 	t.Run("printargs", func(t *testing.T) {
 		out, err := sb.Run(ctx, "/printargs", "a", "b")
 		if err != nil {
-			t.Fatal(internal.IncludeStderr(err))
+			t.Fatal(log.IncludeStderr(err))
 		}
 
 		want := `args:
