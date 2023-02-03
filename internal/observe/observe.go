@@ -77,6 +77,10 @@ func NewObserver(ctx context.Context, projectID, serverName string) (_ *Observer
 // Observe adds metrics and tracing to an http.Handler.
 func (o *Observer) Observe(h http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if o == nil {
+			h.ServeHTTP(w, r.WithContext(r.Context()))
+			return
+		}
 		var otherHandler event.Handler
 		if o.LogHandlerFunc != nil {
 			otherHandler = o.LogHandlerFunc(r)

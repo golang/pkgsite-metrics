@@ -101,18 +101,20 @@ func NewServer(ctx context.Context, cfg *config.Config) (_ *Server, err error) {
 		return nil, err
 	}
 
-	s.observer, err = observe.NewObserver(ctx, cfg.ProjectID, cfg.ServiceID)
-	if err != nil {
-		return nil, err
-	}
-	// This function will be called for each request.
-	// It lets us install a log handler that knows about the request's
-	// trace ID.
-	s.observer.LogHandlerFunc = func(r *http.Request) event.Handler {
-		traceID := r.Header.Get("X-Cloud-Trace-Context")
-		return log.NewGCPJSONHandler(os.Stderr, traceID)
-	}
+	if cfg.ProjectID != "" && cfg.ServiceID != "" {
+		s.observer, err = observe.NewObserver(ctx, cfg.ProjectID, cfg.ServiceID)
+		if err != nil {
+			return nil, err
 
+		}
+		// This function will be called for each request.
+		// It lets us install a log handler that knows about the request's
+		// trace ID.
+		s.observer.LogHandlerFunc = func(r *http.Request) event.Handler {
+			traceID := r.Header.Get("X-Cloud-Trace-Context")
+			return log.NewGCPJSONHandler(os.Stderr, traceID)
+		}
+	}
 	if cfg.UseErrorReporting {
 		reportingClient, err := errorreporting.NewClient(ctx, cfg.ProjectID, errorreporting.Config{
 			ServiceName: cfg.ServiceID,
@@ -144,7 +146,7 @@ func NewServer(ctx context.Context, cfg *config.Config) (_ *Server, err error) {
 	return s, nil
 }
 
-const metricNamespace = "metrics/worker"
+const metricNamespace = "ecosystem/worker"
 
 type handlerFunc func(w http.ResponseWriter, r *http.Request) error
 
