@@ -1,4 +1,4 @@
-# Copyright 2023 The Go Authors. All rights reserved.
+# Copyright 2022 The Go Authors. All rights reserved.
 # Use of this source code is governed by a BSD-style
 # license that can be found in the LICENSE file.
 
@@ -47,25 +47,21 @@ runcmd() {
   $@ || err "command failed"
 }
 
-# tfvar NAME returns the value of NAME in the terraform.tfvars file.
+# tfvar NAME returns the value of the terraform variable NAME.
 tfvar() {
-  local name=$1
-  awk '$1 == "'$name'" { print substr($3, 2, length($3)-2) }' terraform/terraform.tfvars
+  local v=TF_VAR_$1
+  echo ${!v}
 }
 
 worker_url() {
   local env=$1
-  case $env in
-    prod) echo https://prod-metrics-worker-7x5g2mdvca-uc.a.run.app;;
-    dev) echo https://dev-metrics-worker-7x5g2mdvca-uc.a.run.app;;
-    *) die "usage: $0 (dev | prod)";;
-  esac
+  echo https://${env}-${GO_ECOSYSTEM_WORKER_URL_SUFFIX}
 }
 
 impersonation_service_account() {
   local env=$1
   case $env in
-    prod|dev) echo impersonate@go-ecosystem.iam.gserviceaccount.com;;
+    prod|dev) echo impersonate@$(tfvar ${env}_project).iam.gserviceaccount.com;;
     *) die "usage: $0 (dev | prod)";;
   esac
 }

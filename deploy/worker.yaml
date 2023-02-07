@@ -1,0 +1,108 @@
+# Copyright 2022 The Go Authors. All rights reserved.
+# Use of this source code is governed by a BSD-style
+# license that can be found in the LICENSE file.
+
+# This is a Cloud Build config file for the go-ecosystem worker.
+# Invoke locally from the command line using devtools/deploy.sh.
+# It can also be configured to run from a trigger, by supplying the _ENV
+# substitution.
+
+substitutions:
+  _ENV: ''
+  _BQ_DATASET: ''
+
+steps:
+  - id: Lock
+    name: golang:1.19.4
+    entrypoint: bash
+    args:
+      - -ec
+      - |
+        if [[ "$COMMIT_SHA" = '' ]]; then
+          echo "no COMMIT_SHA, not locking"
+          exit 0
+        fi
+        go run golang.org/x/website/cmd/locktrigger@latest \
+          -project $PROJECT_ID -build $BUILD_ID -repo https://go.googlesource.com/pkgsite-metrics
+
+  - id: Test
+    # Run tests. Do this early, to avoid wasting time if they fail.
+    name: golang:1.19.4
+    entrypoint: bash
+    args:
+      - -ec
+      - go test ./...
+
+  - id: Prepare
+    name: gcr.io/cloud-builders/gcloud
+    entrypoint: bash
+    args:
+      - -ec
+      - |
+        # Determine the image name and save for later steps.
+        if [[ "$SHORT_SHA" = '' ]]; then
+          echo >&2 "missing SHORT_SHA; use --substitutions on command line"
+          exit 1
+        fi
+        if [[ "$_ENV" = '' ]]; then
+          echo >&2 "missing _ENV; use --substitutions on command line"
+          exit 1
+        fi
+        if [[ "$_BQ_DATASET" = '' ]]; then
+          echo >&2 "missing _BQ_DATASET; use --substitutions on command line"
+          exit 1
+        fi
+
+        tag=$(date +%Y%m%dt%H%M%S)-$SHORT_SHA
+        image=gcr.io/$PROJECT_ID/${_ENV}-ecosystem-worker:$tag
+        echo "image is $image"
+        echo $image > /workspace/image.txt
+
+        # Convert the commented config.json file to valid json.
+        sed '/^[ \t]*#/d' config.json.commented > /workspace/config.json
+
+        # Download the vuln DB from its bucket to a local directory, and remember
+        # its last-modified time in a file.
+        gsutil -m -q cp -r gs://go-vulndb /workspace
+        gsutil stat gs://go-vulndb/index.json | \
+                awk '$$1 == "Update" { for (i = 4; i <= NF; i++) printf("%s ", $$i); printf("\n"); }' \
+                > /workspace/go-vulndb/LAST_MODIFIED
+        # Download a tarball of a docker Go image.
+        gsutil cp gs://go-ecosystem/go-image.tar.gz /workspace
+
+  - id: Build
+    # Build the docker image.
+    #
+    # The files we put in /workspace in the previous step need to be
+    # in the repo root so they get uploaded to the Docker daemon.
+    # However it turns out that /workspace is in fact the same directory,
+    # so no copying is necessary.
+    name: gcr.io/cloud-builders/docker
+    entrypoint: bash
+    args:
+      - -ec
+      - |
+        image=$(cat /workspace/image.txt)
+        docker build -t $image -f cmd/worker/Dockerfile . \
+          --build-arg DOCKER_IMAGE=$image \
+          --build-arg BQ_DATASET=${_BQ_DATASET}
+        docker push $image
+
+  - id: Deploy
+    name: gcr.io/cloud-builders/gcloud
+    entrypoint: bash
+    args:
+      - -ec
+      - |
+        image=$(cat /workspace/image.txt)
+        service=${_ENV}-ecosystem-worker
+        args="--project $PROJECT_ID --region us-central1"
+        gcloud beta run deploy $args  $service --image $image --execution-environment=gen2
+        # If there was a rollback, `gcloud run deploy` will create a revision but
+        # not point traffic to it. The following command ensures that the new revision
+        # will get traffic.
+        latestTraffic=$(gcloud run services $args describe $service \
+                        --format='value(status.traffic.latestRevision)')
+        if [[ $latestTraffic != True ]]; then
+          gcloud run services $args update-traffic $service --to-latest
+        fi
