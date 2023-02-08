@@ -8,7 +8,6 @@ import (
 	"fmt"
 	"net/http"
 
-	_ "github.com/lib/pq"
 	"golang.org/x/pkgsite-metrics/internal/pkgsitedb"
 )
 

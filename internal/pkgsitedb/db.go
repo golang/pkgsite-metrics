@@ -2,6 +2,8 @@
 // Use of this source code is governed by a BSD-style
 // license that can be found in the LICENSE file.
 
+//go:build !plan9
+
 // Package pkgsitedb provides functionality for connecting to the pkgsite
 // database.
 package pkgsitedb
