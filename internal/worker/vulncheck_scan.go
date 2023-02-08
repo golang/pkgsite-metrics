@@ -34,6 +34,7 @@ import (
 	"golang.org/x/pkgsite-metrics/internal/scan"
 	"golang.org/x/pkgsite-metrics/internal/version"
 	vulnc "golang.org/x/vuln/client"
+	"golang.org/x/vuln/exp/govulncheck"
 	"golang.org/x/vuln/vulncheck"
 )
 
@@ -610,6 +611,50 @@ func convertVuln(v *vulncheck.Vuln) *bigquery.Vuln {
 		ImportSink:  bigquery.NullInt(v.ImportSink),
 		RequireSink: bigquery.NullInt(v.RequireSink),
 	}
+}
+
+func convertGoVulncheckOutput(v *govulncheck.Vuln) (vulns []*bigquery.Vuln) {
+	for _, module := range v.Modules {
+		for pkgNum, pkg := range module.Packages {
+			addedSymbols := make(map[string]bool)
+			baseVuln := &bigquery.Vuln{
+				ID:          v.OSV.ID,
+				ModulePath:  module.Path,
+				PackagePath: pkg.Path,
+				CallSink:    bigquery.NullInt(0),
+				ImportSink:  bigquery.NullInt(pkgNum + 1),
+				RequireSink: bigquery.NullInt(pkgNum + 1),
+			}
+
+			// For each called symbol, reconstruct sinks and create the corresponding bigquery vuln
+			for symbolNum, cs := range pkg.CallStacks {
+				addedSymbols[cs.Symbol] = true
+				toAdd := *baseVuln
+				toAdd.Symbol = cs.Symbol
+				toAdd.CallSink = bigquery.NullInt(symbolNum + 1)
+				vulns = append(vulns, &toAdd)
+			}
+
+			// Find the rest of the vulnerable imported symbols that haven't been called
+			// and create corresponding bigquery vulns
+			for _, affected := range v.OSV.Affected {
+				if affected.Package.Name == module.Path {
+					for _, imp := range affected.EcosystemSpecific.Imports {
+						if imp.Path == pkg.Path {
+							for _, symbol := range imp.Symbols {
+								if !addedSymbols[symbol] {
+									toAdd := *baseVuln
+									toAdd.Symbol = symbol
+									vulns = append(vulns, &toAdd)
+								}
+							}
+						}
+					}
+				}
+			}
+		}
+	}
+	return vulns
 }
 
 // currHeapUsage computes currently allocate heap bytes.

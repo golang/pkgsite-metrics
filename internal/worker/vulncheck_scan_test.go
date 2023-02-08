@@ -14,10 +14,14 @@ import (
 
 	"cloud.google.com/go/storage"
 	"github.com/google/go-cmp/cmp"
+	"github.com/google/go-cmp/cmp/cmpopts"
+	"golang.org/x/pkgsite-metrics/internal/bigquery"
 	"golang.org/x/pkgsite-metrics/internal/config"
 	"golang.org/x/pkgsite-metrics/internal/derrors"
 	"golang.org/x/pkgsite-metrics/internal/proxy"
 	vulnc "golang.org/x/vuln/client"
+	"golang.org/x/vuln/exp/govulncheck"
+	"golang.org/x/vuln/osv"
 	"golang.org/x/vuln/vulncheck"
 )
 
@@ -142,5 +146,128 @@ func TestUnmarshalVulncheckOutput(t *testing.T) {
 	}
 	if !cmp.Equal(got, want) {
 		t.Errorf("got %+v, want %+v", got, want)
+	}
+}
+
+func TestConvertGoVulncheckOutput(t *testing.T) {
+	var (
+		osvEntry = &osv.Entry{
+			ID: "GO-YYYY-1234",
+			Affected: []osv.Affected{
+				{
+					Package: osv.Package{
+						Name:      "example.com/repo/module",
+						Ecosystem: "Go",
+					},
+					EcosystemSpecific: osv.EcosystemSpecific{
+						Imports: []osv.EcosystemSpecificImport{
+							{
+								Path: "example.com/repo/module/package",
+								Symbols: []string{
+									"Symbol",
+									"Another",
+								},
+							},
+						},
+					},
+				},
+			},
+		}
+
+		vuln1 = &govulncheck.Vuln{
+			OSV: osvEntry,
+			Modules: []*govulncheck.Module{
+				{
+					Path: "example.com/repo/module",
+					Packages: []*govulncheck.Package{
+						{
+							Path: "example.com/repo/module/package",
+							CallStacks: []govulncheck.CallStack{
+								{
+									Symbol:  "Symbol",
+									Summary: "example.go:1:1 xyz.func calls pkgPath.Symbol",
+									Frames:  []*govulncheck.StackFrame{},
+								},
+							},
+						},
+					},
+				},
+			},
+		}
+
+		vuln2 = &govulncheck.Vuln{
+			OSV: osvEntry,
+			Modules: []*govulncheck.Module{
+				{
+					Path: "example.com/repo/module",
+					Packages: []*govulncheck.Package{
+						{
+							Path: "example.com/repo/module/package",
+						},
+					},
+				},
+			},
+		}
+	)
+	tests := []struct {
+		name      string
+		vuln      *govulncheck.Vuln
+		wantVulns []*bigquery.Vuln
+	}{
+		{
+			name: "Call One Symbol",
+			vuln: vuln1,
+			wantVulns: []*bigquery.Vuln{
+				{
+					ID:          "GO-YYYY-1234",
+					Symbol:      "Symbol",
+					PackagePath: "example.com/repo/module/package",
+					ModulePath:  "example.com/repo/module",
+					CallSink:    bigquery.NullInt(1),
+					ImportSink:  bigquery.NullInt(1),
+					RequireSink: bigquery.NullInt(1),
+				},
+				{
+					ID:          "GO-YYYY-1234",
+					Symbol:      "Another",
+					PackagePath: "example.com/repo/module/package",
+					ModulePath:  "example.com/repo/module",
+					CallSink:    bigquery.NullInt(0),
+					ImportSink:  bigquery.NullInt(1),
+					RequireSink: bigquery.NullInt(1),
+				},
+			},
+		},
+		{
+			name: "Call no symbols",
+			vuln: vuln2,
+			wantVulns: []*bigquery.Vuln{
+				{
+					ID:          "GO-YYYY-1234",
+					PackagePath: "example.com/repo/module/package",
+					ModulePath:  "example.com/repo/module",
+					Symbol:      "Symbol",
+					CallSink:    bigquery.NullInt(0),
+					ImportSink:  bigquery.NullInt(1),
+					RequireSink: bigquery.NullInt(1),
+				},
+				{
+					ID:          "GO-YYYY-1234",
+					PackagePath: "example.com/repo/module/package",
+					ModulePath:  "example.com/repo/module",
+					Symbol:      "Another",
+					CallSink:    bigquery.NullInt(0),
+					ImportSink:  bigquery.NullInt(1),
+					RequireSink: bigquery.NullInt(1),
+				},
+			},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if diff := cmp.Diff(convertGoVulncheckOutput(tt.vuln), tt.wantVulns, cmpopts.EquateEmpty()); diff != "" {
+				t.Errorf("mismatch (-got, +want): %s", diff)
+			}
+		})
 	}
 }
