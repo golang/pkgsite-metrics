@@ -739,21 +739,15 @@ type vulncheckRequest struct {
 
 // vulncheckRequestParams has query parameters for a vulncheck scan request.
 type vulncheckRequestParams struct {
-	ImportedBy int
-	Mode       string
-	Insecure   bool
+	ImportedBy int    // imported-by count
+	Mode       string // vulncheck mode (VTA, etc)
+	Insecure   bool   // if true, run outside sandbox
 }
 
 // These methods implement queue.Task.
 func (r *vulncheckRequest) Name() string { return r.Module + "@" + r.Version }
 
-func (r *vulncheckRequest) Path() string {
-	p := r.Module + "@" + r.Version
-	if r.Suffix != "" {
-		p += "/" + r.Suffix
-	}
-	return p
-}
+func (r *vulncheckRequest) Path() string { return r.ModuleURLPath.Path() }
 
 func (r *vulncheckRequest) Params() string {
 	return scan.FormatParams(r.vulncheckRequestParams)

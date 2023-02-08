@@ -186,8 +186,8 @@ func TestParseParams(t *testing.T) {
 }
 
 func TestFormatParams(t *testing.T) {
-	got := FormatParams(params{Str: "foo", Int: 17, Bool: true})
-	want := "str=foo&int=17&bool=true"
+	got := FormatParams(params{Str: "foo bar", Int: 17, Bool: true})
+	want := "str=foo+bar&int=17&bool=true"
 	if got != want {
 		t.Errorf("got %q, want %q", got, want)
 	}

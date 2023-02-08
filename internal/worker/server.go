@@ -138,6 +138,9 @@ func NewServer(ctx context.Context, cfg *config.Config) (_ *Server, err error) {
 	if err := s.registerVulncheckHandlers(ctx); err != nil {
 		return nil, err
 	}
+	if err := s.registerAnalysisHandlers(ctx); err != nil {
+		return nil, err
+	}
 
 	s.handle("/test-vulncheck-sandbox/", s.handleTestVulncheckSandbox)
 	s.handle("/test-db", s.handleTestDB)
@@ -181,6 +184,12 @@ func (s *Server) registerVulncheckHandlers(ctx context.Context) error {
 	s.handle("/vulncheck/enqueue", h.handleEnqueue)
 	s.handle("/vulncheck/scan/", h.handleScan)
 	s.handle("/vulncheck/insert-results", h.handleInsertResults)
+	return nil
+}
+
+func (s *Server) registerAnalysisHandlers(ctx context.Context) error {
+	h := &analysisServer{s}
+	s.handle("/analysis/scan/", h.handleScan)
 	return nil
 }
 

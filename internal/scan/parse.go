@@ -9,6 +9,7 @@ import (
 	"bufio"
 	"fmt"
 	"net/http"
+	"net/url"
 	"os"
 	"reflect"
 	"strconv"
@@ -207,8 +208,9 @@ func FormatParams(s any) string {
 	var params []string
 	for i := 0; i < t.NumField(); i++ {
 		f := t.Field(i)
+		val := url.QueryEscape(fmt.Sprint(v.Field(i)))
 		params = append(params,
-			fmt.Sprintf("%s=%v", strings.ToLower(f.Name), v.Field(i)))
+			fmt.Sprintf("%s=%s", strings.ToLower(f.Name), val))
 	}
 	return strings.Join(params, "&")
 }
