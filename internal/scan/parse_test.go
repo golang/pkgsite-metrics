@@ -6,7 +6,6 @@ package scan
 
 import (
 	"net/http"
-	"net/url"
 	"reflect"
 	"strings"
 	"testing"
@@ -15,113 +14,78 @@ import (
 	"golang.org/x/pkgsite-metrics/internal/version"
 )
 
-func TestParseScanRequest(t *testing.T) {
+func TestParseModuleURLPath(t *testing.T) {
 	for _, test := range []struct {
-		name string
-		url  string
-		want Request
+		path string
+		want ModuleURLPath
 	}{
 		{
-			name: "ValidScanURL",
-			url:  "https://worker.com/scan/module/@v/v1.0.0?importedby=50",
-			want: Request{
-				ModuleURLPath{Module: "module", Version: "v1.0.0"},
-				RequestParams{ImportedBy: 50, Mode: ""},
+			"/module/@v/v1.0.0",
+			ModuleURLPath{Module: "module", Version: "v1.0.0"},
+		},
+		{
+			"/module/@v/v1.0.0-abcdefgh/suffix",
+			ModuleURLPath{
+				Module:  "module",
+				Version: "v1.0.0-abcdefgh",
+				Suffix:  "suffix",
 			},
 		},
 		{
-			name: "ValidImportsOnlyScanURL",
-			url:  "https://worker.com/scan/module/@v/v1.0.0-abcdefgh?importedby=100&mode=mode1",
-			want: Request{
-				ModuleURLPath{Module: "module", Version: "v1.0.0-abcdefgh"},
-				RequestParams{ImportedBy: 100, Mode: "mode1"},
-			},
-		},
-		{
-			name: "Module@Version",
-			url:  "https://worker.com/scan/module@v1.2.3?importedby=1",
-			want: Request{
-				ModuleURLPath{Module: "module", Version: "v1.2.3"},
-				RequestParams{ImportedBy: 1, Mode: ""},
-			},
-		},
-		{
-			name: "Module@Version suffix",
-			url:  "https://worker.com/scan/module@v1.2.3/path/to/dir?importedby=1",
-			want: Request{
-				ModuleURLPath{Module: "module", Version: "v1.2.3", Suffix: "path/to/dir"},
-				RequestParams{ImportedBy: 1, Mode: ""},
+			"/module@v1.2.3/a/b/c",
+			ModuleURLPath{
+				Module:  "module",
+				Version: "v1.2.3",
+				Suffix:  "a/b/c",
 			},
 		},
 	} {
-		t.Run(test.name, func(t *testing.T) {
-			u, err := url.Parse(test.url)
-			if err != nil {
-				t.Errorf("url.Parse(%q): %v", test.url, err)
-			}
-			r := &http.Request{URL: u}
-			got, err := ParseRequest(r, "/scan")
-			if err != nil {
-				t.Fatal(err)
-			}
-			if g, w := *got, test.want; g != w {
-				t.Errorf("\ngot  %+v\nwant %+v", g, w)
-			}
-		})
+		got, err := ParseModuleURLPath(test.path)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if g, w := got, test.want; !cmp.Equal(g, w) {
+			t.Errorf("%s:\ngot  %+v\nwant %+v", test.path, g, w)
+		}
 	}
 }
 
-func TestParseScanRequestError(t *testing.T) {
+func TestModuleURLPAthError(t *testing.T) {
 	for _, test := range []struct {
 		name string
-		url  string
+		path string
 		want string
 	}{
 		{
 			name: "InvalidScanURL",
-			url:  "/",
+			path: "/",
 			want: `invalid path "/": missing '@'`,
 		},
 		{
 			name: "InvalidScanURLNoModule",
-			url:  "/@v/version",
+			path: "/@v/version",
 			want: `invalid path "/@v/version": missing module`,
 		},
 		{
 			name: "InvalidScanURLNoVersion",
-			url:  "/module/@v/",
+			path: "/module/@v/",
 			want: `invalid path "/module/@v/": missing version`,
 		},
 		{
 			name: "NoVersion",
-			url:  "/module@",
+			path: "/module@",
 			want: `invalid path "/module@": missing version`,
 		},
 		{
 			name: "NoVersionSuffix",
-			url:  "/module@/suffix",
+			path: "/module@/suffix",
 			want: `invalid path "/module@/suffix": missing version`,
-		},
-		{
-			name: "MissingImportedBy",
-			url:  "/module/@v/v1.0.0",
-			want: `missing or negative "importedby" query param`,
-		},
-		{
-			name: "BadImportedBy",
-			url:  "/module@v1?importedby=1a",
-			want: `param importedby: strconv.Atoi: parsing "1a": invalid syntax`,
 		},
 	} {
 		t.Run(test.name, func(t *testing.T) {
-			u, err := url.Parse(test.url)
-			if err != nil {
-				t.Errorf("url.Parse(%q): %v", test.url, err)
-			}
-			r := &http.Request{URL: u}
-			if _, err := ParseRequest(r, "/scan"); err != nil {
-				if got := err.Error(); !strings.Contains(got, test.want) {
-					t.Fatalf("\ngot  %s\nwant %s", got, test.want)
+			if _, err := ParseModuleURLPath(test.path); err != nil {
+				if got := err.Error(); !strings.HasSuffix(got, test.want) {
+					t.Fatalf("\ngot  %s\nwant suffix %s", got, test.want)
 				}
 			} else {
 				t.Fatalf("error = nil; want = (%v)", test.want)

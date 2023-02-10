@@ -18,39 +18,48 @@ import (
 	"google.golang.org/api/iterator"
 )
 
+// query params for vulncheck/enqueue
+type vulncheckEnqueueParams struct {
+	Suffix string // appended to task queue IDs to generate unique tasks
+	Mode   string // type of analysis to run
+	Min    int    // minimum import-by count for a module to be included
+	File   string // path to file containing modules; if missing, use DB
+}
+
 // handleEnqueue enqueues multiple modules for a single vulncheck mode.
-// Query params:
-//   - suffix: appended to task queue IDs to generate unique tasks
-//   - mode: type of analysis to run; see [modes]
-//   - file: path to file containing modules; if missing, use DB
-//   - min: minimum import-by count for a module to be included
 func (h *VulncheckServer) handleEnqueue(w http.ResponseWriter, r *http.Request) error {
+	params := &vulncheckEnqueueParams{Min: defaultMinImportedByCount}
+	if err := scan.ParseParams(r, &params); err != nil {
+		return err
+	}
 	ctx := r.Context()
-	suffix := r.FormValue("suffix")
-	mode, err := vulncheckMode(scan.ParseMode(r))
+	mode, err := vulncheckMode(params.Mode)
 	if err != nil {
 		return err
 	}
 
-	var sreqs []*scan.Request
+	var reqs []*vulncheckRequest
 	if mode == ModeBinary {
 		var err error
-		sreqs, err = readBinaries(ctx, h.cfg.BinaryBucket)
+		reqs, err = readBinaries(ctx, h.cfg.BinaryBucket)
 		if err != nil {
 			return err
 		}
 	} else {
-		minImpCount, err := scan.ParseOptionalIntParam(r, "min", defaultMinImportedByCount)
+		modspecs, err := readModules(ctx, h.cfg, params.File, params.Min)
 		if err != nil {
 			return err
 		}
-		modspecs, err := readModules(ctx, h.cfg, r.FormValue("file"), minImpCount)
-		if err != nil {
-			return err
-		}
-		sreqs = moduleSpecsToScanRequests(modspecs, mode)
+		reqs = moduleSpecsToScanRequests(modspecs, mode)
 	}
-	return enqueueModules(ctx, sreqs, h.queue, &queue.Options{Namespace: "vulncheck", TaskNameSuffix: suffix})
+	var sreqs []queue.Task
+	for _, req := range reqs {
+		if req.Module != "std" { // ignore the standard library
+			sreqs = append(sreqs, req)
+		}
+	}
+	return enqueueTasks(ctx, sreqs, h.queue,
+		&queue.Options{Namespace: "vulncheck", TaskNameSuffix: params.Suffix})
 }
 
 func vulncheckMode(mode string) (string, error) {
@@ -71,28 +80,34 @@ func vulncheckMode(mode string) (string, error) {
 //   - file: path to file containing modules; if missing, use DB
 //   - min: minimum import-by count for a module to be included
 func (h *VulncheckServer) handleEnqueueAll(w http.ResponseWriter, r *http.Request) error {
+	params := &vulncheckEnqueueParams{Min: defaultMinImportedByCount}
+	if err := scan.ParseParams(r, &params); err != nil {
+		return err
+	}
+
 	ctx := r.Context()
-	suffix := r.FormValue("suffix")
-	minImpCount, err := scan.ParseOptionalIntParam(r, "min", defaultMinImportedByCount)
+	modspecs, err := readModules(ctx, h.cfg, params.File, params.Min)
 	if err != nil {
 		return err
 	}
-	modspecs, err := readModules(ctx, h.cfg, r.FormValue("file"), minImpCount)
-	if err != nil {
-		return err
-	}
-	opts := &queue.Options{Namespace: "vulncheck", TaskNameSuffix: suffix}
+	opts := &queue.Options{Namespace: "vulncheck", TaskNameSuffix: params.Suffix}
 	for mode := range modes {
-		var sreqs []*scan.Request
+		var reqs []*vulncheckRequest
 		if mode == ModeBinary {
-			sreqs, err = readBinaries(ctx, h.cfg.BinaryBucket)
+			reqs, err = readBinaries(ctx, h.cfg.BinaryBucket)
 			if err != nil {
 				return err
 			}
 		} else {
-			sreqs = moduleSpecsToScanRequests(modspecs, mode)
+			reqs = moduleSpecsToScanRequests(modspecs, mode)
 		}
-		if err := enqueueModules(ctx, sreqs, h.queue, opts); err != nil {
+		var tasks []queue.Task
+		for _, req := range reqs {
+			if req.Module != "std" { // ignore the standard library
+				tasks = append(tasks, req)
+			}
+		}
+		if err := enqueueTasks(ctx, tasks, h.queue, opts); err != nil {
 			return err
 		}
 	}
@@ -102,7 +117,7 @@ func (h *VulncheckServer) handleEnqueueAll(w http.ResponseWriter, r *http.Reques
 // binaryDir is the directory in the GCS bucket that contains binaries that should be scanned.
 const binaryDir = "binaries"
 
-func readBinaries(ctx context.Context, bucketName string) (sreqs []*scan.Request, err error) {
+func readBinaries(ctx context.Context, bucketName string) (reqs []*vulncheckRequest, err error) {
 	defer derrors.Wrap(&err, "readBinaries(%q)", bucketName)
 	if bucketName == "" {
 		log.Infof(ctx, "binary bucket not configured; not enqueuing binaries")
@@ -125,10 +140,10 @@ func readBinaries(ctx context.Context, bucketName string) (sreqs []*scan.Request
 		if err != nil {
 			return nil, err
 		}
-		sreqs = append(sreqs, &scan.Request{
-			ModuleURLPath: mp,
-			RequestParams: scan.RequestParams{Mode: ModeBinary},
+		reqs = append(reqs, &vulncheckRequest{
+			ModuleURLPath:          mp,
+			vulncheckRequestParams: vulncheckRequestParams{Mode: ModeBinary},
 		})
 	}
-	return sreqs, nil
+	return reqs, nil
 }

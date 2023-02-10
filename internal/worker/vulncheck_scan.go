@@ -84,7 +84,7 @@ func (h *VulncheckServer) handleScan(w http.ResponseWriter, r *http.Request) (er
 	}()
 
 	ctx := r.Context()
-	sreq, err := scan.ParseRequest(r, "/vulncheck/scan")
+	sreq, err := parseVulncheckRequest(r, "/vulncheck/scan")
 	if err != nil {
 		return fmt.Errorf("%w: %v", derrors.InvalidArgument, err)
 	}
@@ -184,7 +184,7 @@ func (s scanError) Unwrap() error {
 	return s.err
 }
 
-func (s *scanner) ScanModule(ctx context.Context, sreq *scan.Request) {
+func (s *scanner) ScanModule(ctx context.Context, sreq *vulncheckRequest) {
 	if sreq.Module == "std" {
 		return // ignore the standard library
 	}
@@ -716,7 +716,7 @@ func (s *scanner) cleanGoCaches(ctx context.Context) error {
 // This runs a scan but returns the resulting JSON instead of writing it to BigQuery.
 func (s *Server) handleTestVulncheckSandbox(w http.ResponseWriter, r *http.Request) error {
 	ctx := r.Context()
-	sreq, err := scan.ParseRequest(r, "/test-vulncheck-sandbox")
+	sreq, err := parseVulncheckRequest(r, "/test-vulncheck-sandbox")
 	if err != nil {
 		return fmt.Errorf("%w: %v", derrors.InvalidArgument, err)
 	}
@@ -728,4 +728,62 @@ func (s *Server) handleTestVulncheckSandbox(w http.ResponseWriter, r *http.Reque
 	}
 	_, err = w.Write(out)
 	return err
+}
+
+// vulncheckRequest contains information passed
+// to a scan endpoint.
+type vulncheckRequest struct {
+	scan.ModuleURLPath
+	vulncheckRequestParams
+}
+
+// vulncheckRequestParams has query parameters for a vulncheck scan request.
+type vulncheckRequestParams struct {
+	ImportedBy int
+	Mode       string
+	Insecure   bool
+	// TODO: support optional parameters?
+}
+
+// These methods implement queue.Task.
+func (r *vulncheckRequest) Name() string { return r.Module + "@" + r.Version }
+
+func (r *vulncheckRequest) Path() string {
+	p := r.Module + "@" + r.Version
+	if r.Suffix != "" {
+		p += "/" + r.Suffix
+	}
+	return p
+}
+
+func (r *vulncheckRequest) Params() string {
+	return scan.FormatParams(r.vulncheckRequestParams)
+}
+
+// parseVulncheckRequest parses an http request r for an endpoint
+// prefix and produces a corresponding ScanRequest.
+//
+// The module and version should have one of the following three forms:
+//   - <module>/@v/<version>
+//   - <module>@<version>
+//   - <module>/@latest
+//
+// (These are the same forms that the module proxy accepts.)
+func parseVulncheckRequest(r *http.Request, prefix string) (*vulncheckRequest, error) {
+	mp, err := scan.ParseModuleURLPath(strings.TrimPrefix(r.URL.Path, prefix))
+	if err != nil {
+		return nil, err
+	}
+
+	rp := vulncheckRequestParams{ImportedBy: -1}
+	if err := scan.ParseParams(r, &rp); err != nil {
+		return nil, err
+	}
+	if rp.ImportedBy < 0 {
+		return nil, errors.New(`missing or negative "importedby" query param`)
+	}
+	return &vulncheckRequest{
+		ModuleURLPath:          mp,
+		vulncheckRequestParams: rp,
+	}, nil
 }

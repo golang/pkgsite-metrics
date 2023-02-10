@@ -9,7 +9,6 @@ import (
 
 	"github.com/google/go-cmp/cmp"
 	"golang.org/x/pkgsite-metrics/internal/config"
-	"golang.org/x/pkgsite-metrics/internal/scan"
 	taskspb "google.golang.org/genproto/googleapis/cloud/tasks/v2"
 	"google.golang.org/protobuf/testing/protocmp"
 	"google.golang.org/protobuf/types/known/durationpb"
@@ -79,16 +78,10 @@ func TestNewTaskRequest(t *testing.T) {
 		Namespace:      "test",
 		TaskNameSuffix: "suf",
 	}
-	sreq := &scan.Request{
-		ModuleURLPath: scan.ModuleURLPath{
-			Module:  "mod",
-			Version: "v1.2.3",
-		},
-		RequestParams: scan.RequestParams{
-			ImportedBy: 0,
-			Mode:       "test",
-			Insecure:   true,
-		},
+	sreq := &testTask{
+		name:   "name",
+		path:   "mod@v1.2.3",
+		params: "importedby=0&mode=test&insecure=true",
 	}
 	got, err := gcp.newTaskRequest(sreq, opts)
 	if err != nil {

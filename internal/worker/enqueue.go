@@ -6,7 +6,6 @@ package worker
 
 import (
 	"context"
-	"errors"
 	"sync"
 
 	"golang.org/x/pkgsite-metrics/internal/config"
@@ -37,8 +36,8 @@ func readFromDB(ctx context.Context, cfg *config.Config, minImportedByCount int)
 	return pkgsitedb.ModuleSpecs(ctx, db, minImportedByCount)
 }
 
-func enqueueModules(ctx context.Context, sreqs []*scan.Request, q queue.Queue, opts *queue.Options) (err error) {
-	defer derrors.Wrap(&err, "enqueueModules")
+func enqueueTasks(ctx context.Context, tasks []queue.Task, q queue.Queue, opts *queue.Options) (err error) {
+	defer derrors.Wrap(&err, "enqueueTasks")
 
 	// Enqueue concurrently, because sequentially takes a while.
 	const concurrentEnqueues = 10
@@ -48,14 +47,8 @@ func enqueueModules(ctx context.Context, sreqs []*scan.Request, q queue.Queue, o
 	)
 	sem := make(chan struct{}, concurrentEnqueues)
 
-	for _, sreq := range sreqs {
+	for _, sreq := range tasks {
 		log.Infof(ctx, "enqueuing: %s?%s", sreq.Path(), sreq.Params())
-		if sreq.Module == "std" {
-			continue // ignore the standard library
-		}
-		if sreq.Mode == "" {
-			return errors.New("ScanRequest.Mode cannot be empty")
-		}
 		sreq := sreq
 		sem <- struct{}{}
 		go func() {
@@ -79,12 +72,18 @@ func enqueueModules(ctx context.Context, sreqs []*scan.Request, q queue.Queue, o
 	return nil
 }
 
-func moduleSpecsToScanRequests(modspecs []scan.ModuleSpec, mode string) []*scan.Request {
-	var sreqs []*scan.Request
+func moduleSpecsToScanRequests(modspecs []scan.ModuleSpec, mode string) []*vulncheckRequest {
+	var sreqs []*vulncheckRequest
 	for _, ms := range modspecs {
-		sreqs = append(sreqs, &scan.Request{
-			ModuleURLPath: scan.ModuleURLPath{Module: ms.Path, Version: ms.Version},
-			RequestParams: scan.RequestParams{ImportedBy: ms.ImportedBy, Mode: mode},
+		sreqs = append(sreqs, &vulncheckRequest{
+			scan.ModuleURLPath{
+				Module:  ms.Path,
+				Version: ms.Version,
+			},
+			vulncheckRequestParams{
+				ImportedBy: ms.ImportedBy,
+				Mode:       mode,
+			},
 		})
 	}
 	return sreqs

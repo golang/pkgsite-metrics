@@ -7,7 +7,6 @@ package scan
 
 import (
 	"bufio"
-	"errors"
 	"fmt"
 	"net/http"
 	"os"
@@ -18,65 +17,6 @@ import (
 	"golang.org/x/pkgsite-metrics/internal/derrors"
 	"golang.org/x/pkgsite-metrics/internal/version"
 )
-
-// Request contains information passed
-// to a scan endpoint.
-type Request struct {
-	ModuleURLPath
-	RequestParams
-}
-
-// RequestParams has query parameters for a scan request.
-type RequestParams struct {
-	ImportedBy int
-	Mode       string
-	Insecure   bool
-}
-
-// These methods implement queue.Task.
-func (r *Request) Name() string { return r.Module + "@" + r.Version }
-
-func (r *Request) Path() string {
-	p := r.Module + "@" + r.Version
-	if r.Suffix != "" {
-		p += "/" + r.Suffix
-	}
-	return p
-}
-
-func (r *Request) Params() string {
-	return FormatParams(r.RequestParams)
-}
-
-// ParseRequest parses an http request r for an endpoint
-// scanPrefix and produces a corresponding ScanRequest.
-//
-// The module and version should have one of the following three forms:
-//   - <module>/@v/<version>
-//   - <module>@<version>
-//   - <module>/@latest
-//
-// (These are the same forms that the module proxy accepts.)
-func ParseRequest(r *http.Request, scanPrefix string) (_ *Request, err error) {
-	defer derrors.Wrap(&err, "ParseRequest(%s)", scanPrefix)
-
-	mp, err := ParseModuleURLPath(strings.TrimPrefix(r.URL.Path, scanPrefix))
-	if err != nil {
-		return nil, err
-	}
-
-	rp := RequestParams{ImportedBy: -1} // use -1 to detect missing param (explicit 0 is OK)
-	if err := ParseParams(r, &rp); err != nil {
-		return nil, err
-	}
-	if rp.ImportedBy < 0 {
-		return nil, errors.New(`missing or negative "importedby" query param`)
-	}
-	return &Request{
-		ModuleURLPath: mp,
-		RequestParams: rp,
-	}, nil
-}
 
 func ParseRequiredIntParam(r *http.Request, name string) (int, error) {
 	value := r.FormValue(name)

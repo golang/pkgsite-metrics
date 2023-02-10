@@ -22,13 +22,13 @@ func TestReadBinaries(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	want := &scan.Request{
-		ModuleURLPath: scan.ModuleURLPath{
+	want := &vulncheckRequest{
+		scan.ModuleURLPath{
 			Module:  "golang.org/x/pkgsite",
 			Version: "v0.0.0-20221004150836-873fb37c2479",
 			Suffix:  "cmd/worker",
 		},
-		RequestParams: scan.RequestParams{Mode: ModeBinary},
+		vulncheckRequestParams{Mode: ModeBinary},
 	}
 	found := false
 	for _, sr := range sreqs {
