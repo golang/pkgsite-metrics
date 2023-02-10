@@ -64,11 +64,15 @@ func TestNewTaskRequest(t *testing.T) {
 		TaskNameSuffix: "suf",
 	}
 	sreq := &scan.Request{
-		Module:     "mod",
-		Version:    "v1.2.3",
-		ImportedBy: 0,
-		Mode:       "test",
-		Insecure:   true,
+		ModuleURLPath: scan.ModuleURLPath{
+			Module:  "mod",
+			Version: "v1.2.3",
+		},
+		RequestParams: scan.RequestParams{
+			ImportedBy: 0,
+			Mode:       "test",
+			Insecure:   true,
+		},
 	}
 	got, err := gcp.newTaskRequest(sreq, opts)
 	if err != nil {

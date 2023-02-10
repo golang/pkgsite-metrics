@@ -121,15 +121,13 @@ func readBinaries(ctx context.Context, bucketName string) (sreqs []*scan.Request
 		if err != nil {
 			return nil, err
 		}
-		mod, vers, suff, err := scan.ParseModuleVersionSuffix(strings.TrimPrefix(attrs.Name, binaryDir+"/"))
+		mp, err := scan.ParseModuleURLPath(strings.TrimPrefix(attrs.Name, binaryDir+"/"))
 		if err != nil {
 			return nil, err
 		}
 		sreqs = append(sreqs, &scan.Request{
-			Module:  mod,
-			Version: vers,
-			Suffix:  suff,
-			Mode:    ModeBinary,
+			ModuleURLPath: mp,
+			RequestParams: scan.RequestParams{Mode: ModeBinary},
 		})
 	}
 	return sreqs, nil

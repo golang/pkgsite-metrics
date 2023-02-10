@@ -7,9 +7,11 @@ package scan
 
 import (
 	"bufio"
+	"errors"
 	"fmt"
 	"net/http"
 	"os"
+	"reflect"
 	"strconv"
 	"strings"
 
@@ -20,14 +22,15 @@ import (
 // Request contains information passed
 // to a scan endpoint.
 type Request struct {
-	Module     string
-	Version    string
-	Suffix     string
+	ModuleURLPath
+	RequestParams
+}
+
+// RequestParams has query parameters for a scan request.
+type RequestParams struct {
 	ImportedBy int
 	Mode       string
 	Insecure   bool
-
-	// TODO: support optional parameters?
 }
 
 func (r *Request) URLPathAndParams() string {
@@ -55,53 +58,25 @@ func (r *Request) Path() string {
 //   - <module>/@latest
 //
 // (These are the same forms that the module proxy accepts.)
-func ParseRequest(r *http.Request, scanPrefix string) (*Request, error) {
-	mod, vers, suff, err := ParseModuleVersionSuffix(strings.TrimPrefix(r.URL.Path, scanPrefix))
+func ParseRequest(r *http.Request, scanPrefix string) (_ *Request, err error) {
+	defer derrors.Wrap(&err, "ParseRequest(%s)", scanPrefix)
+
+	mp, err := ParseModuleURLPath(strings.TrimPrefix(r.URL.Path, scanPrefix))
 	if err != nil {
 		return nil, err
 	}
-	importedBy, err := ParseRequiredIntParam(r, "importedby")
-	if err != nil {
+
+	rp := RequestParams{ImportedBy: -1} // use -1 to detect missing param (explicit 0 is OK)
+	if err := ParseParams(r, &rp); err != nil {
 		return nil, err
 	}
-	insecure, err := ParseOptionalBoolParam(r, "insecure", false)
-	if err != nil {
-		return nil, err
+	if rp.ImportedBy < 0 {
+		return nil, errors.New(`missing or negative "importedby" query param`)
 	}
 	return &Request{
-		Module:     mod,
-		Version:    vers,
-		Suffix:     suff,
-		ImportedBy: importedBy,
-		Mode:       ParseMode(r),
-		Insecure:   insecure,
+		ModuleURLPath: mp,
+		RequestParams: rp,
 	}, nil
-}
-
-// ParseModuleVersionSuffix returns the module path, version and suffix described by
-// the argument. The suffix is the part of the path after the version.
-func ParseModuleVersionSuffix(requestPath string) (path, vers, suffix string, err error) {
-	p := strings.TrimPrefix(requestPath, "/")
-	modulePath, versionAndSuffix, found := strings.Cut(p, "@")
-	if !found {
-		return "", "", "", fmt.Errorf("invalid path %q: missing '@'", requestPath)
-	}
-	modulePath = strings.TrimSuffix(modulePath, "/")
-	if modulePath == "" {
-		return "", "", "", fmt.Errorf("invalid path %q: missing module", requestPath)
-	}
-	if strings.HasPrefix(versionAndSuffix, "v/") {
-		versionAndSuffix = versionAndSuffix[2:]
-	}
-	// Now versionAndSuffix begins with a version.
-	version, suffix, _ := strings.Cut(versionAndSuffix, "/")
-	if version == "" {
-		return "", "", "", fmt.Errorf("invalid path %q: missing version", requestPath)
-	}
-	if version[0] != 'v' {
-		version = "v" + version
-	}
-	return modulePath, version, suffix, nil
 }
 
 func ParseRequiredIntParam(r *http.Request, name string) (int, error) {
@@ -203,4 +178,108 @@ func ReadFileLines(filename string) (lines []string, err error) {
 		return nil, s.Err()
 	}
 	return lines, nil
+}
+
+// A ModuleURLPath holds the components of a URL path parsed
+// as module, version and suffix.
+type ModuleURLPath struct {
+	Module  string
+	Version string
+	Suffix  string
+}
+
+// ParseModuleURLPath parse the module path, version and suffix described by
+// the argument, which is expected to be a URL path.
+// The module and version should have one of the following three forms:
+//   - <module>/@v/<version>
+//   - <module>@<version>
+//   - <module>/@latest
+//
+// The suffix is the part of the path after the version.
+func ParseModuleURLPath(requestPath string) (_ ModuleURLPath, err error) {
+	defer derrors.Wrap(&err, "ParseModuleURLPath(%q)", requestPath)
+
+	p := strings.TrimPrefix(requestPath, "/")
+	modulePath, versionAndSuffix, found := strings.Cut(p, "@")
+	if !found {
+		return ModuleURLPath{}, fmt.Errorf("invalid path %q: missing '@'", requestPath)
+	}
+	modulePath = strings.TrimSuffix(modulePath, "/")
+	if modulePath == "" {
+		return ModuleURLPath{}, fmt.Errorf("invalid path %q: missing module", requestPath)
+	}
+	if strings.HasPrefix(versionAndSuffix, "v/") {
+		versionAndSuffix = versionAndSuffix[2:]
+	}
+	// Now versionAndSuffix begins with a version.
+	version, suffix, _ := strings.Cut(versionAndSuffix, "/")
+	if version == "" {
+		return ModuleURLPath{}, fmt.Errorf("invalid path %q: missing version", requestPath)
+	}
+	if version[0] != 'v' {
+		version = "v" + version
+	}
+	return ModuleURLPath{modulePath, version, suffix}, nil
+}
+
+// Path reconstructs a URL path from m.
+func (m ModuleURLPath) Path() string {
+	p := m.Module + "@" + m.Version
+	if m.Suffix != "" {
+		p += "/" + m.Suffix
+	}
+	return p
+}
+
+// ParseParams populates the fields of pstruct, which must a pointer to a struct,
+// with the form and query parameters of r.
+//
+// The fields of pstruct must be exported, and each field must be a string, an
+// int or a bool. If there is a request parameter corresponding to the
+// lower-cased field name, it is parsed according to the field's type and
+// assigned to the field. If there is no matching parameter (or it is the empty
+// string), the field is not assigned.
+//
+// For default values or to detect missing parameters, set the struct field
+// before calling ParseParams; if there is no matching parameter, the field will
+// retain its value.
+func ParseParams(r *http.Request, pstruct any) (err error) {
+	defer derrors.Wrap(&err, "ParseParams(%q)", r.URL)
+
+	v := reflect.ValueOf(pstruct)
+	t := v.Type()
+	if t.Kind() != reflect.Pointer || t.Elem().Kind() != reflect.Struct {
+		return fmt.Errorf("need struct pointer, got %T", pstruct)
+	}
+	t = t.Elem()
+	v = v.Elem()
+
+	for i := 0; i < t.NumField(); i++ {
+		f := t.Field(i)
+		paramName := strings.ToLower(f.Name)
+		param := r.FormValue(paramName)
+		if param == "" {
+			// If param is missing, do not set field.
+			continue
+		}
+		pval, err := parseParam(param, f.Type.Kind())
+		if err != nil {
+			return fmt.Errorf("param %s: %v", paramName, err)
+		}
+		v.Field(i).Set(reflect.ValueOf(pval))
+	}
+	return nil
+}
+
+func parseParam(param string, kind reflect.Kind) (any, error) {
+	switch kind {
+	case reflect.String:
+		return param, nil
+	case reflect.Int:
+		return strconv.Atoi(param)
+	case reflect.Bool:
+		return strconv.ParseBool(param)
+	default:
+		return nil, fmt.Errorf("cannot parse kind %s", kind)
+	}
 }

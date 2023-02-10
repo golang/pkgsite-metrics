@@ -79,10 +79,8 @@ func moduleSpecsToScanRequests(modspecs []scan.ModuleSpec, mode string) []*scan.
 	var sreqs []*scan.Request
 	for _, ms := range modspecs {
 		sreqs = append(sreqs, &scan.Request{
-			Module:     ms.Path,
-			Version:    ms.Version,
-			ImportedBy: ms.ImportedBy,
-			Mode:       mode,
+			ModuleURLPath: scan.ModuleURLPath{Module: ms.Path, Version: ms.Version},
+			RequestParams: scan.RequestParams{ImportedBy: ms.ImportedBy, Mode: mode},
 		})
 	}
 	return sreqs

@@ -34,7 +34,7 @@ func TestAsScanError(t *testing.T) {
 }
 
 func TestRunScanModule(t *testing.T) {
-	t.Skip()
+	t.Skip("breaks on trybots")
 
 	ctx := context.Background()
 	cfg, err := config.Init(ctx)

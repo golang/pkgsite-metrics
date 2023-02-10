@@ -7,6 +7,8 @@ package scan
 import (
 	"net/http"
 	"net/url"
+	"reflect"
+	"strings"
 	"testing"
 
 	"github.com/google/go-cmp/cmp"
@@ -23,41 +25,32 @@ func TestParseScanRequest(t *testing.T) {
 			name: "ValidScanURL",
 			url:  "https://worker.com/scan/module/@v/v1.0.0?importedby=50",
 			want: Request{
-				Module:     "module",
-				Version:    "v1.0.0",
-				ImportedBy: 50,
-				Mode:       "",
+				ModuleURLPath{Module: "module", Version: "v1.0.0"},
+				RequestParams{ImportedBy: 50, Mode: ""},
 			},
 		},
 		{
 			name: "ValidImportsOnlyScanURL",
 			url:  "https://worker.com/scan/module/@v/v1.0.0-abcdefgh?importedby=100&mode=mode1",
 			want: Request{
-				Module:     "module",
-				Version:    "v1.0.0-abcdefgh",
-				ImportedBy: 100,
-				Mode:       "mode1",
+				ModuleURLPath{Module: "module", Version: "v1.0.0-abcdefgh"},
+				RequestParams{ImportedBy: 100, Mode: "mode1"},
 			},
 		},
 		{
 			name: "Module@Version",
 			url:  "https://worker.com/scan/module@v1.2.3?importedby=1",
 			want: Request{
-				Module:     "module",
-				Version:    "v1.2.3",
-				ImportedBy: 1,
-				Mode:       "",
+				ModuleURLPath{Module: "module", Version: "v1.2.3"},
+				RequestParams{ImportedBy: 1, Mode: ""},
 			},
 		},
 		{
 			name: "Module@Version suffix",
 			url:  "https://worker.com/scan/module@v1.2.3/path/to/dir?importedby=1",
 			want: Request{
-				Module:     "module",
-				Version:    "v1.2.3",
-				Suffix:     "path/to/dir",
-				ImportedBy: 1,
-				Mode:       "",
+				ModuleURLPath{Module: "module", Version: "v1.2.3", Suffix: "path/to/dir"},
+				RequestParams{ImportedBy: 1, Mode: ""},
 			},
 		},
 	} {
@@ -112,12 +105,12 @@ func TestParseScanRequestError(t *testing.T) {
 		{
 			name: "MissingImportedBy",
 			url:  "/module/@v/v1.0.0",
-			want: `missing query param "importedby"`,
+			want: `missing or negative "importedby" query param`,
 		},
 		{
 			name: "BadImportedBy",
 			url:  "/module@v1?importedby=1a",
-			want: `want integer for "importedby" query param, got "1a"`,
+			want: `param importedby: strconv.Atoi: parsing "1a": invalid syntax`,
 		},
 	} {
 		t.Run(test.name, func(t *testing.T) {
@@ -127,7 +120,7 @@ func TestParseScanRequestError(t *testing.T) {
 			}
 			r := &http.Request{URL: u}
 			if _, err := ParseRequest(r, "/scan"); err != nil {
-				if got := err.Error(); got != test.want {
+				if got := err.Error(); !strings.Contains(got, test.want) {
 					t.Fatalf("\ngot  %s\nwant %s", got, test.want)
 				}
 			} else {
@@ -161,4 +154,69 @@ func TestParseCorpusFile(t *testing.T) {
 	if !cmp.Equal(got, want) {
 		t.Errorf("\n got %v\nwant %v", got, want)
 	}
+}
+
+func TestParseParams(t *testing.T) {
+	type S struct {
+		Str  string
+		Int  int
+		Bool bool
+	}
+
+	t.Run("success", func(t *testing.T) {
+		for _, test := range []struct {
+			params string
+			want   S
+		}{
+			{
+				"str=foo&int=1&bool=true",
+				S{Str: "foo", Int: 1, Bool: true},
+			},
+			{
+				"", // all defaults
+				S{Str: "d", Int: 17, Bool: false},
+			},
+			{
+				"int=3&bool=t&str=", // empty string is same as default
+				S{Str: "d", Int: 3, Bool: true},
+			},
+		} {
+			r, err := http.NewRequest("GET", "https://path?"+test.params, nil)
+			if err != nil {
+				t.Fatal(err)
+			}
+			got := S{Str: "d", Int: 17} // set defaults
+			if err := ParseParams(r, &got); err != nil {
+				t.Fatal(err)
+			}
+			if !reflect.DeepEqual(got, test.want) {
+				t.Errorf("%q: \ngot  %+v\nwant %+v", test.params, got, test.want)
+			}
+		}
+	})
+	t.Run("errors", func(t *testing.T) {
+		for _, test := range []struct {
+			arg         any
+			params      string
+			errContains string
+		}{
+			{3, "", "struct pointer"},
+			{&S{}, "int=foo", "invalid syntax"},
+			{&S{}, "bool=foo", "invalid syntax"},
+			{&struct{ F float64 }{}, "f=1.1", "cannot parse kind"},
+		} {
+			r, err := http.NewRequest("GET", "https://path?"+test.params, nil)
+			if err != nil {
+				t.Fatal(err)
+			}
+			err = ParseParams(r, test.arg)
+			got := "<nil>"
+			if err != nil {
+				got = err.Error()
+			}
+			if !strings.Contains(got, test.errContains) {
+				t.Errorf("%v, %q: got %q, want string containing %q", test.arg, test.params, got, test.errContains)
+			}
+		}
+	})
 }
