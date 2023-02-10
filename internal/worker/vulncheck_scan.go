@@ -742,7 +742,6 @@ type vulncheckRequestParams struct {
 	ImportedBy int
 	Mode       string
 	Insecure   bool
-	// TODO: support optional parameters?
 }
 
 // These methods implement queue.Task.
