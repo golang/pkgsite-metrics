@@ -8,11 +8,11 @@ package queue
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"errors"
 	"fmt"
-	"hash/fnv"
 	"io"
-	"math"
 	"strings"
 	"time"
 
@@ -20,18 +20,24 @@ import (
 	"golang.org/x/pkgsite-metrics/internal/config"
 	"golang.org/x/pkgsite-metrics/internal/derrors"
 	"golang.org/x/pkgsite-metrics/internal/log"
-	"golang.org/x/pkgsite-metrics/internal/scan"
 	taskspb "google.golang.org/genproto/googleapis/cloud/tasks/v2"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 	"google.golang.org/protobuf/types/known/durationpb"
 )
 
+// A Task can produce information needed for Cloud Tasks.
+type Task interface {
+	Name() string   // Human-readable string for the task. Need not be unique.
+	Path() string   // URL path
+	Params() string // URL query params
+}
+
 // A Queue provides an interface for asynchronous scheduling of fetch actions.
 type Queue interface {
 	// Enqueue a scan request.
 	// Reports whether a new task was actually added.
-	EnqueueScan(context.Context, *scan.Request, *Options) (bool, error)
+	EnqueueScan(context.Context, Task, *Options) (bool, error)
 }
 
 // New creates a new Queue with name queueName based on the configuration
@@ -97,11 +103,12 @@ func newGCP(cfg *config.Config, client *cloudtasks.Client, queueID string) (_ *G
 	}, nil
 }
 
-// EnqeueuScan enqueues a task on GCP to fetch the given modulePath and
-// version. It returns an error if there was an error hashing the task name, or
-// an error pushing the task to GCP. If the task was a duplicate, it returns (false, nil).
-func (q *GCP) EnqueueScan(ctx context.Context, sreq *scan.Request, opts *Options) (enqueued bool, err error) {
-	defer derrors.WrapStack(&err, "queue.EnqueueScan(%v, %v)", sreq, opts)
+// Enqueue enqueues a task on GCP.
+// It returns an error if there was an error hashing the task name, or
+// an error pushing the task to GCP.
+// If the task was a duplicate, it returns (false, nil).
+func (q *GCP) EnqueueScan(ctx context.Context, task Task, opts *Options) (enqueued bool, err error) {
+	defer derrors.WrapStack(&err, "queue.EnqueueScan(%s, %s, %v)", task.Path(), task.Params(), opts)
 	if opts == nil {
 		opts = &Options{}
 	}
@@ -112,15 +119,15 @@ func (q *GCP) EnqueueScan(ctx context.Context, sreq *scan.Request, opts *Options
 	ctx, cancel := context.WithTimeout(ctx, 30*time.Second)
 	defer cancel()
 
-	req, err := q.newTaskRequest(sreq, opts)
+	req, err := q.newTaskRequest(task, opts)
 	if err != nil {
-		return false, fmt.Errorf("q.newTaskRequest(modulePath, version, importedBy, opts): %v", err)
+		return false, fmt.Errorf("newTaskRequest: %v", err)
 	}
 
 	enqueued = true
 	if _, err := q.client.CreateTask(ctx, req); err != nil {
 		if status.Code(err) == codes.AlreadyExists {
-			log.Debugf(ctx, "ignoring duplicate task ID %s: %s@%s", req.Task.Name, sreq.Module, sreq.Version)
+			log.Debugf(ctx, "ignoring duplicate task ID %s", req.Task.Name)
 			enqueued = false
 		} else {
 			return false, fmt.Errorf("q.client.CreateTask(ctx, req): %v", err)
@@ -146,67 +153,69 @@ type Options struct {
 // See https://cloud.google.com/tasks/docs/creating-http-target-tasks.
 const maxCloudTasksTimeout = 30 * time.Minute
 
-const (
-	DisableProxyFetchParam = "proxyfetch"
-	DisableProxyFetchValue = "off"
-)
+const disableProxyFetchParam = "proxyfetch=off"
 
-func (q *GCP) newTaskRequest(sreq *scan.Request, opts *Options) (_ *taskspb.CreateTaskRequest, err error) {
-	defer derrors.Wrap(&err, "newTaskRequest(%v, %v)", sreq, opts)
-
-	if sreq.Mode == "" {
-		return nil, errors.New("ScanRequest.Mode cannot be empty")
-	}
+func (q *GCP) newTaskRequest(task Task, opts *Options) (*taskspb.CreateTaskRequest, error) {
 	if opts.Namespace == "" {
 		return nil, errors.New("Options.Namespace cannot be empty")
 	}
-	taskID := newTaskID(sreq.Module, sreq.Version)
-	relativeURI := fmt.Sprintf("/%s/scan/%s", opts.Namespace, sreq.URLPathAndParams())
-	var params []string
+	relativeURI := fmt.Sprintf("/%s/scan/%s", opts.Namespace, task.Path())
+	params := task.Params()
 	if opts.DisableProxyFetch {
-		params = append(params, fmt.Sprintf("%s=%s", DisableProxyFetchParam, DisableProxyFetchValue))
+		if params == "" {
+			params = disableProxyFetchParam
+		} else {
+			params += "&" + disableProxyFetchParam
+		}
 	}
-	if len(params) > 0 {
-		relativeURI += fmt.Sprintf("?%s", strings.Join(params, "&"))
+	if params != "" {
+		relativeURI += "?" + params
 	}
 
-	task := &taskspb.Task{
+	taskID := newTaskID(opts.Namespace, task)
+	taskpb := &taskspb.Task{
 		Name:             fmt.Sprintf("%s/tasks/%s", q.queueName, taskID),
 		DispatchDeadline: durationpb.New(maxCloudTasksTimeout),
-	}
-	task.MessageType = &taskspb.Task_HttpRequest{
-		HttpRequest: &taskspb.HttpRequest{
-			HttpMethod:          taskspb.HttpMethod_POST,
-			Url:                 q.queueURL + relativeURI,
-			AuthorizationHeader: q.token,
+		MessageType: &taskspb.Task_HttpRequest{
+			HttpRequest: &taskspb.HttpRequest{
+				HttpMethod:          taskspb.HttpMethod_POST,
+				Url:                 q.queueURL + relativeURI,
+				AuthorizationHeader: q.token,
+			},
 		},
 	}
 	req := &taskspb.CreateTaskRequest{
 		Parent: q.queueName,
-		Task:   task,
+		Task:   taskpb,
 	}
-	// If suffix is non-empty, append it to the task name. The same goes for mode.
+	// If suffix is non-empty, append it to the task name.
 	// This lets us force reprocessing of tasks that would normally be de-duplicated.
 	if opts.TaskNameSuffix != "" {
 		req.Task.Name += "-" + opts.TaskNameSuffix
 	}
-	req.Task.Name += "-" + sreq.Mode
 	return req, nil
 }
 
-// Create a task ID for the given module path and version.
+// Create a task ID for the given task.
+// Tasks with the same ID that are created within a few hours of each other. will be de-duplicated.
+// See https://cloud.google.com/tasks/docs/reference/rpc/google.cloud.tasks.v2#createtaskrequest
+// under "Task De-duplication".
+func newTaskID(namespace string, task Task) string {
+	name := task.Name()
+	// Hash the path and params of the task.
+	hasher := sha256.New()
+	io.WriteString(hasher, task.Path())
+	io.WriteString(hasher, task.Params())
+	hash := hex.EncodeToString(hasher.Sum(nil))
+	return escapeTaskID(fmt.Sprintf("%s-%s-%s", name, namespace, hash[:8]))
+}
+
+// escapeTaskIDs escapes s so it contains only valid characters for a Cloud Tasks name.
+// It tries to produce a readable result.
 // Task IDs can contain only letters ([A-Za-z]), numbers ([0-9]), hyphens (-), or underscores (_).
-func newTaskID(modulePath, version string) string {
-	mv := modulePath + "@" + version
-	// Compute a hash to use as a prefix, so the task IDs are distributed uniformly.
-	// See https://cloud.google.com/tasks/docs/reference/rpc/google.cloud.tasks.v2#task
-	// under "Task De-duplication".
-	hasher := fnv.New32()
-	io.WriteString(hasher, mv)
-	hash := hasher.Sum32() % math.MaxUint16
-	// Escape the name so it contains only valid characters. Do our best to make it readable.
+func escapeTaskID(s string) string {
 	var b strings.Builder
-	for _, r := range mv {
+	for _, r := range s {
 		switch {
 		case r >= 'A' && r <= 'Z' || r >= 'a' && r <= 'z' || r >= '0' && r <= '9' || r == '-':
 			b.WriteRune(r)
@@ -215,14 +224,14 @@ func newTaskID(modulePath, version string) string {
 		case r == '/':
 			b.WriteString("_-")
 		case r == '@':
-			b.WriteString("_v")
+			b.WriteString("_")
 		case r == '.':
-			b.WriteString("_o")
+			b.WriteString("_")
 		default:
 			fmt.Fprintf(&b, "_%04x", r)
 		}
 	}
-	return fmt.Sprintf("%04x-%s", hash, &b)
+	return b.String()
 }
 
 // InMemory is a Queue implementation that schedules in-process fetch
@@ -231,18 +240,18 @@ func newTaskID(modulePath, version string) string {
 //
 // This should only be used for local development.
 type InMemory struct {
-	queue chan *scan.Request
+	queue chan Task
 	done  chan struct{}
 }
 
-type inMemoryProcessFunc func(context.Context, *scan.Request) (int, error)
+type inMemoryProcessFunc func(context.Context, Task) (int, error)
 
 // NewInMemory creates a new InMemory that asynchronously fetches
 // from proxyClient and stores in db. It uses workerCount parallelism to
 // execute these fetches.
 func NewInMemory(ctx context.Context, workerCount int, processFunc inMemoryProcessFunc) *InMemory {
 	q := &InMemory{
-		queue: make(chan *scan.Request, 1000),
+		queue: make(chan Task, 1000),
 		done:  make(chan struct{}),
 	}
 	sem := make(chan struct{}, workerCount)
@@ -256,16 +265,16 @@ func NewInMemory(ctx context.Context, workerCount int, processFunc inMemoryProce
 
 			// If a worker is available, make a request to the fetch service inside a
 			// goroutine and wait for it to finish.
-			go func(r *scan.Request) {
+			go func(t Task) {
 				defer func() { <-sem }()
 
-				log.Infof(ctx, "Fetch requested: %v (workerCount = %d)", r, cap(sem))
+				log.Infof(ctx, "Fetch requested: %v (workerCount = %d)", t, cap(sem))
 
 				fetchCtx, cancel := context.WithTimeout(ctx, 5*time.Minute)
 				defer cancel()
 
-				if _, err := processFunc(fetchCtx, r); err != nil {
-					log.Errorf(fetchCtx, "processFunc(%q, %q): %v", r.Path, r.Version, err)
+				if _, err := processFunc(fetchCtx, t); err != nil {
+					log.Errorf(fetchCtx, "processFunc(%v, %q): %v", t, err)
 				}
 			}(v)
 		}
@@ -281,10 +290,10 @@ func NewInMemory(ctx context.Context, workerCount int, processFunc inMemoryProce
 	return q
 }
 
-// EnqeueuScan pushes a fetch task into the local queue to be processed
+// Enqueue pushes a fetch task into the local queue to be processed
 // asynchronously.
-func (q *InMemory) EnqueueScan(ctx context.Context, req *scan.Request, _ *Options) (bool, error) {
-	q.queue <- req
+func (q *InMemory) EnqueueScan(ctx context.Context, task Task, _ *Options) (bool, error) {
+	q.queue <- task
 	return true, nil
 }
 

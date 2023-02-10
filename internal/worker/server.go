@@ -26,7 +26,6 @@ import (
 	"golang.org/x/pkgsite-metrics/internal/observe"
 	"golang.org/x/pkgsite-metrics/internal/proxy"
 	"golang.org/x/pkgsite-metrics/internal/queue"
-	"golang.org/x/pkgsite-metrics/internal/scan"
 	vulnc "golang.org/x/vuln/client"
 )
 
@@ -71,10 +70,10 @@ func NewServer(ctx context.Context, cfg *config.Config) (_ *Server, err error) {
 	}
 
 	q, err := queue.New(ctx, cfg,
-		func(ctx context.Context, sreq *scan.Request) (int, error) {
+		func(ctx context.Context, t queue.Task) (int, error) {
 			// When running locally, only the module path and version are
 			// printed for now.
-			log.Infof(ctx, "enqueuing %s", sreq.URLPathAndParams())
+			log.Infof(ctx, "enqueuing %s?%s", t.Path(), t.Params())
 			return 0, nil
 		})
 	if err != nil {

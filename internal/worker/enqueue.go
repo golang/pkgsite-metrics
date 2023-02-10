@@ -6,6 +6,7 @@ package worker
 
 import (
 	"context"
+	"errors"
 	"sync"
 
 	"golang.org/x/pkgsite-metrics/internal/config"
@@ -48,9 +49,12 @@ func enqueueModules(ctx context.Context, sreqs []*scan.Request, q queue.Queue, o
 	sem := make(chan struct{}, concurrentEnqueues)
 
 	for _, sreq := range sreqs {
-		log.Infof(ctx, "enqueuing: %s", sreq.URLPathAndParams())
+		log.Infof(ctx, "enqueuing: %s?%s", sreq.Path(), sreq.Params())
 		if sreq.Module == "std" {
 			continue // ignore the standard library
+		}
+		if sreq.Mode == "" {
+			return errors.New("ScanRequest.Mode cannot be empty")
 		}
 		sreq := sreq
 		sem <- struct{}{}

@@ -33,13 +33,8 @@ type RequestParams struct {
 	Insecure   bool
 }
 
-func (r *Request) URLPathAndParams() string {
-	suf := r.Suffix
-	if suf != "" {
-		suf = "/" + suf
-	}
-	return fmt.Sprintf("%s/@v/%s%s?importedby=%d&mode=%s&insecure=%t", r.Module, r.Version, suf, r.ImportedBy, r.Mode, r.Insecure)
-}
+// These methods implement queue.Task.
+func (r *Request) Name() string { return r.Module + "@" + r.Version }
 
 func (r *Request) Path() string {
 	p := r.Module + "@" + r.Version
@@ -47,6 +42,10 @@ func (r *Request) Path() string {
 		p += "/" + r.Suffix
 	}
 	return p
+}
+
+func (r *Request) Params() string {
+	return FormatParams(r.RequestParams)
 }
 
 // ParseRequest parses an http request r for an endpoint
@@ -257,12 +256,12 @@ func ParseParams(r *http.Request, pstruct any) (err error) {
 	for i := 0; i < t.NumField(); i++ {
 		f := t.Field(i)
 		paramName := strings.ToLower(f.Name)
-		param := r.FormValue(paramName)
-		if param == "" {
+		paramValue := r.FormValue(paramName)
+		if paramValue == "" {
 			// If param is missing, do not set field.
 			continue
 		}
-		pval, err := parseParam(param, f.Type.Kind())
+		pval, err := parseParam(paramValue, f.Type.Kind())
 		if err != nil {
 			return fmt.Errorf("param %s: %v", paramName, err)
 		}
@@ -282,4 +281,25 @@ func parseParam(param string, kind reflect.Kind) (any, error) {
 	default:
 		return nil, fmt.Errorf("cannot parse kind %s", kind)
 	}
+}
+
+// FormatParams takes a struct or struct pointer, and returns
+// a URL query-param string with the struct field values.
+func FormatParams(s any) string {
+	v := reflect.ValueOf(s)
+	t := v.Type()
+	if t.Kind() == reflect.Pointer {
+		t = t.Elem()
+		v = v.Elem()
+	}
+	if t.Kind() != reflect.Struct {
+		panic(fmt.Sprintf("need struct or struct pointer, got %T", s))
+	}
+	var params []string
+	for i := 0; i < t.NumField(); i++ {
+		f := t.Field(i)
+		params = append(params,
+			fmt.Sprintf("%s=%v", strings.ToLower(f.Name), v.Field(i)))
+	}
+	return strings.Join(params, "&")
 }

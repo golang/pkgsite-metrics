@@ -156,36 +156,36 @@ func TestParseCorpusFile(t *testing.T) {
 	}
 }
 
-func TestParseParams(t *testing.T) {
-	type S struct {
-		Str  string
-		Int  int
-		Bool bool
-	}
+type params struct {
+	Str  string
+	Int  int
+	Bool bool
+}
 
+func TestParseParams(t *testing.T) {
 	t.Run("success", func(t *testing.T) {
 		for _, test := range []struct {
 			params string
-			want   S
+			want   params
 		}{
 			{
 				"str=foo&int=1&bool=true",
-				S{Str: "foo", Int: 1, Bool: true},
+				params{Str: "foo", Int: 1, Bool: true},
 			},
 			{
 				"", // all defaults
-				S{Str: "d", Int: 17, Bool: false},
+				params{Str: "d", Int: 17, Bool: false},
 			},
 			{
 				"int=3&bool=t&str=", // empty string is same as default
-				S{Str: "d", Int: 3, Bool: true},
+				params{Str: "d", Int: 3, Bool: true},
 			},
 		} {
 			r, err := http.NewRequest("GET", "https://path?"+test.params, nil)
 			if err != nil {
 				t.Fatal(err)
 			}
-			got := S{Str: "d", Int: 17} // set defaults
+			got := params{Str: "d", Int: 17} // set defaults
 			if err := ParseParams(r, &got); err != nil {
 				t.Fatal(err)
 			}
@@ -201,8 +201,8 @@ func TestParseParams(t *testing.T) {
 			errContains string
 		}{
 			{3, "", "struct pointer"},
-			{&S{}, "int=foo", "invalid syntax"},
-			{&S{}, "bool=foo", "invalid syntax"},
+			{&params{}, "int=foo", "invalid syntax"},
+			{&params{}, "bool=foo", "invalid syntax"},
 			{&struct{ F float64 }{}, "f=1.1", "cannot parse kind"},
 		} {
 			r, err := http.NewRequest("GET", "https://path?"+test.params, nil)
@@ -219,4 +219,12 @@ func TestParseParams(t *testing.T) {
 			}
 		}
 	})
+}
+
+func TestFormatParams(t *testing.T) {
+	got := FormatParams(params{Str: "foo", Int: 17, Bool: true})
+	want := "str=foo&int=17&bool=true"
+	if got != want {
+		t.Errorf("got %q, want %q", got, want)
+	}
 }
