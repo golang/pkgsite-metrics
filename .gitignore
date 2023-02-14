@@ -1,0 +1,6 @@
+**/.terraform/*
+.terraform.lock.hcl
+go-image.tar.gz
+go-vulndb
+config.json
+docker-build
