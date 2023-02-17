@@ -94,7 +94,7 @@ resource "google_cloud_run_service" "worker" {
           value = var.project
         }
         env {
-          name  = "GO_METRICS_WORKER_USE_PROFILER"
+          name  = "GO_ECOSYSTEM_WORKER_USE_PROFILER"
           value = var.use_profiler
         }
         resources {
@@ -104,11 +104,11 @@ resource "google_cloud_run_service" "worker" {
           }
         }
         env {
-          name  = "GO_METRICS_QUEUE_URL"
+          name  = "GO_ECOSYSTEM_QUEUE_URL"
           value = local.worker_url
         }
         env {
-          name  = "GO_METRICS_QUEUE_NAME"
+          name  = "GO_ECOSYSTEM_QUEUE_NAME"
           value = "${var.env}-worker-tasks"
         }
         env {
@@ -131,23 +131,23 @@ resource "google_cloud_run_service" "worker" {
           value = "${local.go_mem_limit}GiB"
         }
         env {
-          name  = "GO_METRICS_PKGSITE_DB_HOST"
+          name  = "GO_ECOSYSTEM_PKGSITE_DB_HOST"
           value = "/cloudsql/${local.pkgsite_db}"
         }
         env {
-          name  = "GO_METRICS_PKGSITE_DB_PORT"
+          name  = "GO_ECOSYSTEM_PKGSITE_DB_PORT"
           value = "5432"
         }
         env {
-          name  = "GO_METRICS_PKGSITE_DB_NAME"
+          name  = "GO_ECOSYSTEM_PKGSITE_DB_NAME"
           value = var.pkgsite_db_name
         }
         env {
-          name  = "GO_METRICS_PKGSITE_DB_USER"
+          name  = "GO_ECOSYSTEM_PKGSITE_DB_USER"
           value = "frontend"
         }
         env {
-          name  = "GO_METRICS_PKGSITE_DB_SECRET"
+          name  = "GO_ECOSYSTEM_PKGSITE_DB_SECRET"
           value = "projects/${var.pkgsite_db_project}/secrets/frontend-database-password"
         }
       }
