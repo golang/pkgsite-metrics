@@ -194,6 +194,20 @@ resource "google_monitoring_alert_policy" "scheduler_job_failing" {
 
 }
 
+# Cloud Build trigger to deploy the prod worker on every push to master.
+resource "google_cloudbuild_trigger" "deploy_prod_worker" {
+  name = "Deploy-Prod-Ecosystem-Worker"
+  trigger_template {
+    branch_name = "master"
+    repo_name   = "pkgsite-metrics"
+  }
+  filename = "deploy/worker.yaml"
+
+  substitutions = {
+    "_ENV"        = "prod"
+    "_BQ_DATASET" = "test_prod"
+  }
+}
 
 # Deployment environments
 
