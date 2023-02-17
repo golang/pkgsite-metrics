@@ -146,6 +146,53 @@ data "google_iam_policy" "impersonate" {
   }
 }
 
+resource "google_logging_metric" "scheduler_errors" {
+  name        = "cloud-scheduler-errors"
+  description = "Number of errors from Cloud Scheduler jobs"
+  filter      = "resource.type=cloud_scheduler_job AND severity>=ERROR"
+  metric_descriptor {
+    metric_kind = "DELTA"
+    unit        = "1"
+    value_type  = "INT64"
+  }
+}
+
+resource "google_monitoring_notification_channel" "email" {
+  display_name = "Go Ecosystem Team Alerts"
+  type         = "email"
+  labels = {
+    email_address = "go-ecosystem-team+alerts@google.com"
+  }
+}
+
+resource "google_monitoring_alert_policy" "scheduler_job_failing" {
+  display_name = "Cloud Scheduler Job Failing"
+
+  conditions {
+    display_name = "Instance Count"
+
+    condition_threshold {
+      filter          = <<-EOT
+        metric.type="logging.googleapis.com/user/cloud-scheduler-errors"
+	resource.type="audited_resource"
+      EOT
+      comparison      = "COMPARISON_GT"
+      threshold_value = 1
+      aggregations {
+        alignment_period     = "600s"
+        cross_series_reducer = "REDUCE_SUM"
+        per_series_aligner   = "ALIGN_DELTA"
+      }
+      duration = "0s"
+      trigger { count = 1 }
+    }
+  }
+
+  combiner = "OR"
+
+  notification_channels = [google_monitoring_notification_channel.email.name]
+
+}
 
 
 # Deployment environments
