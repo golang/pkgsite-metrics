@@ -46,7 +46,9 @@ func Test(t *testing.T) {
 	t.Run("binary", func(t *testing.T) {
 		t.Skip("vulncheck.Binary may not support the Go version")
 		const binary = "testdata/module/vuln"
-		if _, err := exec.Command("/bin/sh", "-c", "cd testdata/module && go build").Output(); err != nil {
+		cmd := exec.Command("go build")
+		cmd.Dir = "testdata/module"
+		if _, err := cmd.Output(); err != nil {
 			t.Fatal(log.IncludeStderr(err))
 		}
 		defer os.Remove(binary)
