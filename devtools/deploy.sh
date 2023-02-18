@@ -40,7 +40,7 @@ main() {
 
   if which grants > /dev/null; then
     local allowed=false
-    while read g _ ok _; do
+    while read _ _ ok _; do
       if [[ $ok = OK ]]; then
         allowed=true
       fi
@@ -50,11 +50,11 @@ main() {
     fi
   fi
 
-  local project=$(tfvar ${env}_project)
+  local -r project=$(tfvar ${env}_project)
   if [[ $project = '' ]]; then
     die "no ${env}_project in terraform.tfvars"
   fi
-  local commit=$(git rev-parse --short HEAD)
+  local -r commit=$(git rev-parse --short HEAD)
   local unclean
   if ! clean_workspace; then
     unclean="-unclean"
@@ -66,4 +66,4 @@ main() {
     --substitutions SHORT_SHA=${commit}${unclean},_ENV=$env,_BQ_DATASET=$dataset
 }
 
-main $@
+main "$@"
