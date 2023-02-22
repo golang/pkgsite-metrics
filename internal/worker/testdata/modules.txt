@@ -1,0 +1,4 @@
+std			v1.19.4	2025760
+github.com/pkg/errors	v0.9.1	10
+golang.org/x/net	v0.4.0	20
+

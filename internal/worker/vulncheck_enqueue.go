@@ -6,11 +6,15 @@ package worker
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"net/http"
+	"sort"
 	"strings"
 
 	"cloud.google.com/go/storage"
+	"golang.org/x/exp/maps"
+	"golang.org/x/pkgsite-metrics/internal/config"
 	"golang.org/x/pkgsite-metrics/internal/derrors"
 	"golang.org/x/pkgsite-metrics/internal/log"
 	"golang.org/x/pkgsite-metrics/internal/queue"
@@ -28,38 +32,72 @@ type vulncheckEnqueueParams struct {
 
 // handleEnqueue enqueues multiple modules for a single vulncheck mode.
 func (h *VulncheckServer) handleEnqueue(w http.ResponseWriter, r *http.Request) error {
-	params := &vulncheckEnqueueParams{Min: defaultMinImportedByCount}
-	if err := scan.ParseParams(r, &params); err != nil {
-		return err
-	}
-	ctx := r.Context()
-	mode, err := vulncheckMode(params.Mode)
+	return h.enqueue(r, false)
+}
+
+// handleEnqueueAll enqueues multiple modules for all vulncheck modes.
+func (h *VulncheckServer) handleEnqueueAll(w http.ResponseWriter, r *http.Request) error {
+	return h.enqueue(r, true)
+}
+
+func (h *VulncheckServer) enqueue(r *http.Request, allModes bool) error {
+	tasks, params, err := createVulncheckQueueTasks(r, h.cfg, allModes)
 	if err != nil {
 		return err
 	}
-
-	var reqs []*vulncheckRequest
-	if mode == ModeBinary {
-		var err error
-		reqs, err = readBinaries(ctx, h.cfg.BinaryBucket)
-		if err != nil {
-			return err
-		}
-	} else {
-		modspecs, err := readModules(ctx, h.cfg, params.File, params.Min)
-		if err != nil {
-			return err
-		}
-		reqs = moduleSpecsToScanRequests(modspecs, mode)
-	}
-	var sreqs []queue.Task
-	for _, req := range reqs {
-		if req.Module != "std" { // ignore the standard library
-			sreqs = append(sreqs, req)
-		}
-	}
-	return enqueueTasks(ctx, sreqs, h.queue,
+	return enqueueTasks(r.Context(), tasks, h.queue,
 		&queue.Options{Namespace: "vulncheck", TaskNameSuffix: params.Suffix})
+}
+
+func createVulncheckQueueTasks(r *http.Request, cfg *config.Config, allModes bool) (_ []queue.Task, _ *vulncheckEnqueueParams, err error) {
+	defer derrors.Wrap(&err, "createQueueTasks(%s, %t)", r.URL, allModes)
+	ctx := r.Context()
+	params := &vulncheckEnqueueParams{Min: defaultMinImportedByCount}
+	if err := scan.ParseParams(r, params); err != nil {
+		return nil, nil, err
+	}
+	if allModes && params.Mode != "" {
+		return nil, nil, errors.New("mode query param provided for enqueueAll")
+	}
+	var enqueueModes []string
+	if allModes {
+		enqueueModes = maps.Keys(modes)
+		sort.Strings(enqueueModes) // make deterministic for testing
+	} else {
+		mode, err := vulncheckMode(params.Mode)
+		if err != nil {
+			return nil, nil, err
+		}
+		enqueueModes = []string{mode}
+	}
+
+	var (
+		tasks    []queue.Task
+		modspecs []scan.ModuleSpec
+	)
+	for _, mode := range enqueueModes {
+		var reqs []*vulncheckRequest
+		if mode == ModeBinary {
+			reqs, err = readBinaries(ctx, cfg.BinaryBucket)
+			if err != nil {
+				return nil, nil, err
+			}
+		} else {
+			if modspecs == nil {
+				modspecs, err = readModules(ctx, cfg, params.File, params.Min)
+				if err != nil {
+					return nil, nil, err
+				}
+			}
+			reqs = moduleSpecsToScanRequests(modspecs, mode)
+		}
+		for _, req := range reqs {
+			if req.Module != "std" { // ignore the standard library
+				tasks = append(tasks, req)
+			}
+		}
+	}
+	return tasks, params, nil
 }
 
 func vulncheckMode(mode string) (string, error) {
@@ -72,46 +110,6 @@ func vulncheckMode(mode string) (string, error) {
 		return "", fmt.Errorf("unsupported mode: %v", mode)
 	}
 	return mode, nil
-}
-
-// handleEnqueueAll enqueues multiple modules for all vulncheck modes.
-// Query params:
-//   - suffix: appended to task queue IDs to generate unique tasks
-//   - file: path to file containing modules; if missing, use DB
-//   - min: minimum import-by count for a module to be included
-func (h *VulncheckServer) handleEnqueueAll(w http.ResponseWriter, r *http.Request) error {
-	params := &vulncheckEnqueueParams{Min: defaultMinImportedByCount}
-	if err := scan.ParseParams(r, &params); err != nil {
-		return err
-	}
-
-	ctx := r.Context()
-	modspecs, err := readModules(ctx, h.cfg, params.File, params.Min)
-	if err != nil {
-		return err
-	}
-	opts := &queue.Options{Namespace: "vulncheck", TaskNameSuffix: params.Suffix}
-	for mode := range modes {
-		var reqs []*vulncheckRequest
-		if mode == ModeBinary {
-			reqs, err = readBinaries(ctx, h.cfg.BinaryBucket)
-			if err != nil {
-				return err
-			}
-		} else {
-			reqs = moduleSpecsToScanRequests(modspecs, mode)
-		}
-		var tasks []queue.Task
-		for _, req := range reqs {
-			if req.Module != "std" { // ignore the standard library
-				tasks = append(tasks, req)
-			}
-		}
-		if err := enqueueTasks(ctx, tasks, h.queue, opts); err != nil {
-			return err
-		}
-	}
-	return nil
 }
 
 // binaryDir is the directory in the GCS bucket that contains binaries that should be scanned.
