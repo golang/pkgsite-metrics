@@ -107,6 +107,30 @@ func TestRunScanModule(t *testing.T) {
 			t.Errorf("got %d vulns, want %d", g, w)
 		}
 	})
+	t.Run("govulncheck", func(t *testing.T) {
+		s := &scanner{proxyClient: proxyClient, dbClient: dbClient, insecure: true}
+		stats := &vulncheckStats{}
+		vulns, err := s.runScanModule(ctx,
+			"golang.org/x/exp/event", "v0.0.0-20220929112958-4a82f8963a65",
+			"", ModeGovulncheck, stats)
+		if err != nil {
+			t.Fatal(err)
+		}
+		wantID := "GO-2022-0493"
+		found := false
+		for _, v := range vulns {
+			if v.ID == wantID {
+				found = true
+				break
+			}
+		}
+		if !found {
+			t.Errorf("want %s, did not find it in %d vulns", wantID, len(vulns))
+		}
+		if got := stats.scanSeconds; got <= 0 {
+			t.Errorf("scan time not collected or negative: %v", got)
+		}
+	})
 }
 
 func TestParseGoMemLimit(t *testing.T) {
@@ -149,7 +173,7 @@ func TestUnmarshalVulncheckOutput(t *testing.T) {
 	}
 }
 
-func TestConvertGoVulncheckOutput(t *testing.T) {
+func TestConvertGovulncheckOutput(t *testing.T) {
 	var (
 		osvEntry = &osv.Entry{
 			ID: "GO-YYYY-1234",
@@ -265,7 +289,7 @@ func TestConvertGoVulncheckOutput(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			if diff := cmp.Diff(convertGoVulncheckOutput(tt.vuln), tt.wantVulns, cmpopts.EquateEmpty()); diff != "" {
+			if diff := cmp.Diff(convertGovulncheckOutput(tt.vuln), tt.wantVulns, cmpopts.EquateEmpty()); diff != "" {
 				t.Errorf("mismatch (-got, +want): %s", diff)
 			}
 		})

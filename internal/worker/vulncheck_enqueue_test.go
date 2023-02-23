@@ -80,7 +80,7 @@ func TestCreateQueueTasks(t *testing.T) {
 	}
 	wantTasks = nil
 	// cfg.BinaryBucket is empty, so no binary-mode tasks are created.
-	for _, mode := range []string{ModeImports, ModeVTA, ModeVTAStacks} {
+	for _, mode := range []string{ModeGovulncheck, ModeImports, ModeVTA, ModeVTAStacks} {
 		wantTasks = append(wantTasks,
 			vreq("github.com/pkg/errors", "v0.9.1", mode, 10),
 			vreq("golang.org/x/net", "v0.4.0", mode, 20))

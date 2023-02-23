@@ -52,14 +52,18 @@ const (
 
 	// ModeBinary runs vulncheck.Binary
 	ModeBinary string = "BINARY"
+
+	// Modegovulncheck runs the govulncheck binary
+	ModeGovulncheck = "GOVULNCHECK"
 )
 
 // modes is a set of supported vulncheck modes
 var modes = map[string]bool{
-	ModeImports:   true,
-	ModeVTA:       true,
-	ModeVTAStacks: true,
-	ModeBinary:    true,
+	ModeImports:     true,
+	ModeVTA:         true,
+	ModeVTAStacks:   true,
+	ModeBinary:      true,
+	ModeGovulncheck: true,
 }
 
 func IsValidVulncheckMode(mode string) bool {
@@ -211,6 +215,12 @@ func (s *scanner) ScanModule(ctx context.Context, w http.ResponseWriter, sreq *v
 	row.PkgsMemory = int64(stats.pkgsMemory)
 	row.Workers = config.GetEnvInt("CLOUD_RUN_CONCURRENCY", "0", -1)
 	if err != nil {
+		// If an error occurred, wrap it accordingly
+		if isVulnDBConnection(err) {
+			err = fmt.Errorf("%v: %w", err, derrors.ScanModuleVulncheckDBConnectionError)
+		} else if !errors.Is(err, derrors.ScanModuleMemoryLimitExceeded) {
+			err = fmt.Errorf("%v: %w", err, derrors.ScanModuleVulncheckError)
+		}
 		row.AddError(err)
 		log.Infof(ctx, "scanner.runScanModule return error for %s (%v)", sreq.Path(), err)
 	} else {
@@ -269,24 +279,33 @@ func (s *scanner) runScanModule(ctx context.Context, modulePath, version, binary
 		}
 	}()
 
-	var vulns []*vulncheck.Vuln
-	if s.insecure {
-		vulns, err = s.runScanModuleInsecure(ctx, modulePath, version, binaryDir, mode, stats)
-	} else {
-		vulns, err = s.runScanModuleSandbox(ctx, modulePath, version, binaryDir, mode, stats)
-	}
-
-	// If an error occurred, wrap it accordingly.
-	if err != nil {
-		if isVulnDBConnection(err) {
-			err = fmt.Errorf("%v: %w", err, derrors.ScanModuleVulncheckDBConnectionError)
-		} else if !errors.Is(err, derrors.ScanModuleMemoryLimitExceeded) {
-			err = fmt.Errorf("%v: %w", err, derrors.ScanModuleVulncheckError)
+	if mode != ModeGovulncheck {
+		var vulns []*vulncheck.Vuln
+		if s.insecure {
+			vulns, err = s.runScanModuleInsecure(ctx, modulePath, version, binaryDir, mode, stats)
+		} else {
+			vulns, err = s.runScanModuleSandbox(ctx, modulePath, version, binaryDir, mode, stats)
 		}
-		return nil, err
-	}
-	for _, v := range vulns {
-		bvulns = append(bvulns, convertVuln(v))
+
+		if err != nil {
+			return nil, err
+		}
+		for _, v := range vulns {
+			bvulns = append(bvulns, convertVuln(v))
+		}
+	} else { // Govulncheck mode
+		var vulns []*govulncheck.Vuln
+		if s.insecure {
+			vulns, err = s.runGoVulncheckScanInsecure(ctx, modulePath, version, stats)
+		} else {
+			return nil, errors.New("Govulncheck scan is currently unsupported in sandbox mode")
+		}
+		if err != nil {
+			return nil, err
+		}
+		for _, v := range vulns {
+			bvulns = append(bvulns, convertGovulncheckOutput(v)...)
+		}
 	}
 	return bvulns, nil
 }
@@ -396,6 +415,64 @@ func unmarshalVulncheckOutput(output []byte) (*vulncheck.Result, error) {
 		return nil, err
 	}
 	return &res, nil
+}
+
+func unmarshalGovulncheckOutput(output []byte) (*govulncheck.Result, error) {
+	var e struct {
+		Error string
+	}
+	if err := json.Unmarshal(output, &e); err != nil {
+		return nil, err
+	}
+	if e.Error != "" {
+		return nil, errors.New(e.Error)
+	}
+	var res govulncheck.Result
+	if err := json.Unmarshal(output, &res); err != nil {
+		return nil, err
+	}
+	return &res, nil
+}
+
+func (s *scanner) runGoVulncheckScanInsecure(ctx context.Context, modulePath, version string, stats *vulncheckStats) (_ []*govulncheck.Vuln, err error) {
+	tempDir, err := os.MkdirTemp("", "runGoVulncheckScan")
+	if err != nil {
+		return nil, err
+	}
+
+	defer func() {
+		err1 := os.RemoveAll(tempDir)
+		if err == nil {
+			err = err1
+		}
+	}()
+
+	log.Debugf(ctx, "fetching module zip: %s@%s", modulePath, version)
+	if err := modules.Download(ctx, modulePath, version, tempDir, s.proxyClient, true); err != nil {
+		return nil, err
+	}
+	start := time.Now()
+	vulns, err := runGovulncheckCmd(ctx, modulePath, tempDir, stats)
+	if err != nil {
+		return nil, err
+	}
+	stats.scanSeconds = time.Since(start).Seconds()
+
+	return vulns, nil
+}
+
+func runGovulncheckCmd(ctx context.Context, modulePath, tempDir string, stats *vulncheckStats) ([]*govulncheck.Vuln, error) {
+	govulncheckCmd := exec.Command("govulncheck", "-json", "./...")
+	govulncheckCmd.Dir = tempDir
+	output, err := govulncheckCmd.Output()
+	if err != nil {
+		return nil, err
+	}
+	res, err := unmarshalGovulncheckOutput(output)
+	if err != nil {
+		return nil, err
+	}
+	return res.Vulns, nil
 }
 
 func (s *scanner) runScanModuleInsecure(ctx context.Context, modulePath, version, binaryDir, mode string, stats *vulncheckStats) (_ []*vulncheck.Vuln, err error) {
@@ -623,7 +700,7 @@ func convertVuln(v *vulncheck.Vuln) *bigquery.Vuln {
 	}
 }
 
-func convertGoVulncheckOutput(v *govulncheck.Vuln) (vulns []*bigquery.Vuln) {
+func convertGovulncheckOutput(v *govulncheck.Vuln) (vulns []*bigquery.Vuln) {
 	for _, module := range v.Modules {
 		for pkgNum, pkg := range module.Packages {
 			addedSymbols := make(map[string]bool)
