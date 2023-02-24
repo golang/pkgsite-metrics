@@ -33,11 +33,13 @@ verify_header() {
   if [[ "$@" != "" ]]; then
     for FILE in $@
     do
+      if [ -f $FILE ]; then
         line="$(head -4 $FILE)"
         if [[ ! $line == *"The Go Authors. All rights reserved."* ]] &&
          [[ ! $line == "// DO NOT EDIT. This file was copied from" ]]; then
               err "missing license header: $FILE"
         fi
+      fi
     done
   fi
 }
@@ -83,7 +85,9 @@ check_staticcheck() {
 # check_misspell runs misspell on source files.
 check_misspell() {
   ensure_go_binary github.com/client9/misspell/cmd/misspell
-  runcmd misspell -error $(find . -name .git -prune -o -type f -not -name modules.txt -not -name *.svg -not -name *.ts.snap)
+  runcmd misspell -error $(find . -name .git -prune \
+    -o -name .terraform -prune \
+    -o -type f -not -name modules.txt -not -name '*.svg' -not -name '*.ts.snap' -not -name '*.json')
 }
 
 go_linters() {
