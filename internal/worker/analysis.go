@@ -150,7 +150,7 @@ func runAnalysisBinary(binaryPath, reqArgs, moduleDir string) (JSONTree, error) 
 	cmd.Dir = moduleDir
 	out, err := cmd.Output()
 	if err != nil {
-		return nil, fmt.Errorf("running analysis binary %s: %s", binaryPath, log.IncludeStderr(err))
+		return nil, fmt.Errorf("running analysis binary %s: %s", binaryPath, derrors.IncludeStderr(err))
 	}
 	var tree JSONTree
 	if err := json.Unmarshal(out, &tree); err != nil {

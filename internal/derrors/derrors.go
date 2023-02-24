@@ -7,8 +7,10 @@
 package derrors
 
 import (
+	"bytes"
 	"errors"
 	"fmt"
+	"os/exec"
 	"runtime"
 	"strings"
 
@@ -203,4 +205,14 @@ func CategorizeError(err error) string {
 
 func IsGoVersionMismatchError(msg string) bool {
 	return strings.Contains(msg, "can't be built on Go")
+}
+
+// IncludeStderr includes the stderr with an *exec.ExitError.
+// If err is not an *exec.ExitError, it returns err.Error().
+func IncludeStderr(err error) string {
+	var eerr *exec.ExitError
+	if errors.As(err, &eerr) {
+		return fmt.Sprintf("%v: %s", eerr, bytes.TrimSpace(eerr.Stderr))
+	}
+	return err.Error()
 }

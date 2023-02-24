@@ -15,7 +15,7 @@ import (
 	"testing"
 
 	"golang.org/x/exp/slices"
-	"golang.org/x/pkgsite-metrics/internal/log"
+	"golang.org/x/pkgsite-metrics/internal/derrors"
 	"golang.org/x/pkgsite-metrics/internal/worker"
 	"golang.org/x/vuln/vulncheck"
 )
@@ -49,7 +49,7 @@ func Test(t *testing.T) {
 		cmd := exec.Command("go build")
 		cmd.Dir = "testdata/module"
 		if _, err := cmd.Output(); err != nil {
-			t.Fatal(log.IncludeStderr(err))
+			t.Fatal(derrors.IncludeStderr(err))
 		}
 		defer os.Remove(binary)
 		res, err := runTest([]string{worker.ModeBinary, binary}, "testdata/vulndb")

@@ -334,13 +334,13 @@ func runSourceScanSandbox(ctx context.Context, modulePath, version, mode string,
 	_, err := cmd.Output()
 	if err != nil {
 		return nil, fmt.Errorf("%w: 'go mod download' for %s@%s returned %s",
-			derrors.BadModule, modulePath, version, log.IncludeStderr(err))
+			derrors.BadModule, modulePath, version, derrors.IncludeStderr(err))
 	}
 	log.Infof(ctx, "go mod download succeeded")
 	log.Infof(ctx, "%s@%s: running vulncheck in sandbox", modulePath, version)
 	stdout, err := sbox.Run(ctx, "/binaries/vulncheck_sandbox", "-gomodcache", "/"+sandboxGoModCache, mode, sandboxDir)
 	if err != nil {
-		return nil, errors.New(log.IncludeStderr(err))
+		return nil, errors.New(derrors.IncludeStderr(err))
 	}
 	return stdout, nil
 }
@@ -366,7 +366,7 @@ func (s *scanner) runBinaryScanSandbox(ctx context.Context, modulePath, version,
 	log.Infof(ctx, "%s@%s/%s: running vulncheck in sandbox on %s", modulePath, version, binDir, destf.Name())
 	stdout, err := s.sbox.Run(ctx, "/binaries/vulncheck_sandbox", ModeBinary, destf.Name())
 	if err != nil {
-		return nil, errors.New(log.IncludeStderr(err))
+		return nil, errors.New(derrors.IncludeStderr(err))
 	}
 	return unmarshalVulncheckOutput(stdout)
 }
@@ -747,7 +747,7 @@ func (s *scanner) cleanGoCaches(ctx context.Context) error {
 		out, err = s.sbox.Run(ctx, "/binaries/vulncheck_sandbox", "-gomodcache", "/"+sandboxGoModCache, "-clean")
 	}
 	if err != nil {
-		return fmt.Errorf("cleaning Go caches: %s", log.IncludeStderr(err))
+		return fmt.Errorf("cleaning Go caches: %s", derrors.IncludeStderr(err))
 	}
 	output := ""
 	if len(out) > 0 {
