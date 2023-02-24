@@ -18,7 +18,6 @@ import (
 
 	"cloud.google.com/go/errorreporting"
 	"github.com/google/safehtml/template"
-	"golang.org/x/exp/event"
 	"golang.org/x/pkgsite-metrics/internal/bigquery"
 	"golang.org/x/pkgsite-metrics/internal/config"
 	"golang.org/x/pkgsite-metrics/internal/derrors"
@@ -106,19 +105,12 @@ func NewServer(ctx context.Context, cfg *config.Config) (_ *Server, err error) {
 			return nil, err
 
 		}
-		// This function will be called for each request.
-		// It lets us install a log handler that knows about the request's
-		// trace ID.
-		s.observer.LogHandlerFunc = func(r *http.Request) event.Handler {
-			traceID := r.Header.Get("X-Cloud-Trace-Context")
-			return log.NewGCPJSONHandler(os.Stderr, traceID)
-		}
 	}
 	if cfg.UseErrorReporting {
 		reportingClient, err := errorreporting.NewClient(ctx, cfg.ProjectID, errorreporting.Config{
 			ServiceName: cfg.ServiceID,
 			OnError: func(err error) {
-				log.Errorf(ctx, "Error reporting failed: %v", err)
+				log.Errorf(ctx, err, "error-reporting failed")
 			},
 		})
 		if err != nil {
@@ -156,18 +148,22 @@ func (s *Server) handle(pattern string, handler handlerFunc) {
 	h := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		start := time.Now()
 		ctx := r.Context()
-		log.With("httpRequest", r).Infof(ctx, "starting %s", r.URL.Path)
+		logger := log.FromContext(ctx)
+		if t := r.Header.Get("X-Cloud-Trace-Context"); t != "" {
+			logger = logger.With("traceID", t)
+		}
+		ctx = log.NewContext(ctx, logger)
+		r = r.WithContext(ctx)
 
+		log.Infof(ctx, "starting %s", r.URL.Path)
 		w2 := &responseWriter{ResponseWriter: w}
 		if err := handler(w2, r); err != nil {
-			log.Errorf(ctx, err.Error())
 			derrors.Report(err)
 			s.serveError(ctx, w2, r, err)
 		}
-		log.With(
+		logger.Info("request end",
 			"latency", time.Since(start),
-			"status", translateStatus(w2.status)).
-			Infof(ctx, "request end")
+			"status", translateStatus(w2.status))
 	})
 	http.Handle(pattern, s.observer.Observe(h))
 }
@@ -217,9 +213,9 @@ func (s *Server) serveError(ctx context.Context, w http.ResponseWriter, _ *http.
 		serr = &serverError{status: http.StatusInternalServerError, err: err}
 	}
 	if serr.status == http.StatusInternalServerError {
-		log.Errorf(ctx, serr.err.Error())
+		log.Errorf(ctx, err, "internal server error")
 	} else {
-		log.Warningf(ctx, "returning %v", err)
+		log.Warnf(ctx, "returning %v", err)
 	}
 	http.Error(w, serr.err.Error(), serr.status)
 }
@@ -247,7 +243,7 @@ func init() {
 	var err error
 	locNewYork, err = time.LoadLocation("America/New_York")
 	if err != nil {
-		log.Errorf(context.Background(), "time.LoadLocation: %v", err)
+		log.Errorf(context.Background(), err, "time.LoadLocation")
 		os.Exit(1)
 	}
 }

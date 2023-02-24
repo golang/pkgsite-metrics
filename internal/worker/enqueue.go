@@ -56,7 +56,7 @@ func enqueueTasks(ctx context.Context, tasks []queue.Task, q queue.Queue, opts *
 			enqueued, err := q.EnqueueScan(ctx, sreq, opts)
 			mu.Lock()
 			if err != nil {
-				log.Errorf(ctx, "enqueuing: %v", err)
+				log.Errorf(ctx, err, "enqueuing")
 				nErrors++
 			} else if enqueued {
 				nEnqueued++

@@ -198,7 +198,7 @@ func (s *scanner) ScanModule(ctx context.Context, sreq *vulncheckRequest) {
 	log.Infof(ctx, "fetching proxy info: %s@%s", sreq.Module, sreq.Version)
 	info, err := s.proxyClient.Info(ctx, sreq.Module, sreq.Version)
 	if err != nil {
-		log.Errorf(ctx, "proxy error: %v", err)
+		log.Errorf(ctx, err, "proxy error")
 		row.AddError(fmt.Errorf("%v: %w", err, derrors.ProxyError))
 		return
 	}
@@ -232,7 +232,7 @@ func (s *scanner) ScanModule(ctx context.Context, sreq *vulncheckRequest) {
 			// "Upload: googleapi: got HTTP response code 413 with body"
 			// which happens for some modules.
 			row.AddError(fmt.Errorf("%v: %w", err, derrors.BigQueryError))
-			log.Errorf(ctx, "bq.Upload for %s: %v", sreq.Path(), err)
+			log.Errorf(ctx, err, "bq.Upload for %s", sreq.Path())
 		}
 	}
 }
@@ -353,8 +353,11 @@ func (s *scanner) runBinaryScanSandbox(ctx context.Context, modulePath, version,
 	// requires a ReaderAt and GCS doesn't provide that.
 	gcsPathname := fmt.Sprintf("%s/%s@%s/%s", binaryDir, modulePath, version, binDir)
 	const destDir = "/bundle/rootfs/binaries"
-	log.With("module", modulePath, "version", version, "dir", binDir).
-		Debugf(ctx, "copying %s to %s", gcsPathname, destDir)
+	log.Debug(ctx, "copying",
+		"from", gcsPathname,
+		"to", destDir,
+		"module", modulePath, "version", version,
+		"dir", binDir)
 	destf, err := os.CreateTemp(destDir, "vulncheck-binary-")
 	if err != nil {
 		return nil, err
@@ -510,8 +513,8 @@ func (s *scanner) runBinaryScanInsecure(ctx context.Context, modulePath, version
 	// Copy the binary from GCS to the local disk, because vulncheck.Binary
 	// requires a ReaderAt and GCS doesn't provide that.
 	gcsPathname := fmt.Sprintf("%s/%s@%s/%s", binaryDir, modulePath, version, binDir)
-	log.With("module", modulePath, "version", version, "dir", binDir).
-		Debugf(ctx, "copying %s to temp dir", gcsPathname)
+	log.Debug(ctx, "copying to temp dir",
+		"from", gcsPathname, "module", modulePath, "version", version, "dir", binDir)
 	localPathname := filepath.Join(tempDir, "binary")
 	if err := copyFromGCS(ctx, s.gcsBucket, gcsPathname, localPathname); err != nil {
 		return nil, err
@@ -720,11 +723,11 @@ func logMemory(ctx context.Context, prefix string) {
 
 	cur, err := readIntFile(curFilename)
 	if err != nil {
-		log.Errorf(ctx, "reading %s: %v", curFilename, err)
+		log.Errorf(ctx, err, "reading %s", curFilename)
 	}
 	max, err := readIntFile(maxFilename)
 	if err != nil {
-		log.Errorf(ctx, "reading %s: %v", maxFilename, err)
+		log.Errorf(ctx, err, "reading %s", maxFilename)
 	}
 
 	const G float64 = 1024 * 1024 * 1024

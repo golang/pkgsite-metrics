@@ -274,7 +274,7 @@ func NewInMemory(ctx context.Context, workerCount int, processFunc inMemoryProce
 				defer cancel()
 
 				if _, err := processFunc(fetchCtx, t); err != nil {
-					log.Errorf(fetchCtx, "processFunc(%v, %q): %v", t, err)
+					log.Errorf(fetchCtx, err, "processFunc(%v)", t)
 				}
 			}(v)
 		}

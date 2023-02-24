@@ -255,7 +255,7 @@ func handleVulncheckRows(ctx context.Context, page *VulncheckPage, rows []*bigqu
 		case ModeImports:
 			page.ImportsResult.update(row)
 		default:
-			log.Errorf(ctx, "unexpected mode for %s@%s: %q", row.ModulePath, row.Version, row.ScanMode)
+			log.Errorf(ctx, nil, "unexpected mode for %s@%s: %q", row.ModulePath, row.Version, row.ScanMode)
 			continue
 		}
 

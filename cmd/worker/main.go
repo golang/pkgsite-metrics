@@ -12,7 +12,7 @@ import (
 	"net/http"
 	"os"
 
-	"golang.org/x/exp/event"
+	"golang.org/x/exp/slog"
 	"golang.org/x/pkgsite-metrics/internal/config"
 	"golang.org/x/pkgsite-metrics/internal/log"
 	"golang.org/x/pkgsite-metrics/internal/worker"
@@ -39,11 +39,10 @@ func main() {
 
 	flag.Parse()
 	ctx := context.Background()
-	ctx = event.WithExporter(ctx,
-		event.NewExporter(log.NewLineHandler(os.Stderr), nil))
-
+	slog.SetDefault(slog.New(log.NewLineHandler(os.Stderr)))
 	if err := runServer(ctx); err != nil {
-		log.Fatal(ctx, err)
+		log.Error(ctx, "fail", err)
+		os.Exit(1)
 	}
 }
 

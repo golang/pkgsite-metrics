@@ -28,11 +28,6 @@ type Observer struct {
 	traceHandler   *eotel.TraceHandler
 	metricHandler  *eotel.MetricHandler
 	propagator     propagation.TextMapPropagator
-
-	// LogHandlerFunc is invoked in [Observer.Observe] to obtain an
-	// [event.Handler] for logging to be added to the [event.Exporter] in
-	// addition to the tracing and metrics handlers.
-	LogHandlerFunc func(*http.Request) event.Handler
 }
 
 // NewObserver creates an Observer.
@@ -81,11 +76,7 @@ func (o *Observer) Observe(h http.Handler) http.Handler {
 			h.ServeHTTP(w, r.WithContext(r.Context()))
 			return
 		}
-		var otherHandler event.Handler
-		if o.LogHandlerFunc != nil {
-			otherHandler = o.LogHandlerFunc(r)
-		}
-		exporter := event.NewExporter(eventHandler{o, otherHandler}, nil)
+		exporter := event.NewExporter(o, nil)
 		ctx := event.WithExporter(r.Context(), exporter)
 		ctx = o.propagator.Extract(ctx, propagation.HeaderCarrier(r.Header))
 		defer o.tracerProvider.ForceFlush(o.ctx)
@@ -93,16 +84,8 @@ func (o *Observer) Observe(h http.Handler) http.Handler {
 	})
 }
 
-type eventHandler struct {
-	o  *Observer
-	eh event.Handler
-}
-
 // Event implements event.Handler.
-func (h eventHandler) Event(ctx context.Context, ev *event.Event) context.Context {
-	if h.eh != nil {
-		ctx = h.eh.Event(ctx, ev)
-	}
-	ctx = h.o.traceHandler.Event(ctx, ev)
-	return h.o.metricHandler.Event(ctx, ev)
+func (o *Observer) Event(ctx context.Context, ev *event.Event) context.Context {
+	ctx = o.traceHandler.Event(ctx, ev)
+	return o.metricHandler.Event(ctx, ev)
 }
