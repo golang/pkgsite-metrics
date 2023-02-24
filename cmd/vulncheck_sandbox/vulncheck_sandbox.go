@@ -31,17 +31,11 @@ var (
 	// file containing a timestamp.
 	vulnDBDir = flag.String("vulndb", "/go-vulndb", "directory of local vuln DB")
 
-	modCacheDir = flag.String("gomodcache", "", "override GOMODCACHE env var")
-
 	clean = flag.Bool("clean", false, "clean caches instead of running a module")
 )
 
 func main() {
 	flag.Parse()
-	if *modCacheDir != "" {
-		// Change the location of the module cache.
-		os.Setenv("GOMODCACHE", *modCacheDir)
-	}
 	if *clean {
 		cleanGoCaches()
 	} else {

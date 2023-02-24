@@ -312,12 +312,15 @@ func (s *scanner) runSourceScanSandbox(ctx context.Context, modulePath, version,
 	return unmarshalVulncheckOutput(stdout)
 }
 
-const sandboxGoModCache = "go/pkg/mod"
+// The Go module cache resides in its default location, $HOME/go/pkg/mod.
+// Inside the sandbox, the user is root and their home directory is /root.
+const sandboxGoModCache = "root/go/pkg/mod"
 
 func runSourceScanSandbox(ctx context.Context, modulePath, version, mode string, proxyClient *proxy.Client, sbox *sandbox.Sandbox) ([]byte, error) {
 	sandboxDir := "/modules/" + modulePath + "@" + version
 	imageDir := "/bundle/rootfs" + sandboxDir
 	defer os.RemoveAll(imageDir)
+
 	log.Infof(ctx, "downloading %s@%s to %s", modulePath, version, imageDir)
 	if err := modules.Download(ctx, modulePath, version, imageDir, proxyClient, true); err != nil {
 		log.Debugf(ctx, "download error: %v (%[1]T)", err)
@@ -338,7 +341,7 @@ func runSourceScanSandbox(ctx context.Context, modulePath, version, mode string,
 	}
 	log.Infof(ctx, "go mod download succeeded")
 	log.Infof(ctx, "%s@%s: running vulncheck in sandbox", modulePath, version)
-	stdout, err := sbox.Run(ctx, "/binaries/vulncheck_sandbox", "-gomodcache", "/"+sandboxGoModCache, mode, sandboxDir)
+	stdout, err := sbox.Run(ctx, "/binaries/vulncheck_sandbox", mode, sandboxDir)
 	if err != nil {
 		return nil, errors.New(derrors.IncludeStderr(err))
 	}
@@ -747,7 +750,7 @@ func (s *scanner) cleanGoCaches(ctx context.Context) error {
 	if s.insecure {
 		out, err = exec.Command("go", "clean", "-cache", "-modcache").CombinedOutput()
 	} else {
-		out, err = s.sbox.Run(ctx, "/binaries/vulncheck_sandbox", "-gomodcache", "/"+sandboxGoModCache, "-clean")
+		out, err = s.sbox.Run(ctx, "/binaries/vulncheck_sandbox", "-clean")
 	}
 	if err != nil {
 		return fmt.Errorf("cleaning Go caches: %s", derrors.IncludeStderr(err))
