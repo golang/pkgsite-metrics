@@ -134,7 +134,6 @@ func NewServer(ctx context.Context, cfg *config.Config) (_ *Server, err error) {
 		return nil, err
 	}
 
-	s.handle("/test-vulncheck-sandbox/", s.handleTestVulncheckSandbox)
 	s.handle("/test-db", s.handleTestDB)
 
 	return s, nil

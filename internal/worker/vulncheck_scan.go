@@ -72,11 +72,8 @@ var shouldSkip = map[string]bool{}
 
 var scanCounter = event.NewCounter("scans", &event.MetricOptions{Namespace: metricNamespace})
 
-// path: /vulncheck/scan/MODULE_VERSION_SUFFIX
-// See scan.ParseRequest for allowed forms.
-// Query params:
-//   - mode: type of analysis to run; see [modes]
-//   - importedby: number of importers
+// path: /vulncheck/scan/MODULE_VERSION_SUFFIX?params
+// See parseVulncheckRequest for allowed path forms and query params.
 func (h *VulncheckServer) handleScan(w http.ResponseWriter, r *http.Request) (err error) {
 	defer derrors.Wrap(&err, "handleScan")
 
@@ -104,8 +101,7 @@ func (h *VulncheckServer) handleScan(w http.ResponseWriter, r *http.Request) (er
 		return err
 	}
 	// An explicit "insecure" query param overrides the default.
-	// This is temporary, for testing running in a sandbox.
-	if r.FormValue("insecure") != "" {
+	if sreq.Insecure {
 		scanner.insecure = sreq.Insecure
 	}
 	wv := h.storedWorkVersions[[2]string{sreq.Module, sreq.Version}]
@@ -115,9 +111,7 @@ func (h *VulncheckServer) handleScan(w http.ResponseWriter, r *http.Request) (er
 	}
 
 	log.Infof(ctx, "scanning: %s", sreq.Path())
-	scanner.ScanModule(ctx, sreq)
-	log.Infof(ctx, "fetched and updated %s", sreq.Path())
-	return nil
+	return scanner.ScanModule(ctx, w, sreq)
 }
 
 func (h *VulncheckServer) readVulncheckWorkVersions(ctx context.Context) error {
@@ -185,9 +179,9 @@ func (s scanError) Unwrap() error {
 	return s.err
 }
 
-func (s *scanner) ScanModule(ctx context.Context, sreq *vulncheckRequest) {
+func (s *scanner) ScanModule(ctx context.Context, w http.ResponseWriter, sreq *vulncheckRequest) error {
 	if sreq.Module == "std" {
-		return // ignore the standard library
+		return nil // ignore the standard library
 	}
 	row := &bigquery.VulnResult{
 		ModulePath:           sreq.Module,
@@ -200,7 +194,7 @@ func (s *scanner) ScanModule(ctx context.Context, sreq *vulncheckRequest) {
 	if err != nil {
 		log.Errorf(ctx, err, "proxy error")
 		row.AddError(fmt.Errorf("%v: %w", err, derrors.ProxyError))
-		return
+		return nil
 	}
 	row.Version = info.Version
 	row.SortVersion = version.ForSorting(row.Version)
@@ -223,7 +217,15 @@ func (s *scanner) ScanModule(ctx context.Context, sreq *vulncheckRequest) {
 		row.Vulns = vulns
 		log.Infof(ctx, "scanner.runScanModule returned %d vulns: %s", len(vulns), sreq.Path())
 	}
-	if s.bqClient == nil {
+	if sreq.Serve {
+		// Write the result to the client instead of uploading to BigQuery.
+		log.Infof(ctx, "serving result to client")
+		data, err := json.MarshalIndent(row, "", "    ")
+		if err != nil {
+			return fmt.Errorf("marshaling result: %w", err)
+		}
+		w.Write(data)
+	} else if s.bqClient == nil {
 		log.Infof(ctx, "bigquery disabled, not uploading")
 	} else {
 		log.Infof(ctx, "uploading to bigquery: %s", sreq.Path())
@@ -235,6 +237,7 @@ func (s *scanner) ScanModule(ctx context.Context, sreq *vulncheckRequest) {
 			log.Errorf(ctx, err, "bq.Upload for %s", sreq.Path())
 		}
 	}
+	return nil
 }
 
 type vulncheckStats struct {
@@ -763,24 +766,6 @@ func (s *scanner) cleanGoCaches(ctx context.Context) error {
 	return nil
 }
 
-// Test running vulncheck in the sandbox.
-// This runs a scan but returns the resulting JSON instead of writing it to BigQuery.
-func (s *Server) handleTestVulncheckSandbox(w http.ResponseWriter, r *http.Request) error {
-	ctx := r.Context()
-	sreq, err := parseVulncheckRequest(r, "/test-vulncheck-sandbox")
-	if err != nil {
-		return fmt.Errorf("%w: %v", derrors.InvalidArgument, err)
-	}
-	sbox := sandbox.New("/bundle")
-	sbox.Runsc = "/usr/local/bin/runsc"
-	out, err := runSourceScanSandbox(ctx, sreq.Module, sreq.Version, ModeVTA, s.proxyClient, sbox)
-	if err != nil {
-		return err
-	}
-	_, err = w.Write(out)
-	return err
-}
-
 // vulncheckRequest contains information passed
 // to a scan endpoint.
 type vulncheckRequest struct {
@@ -793,6 +778,7 @@ type vulncheckRequestParams struct {
 	ImportedBy int    // imported-by count
 	Mode       string // vulncheck mode (VTA, etc)
 	Insecure   bool   // if true, run outside sandbox
+	Serve      bool   // serve results back to client instead of writing them to BigQuery
 }
 
 // These methods implement queue.Task.

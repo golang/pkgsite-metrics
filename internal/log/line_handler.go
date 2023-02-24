@@ -42,7 +42,7 @@ func (h *LineHandler) WithAttrs(as []slog.Attr) slog.Handler {
 
 func (h *LineHandler) Handle(ctx context.Context, r slog.Record) error {
 	var buf bytes.Buffer
-	fmt.Fprintf(&buf, "%s %s %s", r.Time.Format("2006/01/02 15:04:05"), r.Level, r.Message)
+	fmt.Fprintf(&buf, "%s %-5s %s", r.Time.Format("2006/01/02 15:04:05"), r.Level, r.Message)
 
 	prefix := ""
 	for ga := h.gora; ga != nil; ga = ga.Next {

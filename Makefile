@@ -58,7 +58,8 @@ docker-run-bg: docker-build
 
 # Test by scanning a small module.
 test: docker-run-bg
-	curl -s 'http://localhost:8080/test-vulncheck-sandbox/github.com/fossas/fossa-cli@v1.1.10?importedby=1' | grep GO-2020-0016
+
+	curl -s 'http://localhost:8080/vulncheck/scan/github.com/fossas/fossa-cli@v1.1.10?importedby=1&serve=true' | grep GO-2020-0016
 	docker container stop `cat /tmp/ecosystem-docker-container-id`
 
 clean:
