@@ -9,7 +9,7 @@
 default: test clean
 
 test: /usr/local/bin/runsc testbundle
-	sudo $(shell which go) test -v
+	sudo RUN_FROM_MAKE=1 $(shell which go) test -v
 
 
 # Release version must match the one in cmd/worker/Dockerfile.
@@ -24,6 +24,7 @@ RUNSC_URL := https://storage.googleapis.com/gvisor/releases/release/20221107.0/$
 	sudo mv runsc /usr/local/bin
 
 testbundle: testdata/bundle/rootfs/runner testdata/bundle/rootfs/printargs
+	chmod o+rx testdata/bundle/rootfs
 
 testdata/bundle/rootfs/runner: runner.go
 	go build -o $@ $<

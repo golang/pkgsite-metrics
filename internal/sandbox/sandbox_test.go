@@ -20,10 +20,8 @@ import (
 // the binaries needed for the test.
 
 func Test(t *testing.T) {
-	t.Skip()
-
-	if os.Getenv("USER") != "root" {
-		t.Skip("skipping; must run as root. Run 'make'.")
+	if os.Getenv("RUN_FROM_MAKE") != "1" {
+		t.Skip("skipping; must run with 'make'.")
 	}
 	ctx := context.Background()
 	sb := New("testdata/bundle")
