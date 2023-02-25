@@ -7,12 +7,9 @@ package sandbox
 
 import (
 	"bytes"
-	"context"
+	"encoding/json"
 	"fmt"
-	"io"
 	"os/exec"
-	"strings"
-	"unicode"
 
 	"golang.org/x/pkgsite-metrics/internal/derrors"
 )
@@ -37,44 +34,74 @@ func New(bundleDir string) *Sandbox {
 	}
 }
 
-// Run runs program with args in a sandbox.
-// The program argument is the absolute path to the program from
-// within the sandbox.
-// It is invoked directly, as with [exec.Command]; no shell
-// interpretation is performed.
-// Its working directory is the bundle filesystem root.
-// The program is passed the given arguments, which must not contain whitespace.
-//
-// If the program succeeds (exits with code 0), its standard output is returned.
-// If it fails, the first return value is empty and the error comes from [exec.Command.Output].
-func (s *Sandbox) Run(ctx context.Context, program string, args ...string) (stdout []byte, err error) {
-	defer derrors.Wrap(&err, "Run(%s, %q)", program, args)
-	for _, a := range args {
-		if strings.IndexFunc(a, unicode.IsSpace) >= 0 {
-			return nil, fmt.Errorf("arg %q contains whitespace", a)
-		}
-	}
+// Cmd's exported fields must be a subset of the exported fields of exec.Cmd.
+// runner.go must be able to unmarshal a sandbox.Cmd into an exec.Cmd.
 
+// Cmd describes how to run a binary in a sandbox.
+type Cmd struct {
+	sb *Sandbox
+
+	// Path is the path of the command to run.
+	//
+	// This is the only field that must be set to a non-zero
+	// value. If Path is relative, it is evaluated relative
+	// to Dir.
+	Path string
+
+	// Args holds command line arguments, including the command as Args[0].
+	// If the Args field is empty or nil, Run uses {Path}.
+	//
+	// In typical use, both Path and Args are set by calling Command.
+	Args []string
+
+	// Env specifies the environment of the process.
+	// Each entry is of the form "key=value".
+	// If Env is nil, the new process uses whatever environment
+	// runsc provides by default.
+	Env []string
+
+	// Dir specifies the working directory of the command.
+	// If Dir is the empty string, Run runs the command in the
+	// root of the sandbox filesystem.
+	Dir string
+}
+
+// Command creates a *Cmd to run path in the sandbox.
+// It behaves like [os/exec.Command].
+func (s *Sandbox) Command(path string, arg ...string) *Cmd {
+	return &Cmd{
+		sb:   s,
+		Path: path,
+		Args: append([]string{path}, arg...),
+	}
+}
+
+// Output runs Cmd in the sandbox used to create it, and returns its standard output.
+func (c *Cmd) Output() (_ []byte, err error) {
+	defer derrors.Wrap(&err, "Cmd.Output %q", c.Args)
 	// -ignore-cgroups is needed to avoid this error from runsc:
 	// cannot set up cgroup for root: configuring cgroup: write /sys/fs/cgroup/cgroup.subtree_control: device or resource busy
-	cmd := exec.CommandContext(ctx, s.Runsc, "-ignore-cgroups", "-network=none", "run", "sandbox")
-	cmd.Dir = s.bundleDir
+	cmd := exec.Command(c.sb.Runsc, "-ignore-cgroups", "-network=none", "run", "sandbox")
+	cmd.Dir = c.sb.bundleDir
 	stdinPipe, err := cmd.StdinPipe()
 	if err != nil {
 		return nil, err
 	}
-	stdin := program + " " + strings.Join(args, " ")
-	c := make(chan error, 1)
+	stdin, err := json.Marshal(c)
+	if err != nil {
+		return nil, err
+	}
+	ch := make(chan error, 1)
 	go func() {
-		_, err := io.WriteString(stdinPipe, stdin)
+		_, err := stdinPipe.Write(stdin)
 		stdinPipe.Close()
-		c <- err
+		ch <- err
 	}()
 	out, err := cmd.Output()
 	if err != nil {
 		return nil, err
 	}
-	if err := <-c; err != nil {
+	if err := <-ch; err != nil {
 		return nil, fmt.Errorf("writing stdin: %w", err)
 	}
 	return bytes.TrimSpace(out), nil

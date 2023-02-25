@@ -345,7 +345,7 @@ func runSourceScanSandbox(ctx context.Context, modulePath, version, mode string,
 	}
 	log.Infof(ctx, "go mod download succeeded")
 	log.Infof(ctx, "%s@%s: running vulncheck in sandbox", modulePath, version)
-	stdout, err := sbox.Run(ctx, "/binaries/vulncheck_sandbox", mode, sandboxDir)
+	stdout, err := sbox.Command("/binaries/vulncheck_sandbox", mode, sandboxDir).Output()
 	if err != nil {
 		return nil, errors.New(derrors.IncludeStderr(err))
 	}
@@ -374,7 +374,7 @@ func (s *scanner) runBinaryScanSandbox(ctx context.Context, modulePath, version,
 		return nil, err
 	}
 	log.Infof(ctx, "%s@%s/%s: running vulncheck in sandbox on %s", modulePath, version, binDir, destf.Name())
-	stdout, err := s.sbox.Run(ctx, "/binaries/vulncheck_sandbox", ModeBinary, destf.Name())
+	stdout, err := s.sbox.Command("/binaries/vulncheck_sandbox", ModeBinary, destf.Name()).Output()
 	if err != nil {
 		return nil, errors.New(derrors.IncludeStderr(err))
 	}
@@ -762,7 +762,7 @@ func (s *scanner) cleanGoCaches(ctx context.Context) error {
 		out, err = exec.Command("go", "clean", "-cache", "-modcache").CombinedOutput()
 	} else {
 		logDiskUsage("before")
-		out, err = s.sbox.Run(ctx, "go", "clean", "-cache", "-modcache")
+		out, err = s.sbox.Command("go", "clean", "-cache", "-modcache").Output()
 		if err == nil {
 			logDiskUsage("after")
 		}

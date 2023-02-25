@@ -14,12 +14,12 @@ package main
 
 import (
 	"bytes"
+	"encoding/json"
 	"errors"
 	"io"
 	"log"
 	"os"
 	"os/exec"
-	"strings"
 )
 
 func main() {
@@ -31,11 +31,11 @@ func main() {
 		log.Fatal(err)
 	}
 	log.Printf("read %q", in)
-	args := strings.Fields(string(in))
-	if len(args) == 0 {
-		log.Fatal("no args")
+	var cmd exec.Cmd
+	if err := json.Unmarshal(in, &cmd); err != nil {
+		log.Fatal(err)
 	}
-	cmd := exec.Command(args[0], args[1:]...)
+	log.Printf("cmd: %+v", cmd)
 	out, err := cmd.Output()
 	if err != nil {
 		s := err.Error()
@@ -43,7 +43,7 @@ func main() {
 		if errors.As(err, &eerr) {
 			s += ": " + string(bytes.TrimSpace(eerr.Stderr))
 		}
-		log.Fatalf("%s failed with %s", args[0], s)
+		log.Fatalf("%v failed with %s", cmd.Args, s)
 	}
 	if _, err := os.Stdout.Write(out); err != nil {
 		log.Fatal(err)
