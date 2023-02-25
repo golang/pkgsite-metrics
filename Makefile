@@ -48,8 +48,14 @@ docker-build: go-image.tar.gz go-vulndb cmd/worker/*.go internal/**/*.go cmd/vul
 	touch $@
 
 # Run the docker image locally, for testing.
+# The worker will start and listen at port 8080.
 docker-run: docker-build
 	docker run --rm --privileged -p 8080:8080 $(IMAGE)
+
+# Run the docker image and enter an interactive shell.
+# The worker does not start.
+docker-run-shell: docker-build
+	docker run --rm -it --privileged ecosystem-worker-test /bin/bash
 
 # Run the docker image in the background, waiting until the server is ready.
 docker-run-bg: docker-build
