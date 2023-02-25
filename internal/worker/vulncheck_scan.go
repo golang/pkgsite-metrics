@@ -265,6 +265,7 @@ func (s *scanner) runScanModule(ctx context.Context, modulePath, version, binary
 		if activeScans.Add(-1) == 0 {
 			logMemory(ctx, fmt.Sprintf("before 'go clean' for %s@%s", modulePath, version))
 			s.cleanGoCaches(ctx)
+			logMemory(ctx, "after 'go clean'")
 		}
 	}()
 
@@ -742,18 +743,29 @@ func logMemory(ctx context.Context, prefix string) {
 }
 
 func (s *scanner) cleanGoCaches(ctx context.Context) error {
-	if !config.OnCloudRun() {
-		log.Infof(ctx, "not on Cloud Run, so not cleaning caches")
-		return nil
-	}
 	var (
 		out []byte
 		err error
 	)
+
+	logDiskUsage := func(msg string) {
+		log.Debugf(ctx, "sandbox disk usage %s clean:\n%s",
+			msg, diskUsage("/bundle/rootfs/root", "/bundle/rootfs/modules"))
+	}
+
 	if s.insecure {
+		if !config.OnCloudRun() {
+			// Avoid cleaning the developer's local caches.
+			log.Infof(ctx, "not on Cloud Run, so not cleaning caches")
+			return nil
+		}
 		out, err = exec.Command("go", "clean", "-cache", "-modcache").CombinedOutput()
 	} else {
-		out, err = s.sbox.Run(ctx, "/binaries/vulncheck_sandbox", "-clean")
+		logDiskUsage("before")
+		out, err = s.sbox.Run(ctx, "go", "clean", "-cache", "-modcache")
+		if err == nil {
+			logDiskUsage("after")
+		}
 	}
 	if err != nil {
 		return fmt.Errorf("cleaning Go caches: %s", derrors.IncludeStderr(err))
@@ -816,4 +828,14 @@ func parseVulncheckRequest(r *http.Request, prefix string) (*vulncheckRequest, e
 		ModuleURLPath:          mp,
 		vulncheckRequestParams: rp,
 	}, nil
+}
+
+// diskUsage runs the du command to determine how much disk space the given
+// directories occupy.
+func diskUsage(dirs ...string) string {
+	out, err := exec.Command("du", append([]string{"-h", "-s"}, dirs...)...).Output()
+	if err != nil {
+		return fmt.Sprintf("ERROR: %s", derrors.IncludeStderr(err))
+	}
+	return strings.TrimSpace(string(out))
 }

@@ -19,28 +19,19 @@ import (
 	"io"
 	"log"
 	"os"
-	"os/exec"
 
 	"golang.org/x/pkgsite-metrics/internal/load"
 	"golang.org/x/pkgsite-metrics/internal/worker"
 	"golang.org/x/vuln/vulncheck"
 )
 
-var (
-	// vulnDBDir should contain a local copy of the vuln DB, with a LAST_MODIFIED
-	// file containing a timestamp.
-	vulnDBDir = flag.String("vulndb", "/go-vulndb", "directory of local vuln DB")
-
-	clean = flag.Bool("clean", false, "clean caches instead of running a module")
-)
+// vulnDBDir should contain a local copy of the vuln DB, with a LAST_MODIFIED
+// file containing a timestamp.
+var vulnDBDir = flag.String("vulndb", "/go-vulndb", "directory of local vuln DB")
 
 func main() {
 	flag.Parse()
-	if *clean {
-		cleanGoCaches()
-	} else {
-		run(os.Stdout, flag.Args(), *vulnDBDir)
-	}
+	run(os.Stdout, flag.Args(), *vulnDBDir)
 }
 
 func run(w io.Writer, args []string, vulnDBDir string) {
@@ -116,13 +107,4 @@ func runVulncheck(ctx context.Context, args []string, vulnDBDir string) (*vulnch
 	}
 	return res, nil
 
-}
-
-func cleanGoCaches() {
-	_, err := exec.Command("go", "clean", "-cache", "-modcache").CombinedOutput()
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "%s\n", err)
-		os.Exit(1)
-	}
-	fmt.Printf("go clean succeeded in sandbox\n")
 }
