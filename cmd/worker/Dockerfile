@@ -25,6 +25,28 @@ RUN mkdir app
 # The sandbox mounts this directory.
 RUN mkdir module
 
+#### Sandbox setup
+
+# Install runsc.
+ADD https://storage.googleapis.com/gvisor/releases/release/20221107.0/x86_64/runsc /usr/local/bin/
+RUN chmod a+rx /usr/local/bin/runsc
+
+# Set up for runsc.
+# runsc expects a directory called a "bundle" that contains a config.json
+# file and an OS filesystem.
+
+# Create the runsc bundle.
+WORKDIR /bundle
+COPY config.json .
+
+# go-image.tar.gz is a complete Docker image of a Go installation in tar format.
+# Use it for the bundle's OS filesystem.
+COPY go-image.tar.gz .
+RUN tar --same-owner -pxzf go-image.tar.gz -C rootfs
+
+# Copy the downloaded copy of the vuln DB into the bundle root.
+COPY go-vulndb rootfs/go-vulndb
+
 #### Building binaries
 
 # Set the working directory outside $GOPATH to ensure module mode is enabled.
@@ -52,28 +74,6 @@ RUN go build -mod=readonly -o /bundle/rootfs/binaries/vulncheck_sandbox ./cmd/vu
 
 # Build the sandbox runner program and put it in the bundle root.
 RUN go build -mod=readonly -o /bundle/rootfs/runner ./internal/sandbox/runner.go
-
-#### Sandbox setup
-
-# Install runsc.
-ADD https://storage.googleapis.com/gvisor/releases/release/20221107.0/x86_64/runsc /usr/local/bin/
-RUN chmod a+rx /usr/local/bin/runsc
-
-# Set up for runsc.
-# runsc expects a directory called a "bundle" that contains a config.json
-# file and an OS filesystem.
-
-# Create the runsc bundle.
-WORKDIR /bundle
-COPY config.json .
-
-# go-image.tar.gz is a complete Docker image of a Go installation in tar format.
-# Use it for the bundle's OS filesystem.
-COPY go-image.tar.gz .
-RUN tar --same-owner -pxzf go-image.tar.gz -C rootfs
-
-# Copy the downloaded copy of the vuln DB into the bundle root.
-COPY go-vulndb rootfs/go-vulndb
 
 #### Worker setup
 
