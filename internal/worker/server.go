@@ -154,13 +154,19 @@ func (s *Server) handle(pattern string, handler handlerFunc) {
 		ctx = log.NewContext(ctx, logger)
 		r = r.WithContext(ctx)
 
-		log.Infof(ctx, "starting %s", r.URL.Path)
+		// For logging, construct a string with the entire URL except scheme and host.
+		url2 := *r.URL
+		url2.Scheme = ""
+		url2.Host = ""
+		urlString := url2.String()
+
+		log.Infof(ctx, "starting %s", urlString)
 		w2 := &responseWriter{ResponseWriter: w}
 		if err := handler(w2, r); err != nil {
 			derrors.Report(err)
 			s.serveError(ctx, w2, r, err)
 		}
-		logger.Info("request end",
+		logger.Info(fmt.Sprintf("ending %s", urlString),
 			"latency", time.Since(start),
 			"status", translateStatus(w2.status))
 	})
