@@ -7,13 +7,12 @@ package worker
 import (
 	"context"
 	"encoding/json"
-	"errors"
 	"fmt"
+	"io"
 	"net/http"
 	"os"
 	"os/exec"
 	"path"
-	"path/filepath"
 	"strings"
 
 	"cloud.google.com/go/storage"
@@ -21,6 +20,7 @@ import (
 	"golang.org/x/pkgsite-metrics/internal/log"
 	"golang.org/x/pkgsite-metrics/internal/modules"
 	"golang.org/x/pkgsite-metrics/internal/queue"
+	"golang.org/x/pkgsite-metrics/internal/sandbox"
 	"golang.org/x/pkgsite-metrics/internal/scan"
 )
 
@@ -73,10 +73,6 @@ const analysisBinariesBucketDir = "analysis-binaries"
 func (s *analysisServer) handleScan(w http.ResponseWriter, r *http.Request) (err error) {
 	defer derrors.Wrap(&err, "analysisServer.handleScan")
 
-	if s.cfg.BinaryBucket != "" {
-		return errors.New("binary bucket not configured; set GO_ECOSYSTEM_BINARY_BUCKET")
-	}
-
 	ctx := r.Context()
 	req, err := parseAnalysisRequest(r, "/analysis/scan")
 	if err != nil {
@@ -94,12 +90,11 @@ func (s *analysisServer) handleScan(w http.ResponseWriter, r *http.Request) (err
 	return err
 }
 
+const sandboxRoot = "/bundle/rootfs"
+
 func (s *analysisServer) scan(ctx context.Context, req *analysisRequest) (_ JSONTree, err error) {
 	if req.Binary == "" {
 		return nil, fmt.Errorf("%w: analysis: missing binary", derrors.InvalidArgument)
-	}
-	if !req.Insecure {
-		return nil, fmt.Errorf("%w: analysis: sandbox mode unimplemented", derrors.InvalidArgument)
 	}
 	if !req.Serve {
 		return nil, fmt.Errorf("%w: analysis: writing to BigQuery unimplemented", derrors.InvalidArgument)
@@ -108,18 +103,22 @@ func (s *analysisServer) scan(ctx context.Context, req *analysisRequest) (_ JSON
 		return nil, fmt.Errorf("%w: analysis: only implemented for whole modules (no suffix)", derrors.InvalidArgument)
 	}
 
-	// Copy the binary from the bucket.
-	c, err := storage.NewClient(ctx)
-	if err != nil {
+	destPath := path.Join(sandboxRoot, "binaries", path.Base(req.Binary))
+	if err := copyBinary(ctx, destPath, req.Binary, s.cfg.BinaryBucket); err != nil {
 		return nil, err
 	}
-	bucket := c.Bucket(s.cfg.BinaryBucket)
-	const destDir = "/bundle/rootfs/binaries"
-	binaryPath := filepath.Join(filepath.FromSlash(destDir), req.Binary)
-	if err := copyFromGCS(ctx, bucket, path.Join(analysisBinariesBucketDir, req.Binary), binaryPath); err != nil {
-		return nil, err
+	if !req.Insecure {
+		sandboxDir, cleanup, err := downloadModuleSandbox(ctx, req.Module, req.Version, s.proxyClient)
+		if err != nil {
+			return nil, err
+		}
+		defer cleanup()
+		log.Infof(ctx, "running %s on %s@%s in sandbox", req.Binary, req.Module, req.Version)
+		sbox := sandbox.New("/bundle")
+		sbox.Runsc = "/usr/local/bin/runsc"
+		return runAnalysisBinary(sbox, strings.TrimPrefix(destPath, sandboxRoot), req.Args, sandboxDir)
 	}
-
+	// Insecure mode.
 	// Download the module.
 	tempDir, err := os.MkdirTemp("", "analysis")
 	if err != nil {
@@ -137,18 +136,50 @@ func (s *analysisServer) scan(ctx context.Context, req *analysisRequest) (_ JSON
 	if err := modules.Download(ctx, req.Module, req.Version, tempDir, s.proxyClient, stripModulePrefix); err != nil {
 		return nil, err
 	}
+	return runAnalysisBinary(nil, destPath, req.Args, tempDir)
+}
 
-	return runAnalysisBinary(binaryPath, req.Args, tempDir)
+// copyBinary copies a binary from srcPath to destPath.
+// If binaryBucket is non-empty, it reads srcPath from that GCS bucket.
+// If binaryBucket is empty, it reads srcPath from the local filesystem.
+// This is for testing, since a local docker container doesn't have the
+// credentials to read from a non-public bucket.
+func copyBinary(ctx context.Context, destPath, srcPath, binaryBucket string) (err error) {
+	if binaryBucket == "" {
+		// Assume srcPath is local.
+		srcf, err := os.Open(srcPath)
+		if err != nil {
+			return err
+		}
+		defer srcf.Close()
+		destf, err := os.OpenFile(destPath, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0755)
+		if err != nil {
+			return err
+		}
+		defer func() {
+			err1 := destf.Close()
+			if err == nil {
+				err = err1
+			}
+		}()
+		_, err = io.Copy(destf, srcf)
+		return err
+	}
+	// Copy the binary from the bucket.
+	c, err := storage.NewClient(ctx)
+	if err != nil {
+		return err
+	}
+	bucket := c.Bucket(binaryBucket)
+	return copyFromGCS(ctx, bucket, path.Join(analysisBinariesBucketDir, srcPath), destPath)
 }
 
 // Run the binary on the module.
-func runAnalysisBinary(binaryPath, reqArgs, moduleDir string) (JSONTree, error) {
+func runAnalysisBinary(sbox *sandbox.Sandbox, binaryPath, reqArgs, moduleDir string) (JSONTree, error) {
 	args := []string{"-json"}
 	args = append(args, strings.Fields(reqArgs)...)
 	args = append(args, "./...")
-	cmd := exec.Command(binaryPath, args...)
-	cmd.Dir = moduleDir
-	out, err := cmd.Output()
+	out, err := runBinaryInDir(sbox, binaryPath, args, moduleDir)
 	if err != nil {
 		return nil, fmt.Errorf("running analysis binary %s: %s", binaryPath, derrors.IncludeStderr(err))
 	}
@@ -157,6 +188,17 @@ func runAnalysisBinary(binaryPath, reqArgs, moduleDir string) (JSONTree, error) 
 		return nil, err
 	}
 	return tree, nil
+}
+
+func runBinaryInDir(sbox *sandbox.Sandbox, path string, args []string, dir string) ([]byte, error) {
+	if sbox == nil {
+		cmd := exec.Command(path, args...)
+		cmd.Dir = dir
+		return cmd.Output()
+	}
+	cmd := sbox.Command(path, args...)
+	cmd.Dir = dir
+	return cmd.Output()
 }
 
 type diagnosticsOrError struct {

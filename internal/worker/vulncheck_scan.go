@@ -340,14 +340,27 @@ func (s *scanner) runSourceScanSandbox(ctx context.Context, modulePath, version,
 const sandboxGoModCache = "root/go/pkg/mod"
 
 func runSourceScanSandbox(ctx context.Context, modulePath, version, mode string, proxyClient *proxy.Client, sbox *sandbox.Sandbox) ([]byte, error) {
+	sandboxDir, cleanup, err := downloadModuleSandbox(ctx, modulePath, version, proxyClient)
+	if err != nil {
+		return nil, err
+	}
+	defer cleanup()
+	log.Infof(ctx, "%s@%s: running vulncheck in sandbox", modulePath, version)
+	stdout, err := sbox.Command("/binaries/vulncheck_sandbox", mode, sandboxDir).Output()
+	if err != nil {
+		return nil, errors.New(derrors.IncludeStderr(err))
+	}
+	return stdout, nil
+}
+
+func downloadModuleSandbox(ctx context.Context, modulePath, version string, proxyClient *proxy.Client) (string, func(), error) {
 	sandboxDir := "/modules/" + modulePath + "@" + version
 	imageDir := "/bundle/rootfs" + sandboxDir
-	defer os.RemoveAll(imageDir)
 
 	log.Infof(ctx, "downloading %s@%s to %s", modulePath, version, imageDir)
 	if err := modules.Download(ctx, modulePath, version, imageDir, proxyClient, true); err != nil {
 		log.Debugf(ctx, "download error: %v (%[1]T)", err)
-		return nil, err
+		return "", nil, err
 	}
 	// Download all dependencies outside of the sandbox, but use the Go build
 	// cache inside the bundle.
@@ -359,16 +372,11 @@ func runSourceScanSandbox(ctx context.Context, modulePath, version, mode string,
 		"GOMODCACHE=/bundle/rootfs/"+sandboxGoModCache)
 	_, err := cmd.Output()
 	if err != nil {
-		return nil, fmt.Errorf("%w: 'go mod download' for %s@%s returned %s",
+		return "", nil, fmt.Errorf("%w: 'go mod download' for %s@%s returned %s",
 			derrors.BadModule, modulePath, version, derrors.IncludeStderr(err))
 	}
 	log.Infof(ctx, "go mod download succeeded")
-	log.Infof(ctx, "%s@%s: running vulncheck in sandbox", modulePath, version)
-	stdout, err := sbox.Command("/binaries/vulncheck_sandbox", mode, sandboxDir).Output()
-	if err != nil {
-		return nil, errors.New(derrors.IncludeStderr(err))
-	}
-	return stdout, nil
+	return sandboxDir, func() { os.RemoveAll(imageDir) }, nil
 }
 
 func (s *scanner) runBinaryScanSandbox(ctx context.Context, modulePath, version, binDir string, stats *vulncheckStats) (*vulncheck.Result, error) {

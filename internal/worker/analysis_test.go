@@ -17,7 +17,7 @@ func TestRunAnalysisBinary(t *testing.T) {
 	binaryPath, cleanup := buildtest.GoBuild(t, "testdata/analyzer", "")
 	defer cleanup()
 
-	got, err := runAnalysisBinary(binaryPath, "-name Fact", "testdata/module")
+	got, err := runAnalysisBinary(nil, binaryPath, "-name Fact", "testdata/module")
 	if err != nil {
 		t.Fatal(err)
 	}
