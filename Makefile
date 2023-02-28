@@ -36,7 +36,16 @@ go-vulndb:
 	sed '/^[ \t]*#/d' $< > $@
 
 IMAGE := ecosystem-worker-test
-DOCKER_RUN_ARGS := --rm --privileged -p 8080:8080
+
+# Enable the docker container to authenticate to Google Cloud.
+# This assumes the user has run "gcloud auth application-default login".
+DOCKER_AUTH_ARGS := -v "$(HOME)/.config/gcloud:/creds" \
+	--env GOOGLE_APPLICATION_CREDENTIALS=/creds/application_default_credentials.json
+
+DOCKER_RUN_ARGS := --rm --privileged -p 8080:8080 \
+	--env GO_ECOSYSTEM_BINARY_BUCKET=go-ecosystem \
+	$(DOCKER_AUTH_ARGS)
+
 DOCKER_ID_FILE := /tmp/ecosystem-docker-container-id
 
 
@@ -66,16 +75,35 @@ docker-run-bg: docker-build
 	docker run --detach $(DOCKER_RUN_ARGS) $(IMAGE) > $(DOCKER_ID_FILE)
 	while ! curl -s --head http://localhost:8080 > /dev/null; do sleep 1; done
 
-# Test by scanning a small module.
-test: docker-run-bg
-	curl -s 'http://localhost:8080/vulncheck/scan/github.com/fossas/fossa-cli@v1.1.10?importedby=1&serve=true' > /tmp/test.out
+test: docker-run-bg vulncheck-test analysis-test
 	docker container stop `cat $(DOCKER_ID_FILE)`
-	if [[ `grep -c GO-2020-0016 /tmp/test.out` -ge 4 ]]; then \
+
+VULNCHECK_TEST_FILE := /tmp/vtest.out
+
+# Test by scanning a small module.
+vulncheck-test:
+	curl -s 'http://localhost:8080/vulncheck/scan/github.com/fossas/fossa-cli@v1.1.10?importedby=1&serve=true' > $(VULNCHECK_TEST_FILE)
+	@if [[ `grep -c GO-2020-0016 $(VULNCHECK_TEST_FILE)` -ge 4 ]]; then \
 	    echo PASS; \
-	    rm /tmp/test.out; \
+	    rm $(VULNCHECK_TEST_FILE); \
 	else \
 	    echo FAIL; \
-	    echo "output in /tmp/test.out"; \
+	    echo "output in $(VULNCHECK_TEST_FILE)"; \
+	    docker container stop `cat $(DOCKER_ID_FILE)`; \
+	    exit 1; \
+	fi
+
+ANALYSIS_TEST_FILE := /tmp/atest.out
+
+analysis-test:
+	curl -sa 'http://localhost:8080/analysis/scan/github.com/jba/cli@v0.6.0?binary=findcall&args=-name+stringsCut&serve=true' > $(ANALYSIS_TEST_FILE)
+	@if grep -q Diagnostics $(ANALYSIS_TEST_FILE); then \
+	    echo PASS; \
+	    rm $(ANALYSIS_TEST_FILE); \
+	else \
+	    echo FAIL; \
+	    echo "output in $(ANALYSIS_TEST_FILE)"; \
+	    docker container stop `cat $(DOCKER_ID_FILE)`; \
 	    exit 1; \
 	fi
 
@@ -85,4 +113,4 @@ clean:
 	rm -f config.json
 	rm -f vulncheck_sandbox
 
-.PHONY: docker-run docker-run-bg test clean
+.PHONY: docker-run docker-run-bg test vulncheck-test analysis-test clean
