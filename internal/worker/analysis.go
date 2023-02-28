@@ -6,22 +6,30 @@ package worker
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"net/http"
 	"os"
 	"os/exec"
 	"path"
+	"path/filepath"
+	"sort"
 	"strings"
 
 	"cloud.google.com/go/storage"
+	"golang.org/x/exp/maps"
+	"golang.org/x/pkgsite-metrics/internal/bigquery"
 	"golang.org/x/pkgsite-metrics/internal/derrors"
 	"golang.org/x/pkgsite-metrics/internal/log"
 	"golang.org/x/pkgsite-metrics/internal/modules"
 	"golang.org/x/pkgsite-metrics/internal/queue"
 	"golang.org/x/pkgsite-metrics/internal/sandbox"
 	"golang.org/x/pkgsite-metrics/internal/scan"
+	"golang.org/x/pkgsite-metrics/internal/version"
 )
 
 type analysisServer struct {
@@ -78,65 +86,101 @@ func (s *analysisServer) handleScan(w http.ResponseWriter, r *http.Request) (err
 	if err != nil {
 		return fmt.Errorf("%w: %v", derrors.InvalidArgument, err)
 	}
-	jsonTree, err := s.scan(ctx, req)
+	jsonTree, binaryHash, err := s.scan(ctx, req)
 	if err != nil {
 		return err
 	}
-	out, err := json.Marshal(jsonTree)
-	if err != nil {
+
+	if req.Serve {
+		out, err := json.Marshal(jsonTree)
+		if err != nil {
+			return err
+		}
+		_, err = w.Write(out)
 		return err
 	}
-	_, err = w.Write(out)
-	return err
+	return s.writeToBigQuery(ctx, req, jsonTree, binaryHash)
 }
 
 const sandboxRoot = "/bundle/rootfs"
 
-func (s *analysisServer) scan(ctx context.Context, req *analysisRequest) (_ JSONTree, err error) {
+func (s *analysisServer) scan(ctx context.Context, req *analysisRequest) (_ JSONTree, binaryHash []byte, err error) {
 	if req.Binary == "" {
-		return nil, fmt.Errorf("%w: analysis: missing binary", derrors.InvalidArgument)
-	}
-	if !req.Serve {
-		return nil, fmt.Errorf("%w: analysis: writing to BigQuery unimplemented", derrors.InvalidArgument)
+		return nil, nil, fmt.Errorf("%w: analysis: missing binary", derrors.InvalidArgument)
 	}
 	if req.Suffix != "" {
-		return nil, fmt.Errorf("%w: analysis: only implemented for whole modules (no suffix)", derrors.InvalidArgument)
+		return nil, nil, fmt.Errorf("%w: analysis: only implemented for whole modules (no suffix)", derrors.InvalidArgument)
 	}
 
-	destPath := path.Join(sandboxRoot, "binaries", path.Base(req.Binary))
-	if err := copyBinary(ctx, destPath, req.Binary, s.cfg.BinaryBucket); err != nil {
-		return nil, err
+	var tempDir string
+	if req.Insecure {
+		tempDir, err = os.MkdirTemp("", "analysis")
+		if err != nil {
+			return nil, nil, err
+		}
+		defer func() {
+			err1 := os.RemoveAll(tempDir)
+			if err == nil {
+				err = err1
+			}
+		}()
 	}
+
+	var destPath string
+	if req.Insecure {
+		destPath = filepath.Join(tempDir, "binary")
+	} else {
+		destPath = path.Join(sandboxRoot, "binaries", path.Base(req.Binary))
+	}
+	if err := copyBinary(ctx, destPath, req.Binary, s.cfg.BinaryBucket); err != nil {
+		return nil, nil, err
+	}
+	binaryHash, err = hashFile(destPath)
+	if err != nil {
+		return nil, nil, err
+	}
+
 	if !req.Insecure {
 		sandboxDir, cleanup, err := downloadModuleSandbox(ctx, req.Module, req.Version, s.proxyClient)
 		if err != nil {
-			return nil, err
+			return nil, nil, err
 		}
 		defer cleanup()
 		log.Infof(ctx, "running %s on %s@%s in sandbox", req.Binary, req.Module, req.Version)
 		sbox := sandbox.New("/bundle")
 		sbox.Runsc = "/usr/local/bin/runsc"
-		return runAnalysisBinary(sbox, strings.TrimPrefix(destPath, sandboxRoot), req.Args, sandboxDir)
+		tree, err := runAnalysisBinary(sbox, strings.TrimPrefix(destPath, sandboxRoot), req.Args, sandboxDir)
+		if err != nil {
+			return nil, nil, err
+		}
+		return tree, binaryHash, nil
 	}
 	// Insecure mode.
 	// Download the module.
-	tempDir, err := os.MkdirTemp("", "analysis")
-	if err != nil {
-		return nil, err
-	}
-	defer func() {
-		err1 := os.RemoveAll(tempDir)
-		if err == nil {
-			err = err1
-		}
-	}()
-
 	log.Debugf(ctx, "fetching module zip: %s@%s", req.Module, req.Version)
 	const stripModulePrefix = true
 	if err := modules.Download(ctx, req.Module, req.Version, tempDir, s.proxyClient, stripModulePrefix); err != nil {
+		return nil, nil, err
+	}
+	tree, err := runAnalysisBinary(nil, destPath, req.Args, tempDir)
+	if err != nil {
+		return nil, nil, err
+	}
+	return tree, binaryHash, nil
+}
+
+func hashFile(filename string) (_ []byte, err error) {
+	defer derrors.Wrap(&err, "hashFile(%q)", filename)
+	f, err := os.Open(filename)
+	if err != nil {
 		return nil, err
 	}
-	return runAnalysisBinary(nil, destPath, req.Args, tempDir)
+	defer f.Close()
+	h := sha256.New()
+	if _, err := io.Copy(h, f); err != nil {
+		return nil, err
+	}
+	return h.Sum(nil), nil
 }
 
 // copyBinary copies a binary from srcPath to destPath.
@@ -232,4 +276,77 @@ type JSONTextEdit struct {
 
 type jsonError struct {
 	Err string `json:"error"`
+}
+
+func (s *analysisServer) writeToBigQuery(ctx context.Context, req *analysisRequest, jsonTree JSONTree, binaryHash []byte) (err error) {
+	defer derrors.Wrap(&err, "analysisServer.writeToBigQuery(%q, %q)", req.Module, req.Version)
+	row := &bigquery.AnalysisResult{
+		ModulePath: req.Module,
+		BinaryName: req.Binary,
+		AnalysisWorkVersion: bigquery.AnalysisWorkVersion{
+			BinaryVersion: hex.EncodeToString(binaryHash),
+			BinaryArgs:    req.Args,
+			WorkerVersion: s.cfg.VersionID,
+			SchemaVersion: bigquery.AnalysisSchemaVersion,
+		},
+	}
+	info, err := s.proxyClient.Info(ctx, req.Module, req.Version)
+	if err != nil {
+		log.Errorf(ctx, err, "proxy error")
+		row.AddError(fmt.Errorf("%v: %w", err, derrors.ProxyError))
+		return nil
+	}
+	row.Version = info.Version
+	row.SortVersion = version.ForSorting(row.Version)
+	row.CommitTime = info.Time
+
+	row.Diagnostics = jsonTreeToDiagnostics(jsonTree)
+	if s.bqClient == nil {
+		log.Infof(ctx, "bigquery disabled, not uploading")
+	} else {
+		log.Infof(ctx, "uploading to bigquery: %s", req.Path())
+		if err := s.bqClient.Upload(ctx, bigquery.AnalysisTableName, row); err != nil {
+			// This is often caused by:
+			// "Upload: googleapi: got HTTP response code 413 with body"
+			// which happens for some modules.
+			row.AddError(fmt.Errorf("%v: %w", err, derrors.BigQueryError))
+			log.Errorf(ctx, err, "bq.Upload for %s", req.Path())
+		}
+	}
+	return nil
+}
+
+// jsonTreeToDiagnostics converts a jsonTree to a list of diagnostics for BigQuery.
+// It ignores the suggested fixes of the diagnostics.
+func jsonTreeToDiagnostics(jsonTree JSONTree) []*bigquery.Diagnostic {
+	var diags []*bigquery.Diagnostic
+	// Sort for determinism.
+	pkgIDs := maps.Keys(jsonTree)
+	sort.Strings(pkgIDs)
+	for _, pkgID := range pkgIDs {
+		amap := jsonTree[pkgID]
+		aNames := maps.Keys(amap)
+		sort.Strings(aNames)
+		for _, aName := range aNames {
+			diagsOrErr := amap[aName]
+			if diagsOrErr.Error != nil {
+				diags = append(diags, &bigquery.Diagnostic{
+					PackageID:    pkgID,
+					AnalyzerName: aName,
+					Error:        diagsOrErr.Error.Err,
+				})
+			} else {
+				for _, jd := range diagsOrErr.Diagnostics {
+					diags = append(diags, &bigquery.Diagnostic{
+						PackageID:    pkgID,
+						AnalyzerName: aName,
+						Category:     jd.Category,
+						Position:     jd.Posn,
+						Message:      jd.Message,
+					})
+				}
+			}
+		}
+	}
+	return diags
 }
