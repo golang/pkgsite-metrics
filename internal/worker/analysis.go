@@ -171,7 +171,7 @@ func copyBinary(ctx context.Context, destPath, srcPath, binaryBucket string) (er
 		return err
 	}
 	bucket := c.Bucket(binaryBucket)
-	return copyFromGCS(ctx, bucket, path.Join(analysisBinariesBucketDir, srcPath), destPath)
+	return copyFromGCS(ctx, bucket, path.Join(analysisBinariesBucketDir, srcPath), destPath, true)
 }
 
 // Run the binary on the module.

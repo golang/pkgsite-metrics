@@ -608,7 +608,7 @@ func (s *scanner) runBinaryScanInsecure(ctx context.Context, modulePath, version
 	log.Debug(ctx, "copying to temp dir",
 		"from", gcsPathname, "module", modulePath, "version", version, "dir", binDir)
 	localPathname := filepath.Join(tempDir, "binary")
-	if err := copyFromGCS(ctx, s.gcsBucket, gcsPathname, localPathname); err != nil {
+	if err := copyFromGCS(ctx, s.gcsBucket, gcsPathname, localPathname, false); err != nil {
 		return nil, err
 	}
 
@@ -634,9 +634,15 @@ func (s *scanner) runBinaryScanInsecure(ctx context.Context, modulePath, version
 	return res.Vulns, nil
 }
 
-func copyFromGCS(ctx context.Context, bucket *storage.BucketHandle, srcPath, destPath string) (err error) {
+func copyFromGCS(ctx context.Context, bucket *storage.BucketHandle, srcPath, destPath string, executable bool) (err error) {
 	defer derrors.Wrap(&err, "copyFromGCS(%q, %q)", srcPath, destPath)
-	destf, err := os.Create(destPath)
+	var mode os.FileMode
+	if executable {
+		mode = 0755
+	} else {
+		mode = 0644
+	}
+	destf, err := os.OpenFile(destPath, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, mode)
 	if err != nil {
 		return err
 	}
