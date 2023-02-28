@@ -39,7 +39,13 @@ func main() {
 
 	flag.Parse()
 	ctx := context.Background()
-	slog.SetDefault(slog.New(log.NewLineHandler(os.Stderr)))
+	var h slog.Handler
+	if config.OnCloudRun() || *devMode {
+		h = log.NewGoogleCloudHandler()
+	} else {
+		h = log.NewLineHandler(os.Stderr)
+	}
+	slog.SetDefault(slog.New(h))
 	if err := runServer(ctx); err != nil {
 		log.Error(ctx, "fail", err)
 		os.Exit(1)
