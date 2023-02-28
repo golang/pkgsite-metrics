@@ -68,8 +68,16 @@ docker-run-bg: docker-build
 
 # Test by scanning a small module.
 test: docker-run-bg
-	curl -s 'http://localhost:8080/vulncheck/scan/github.com/fossas/fossa-cli@v1.1.10?importedby=1&serve=true' | grep GO-2020-0016
+	curl -s 'http://localhost:8080/vulncheck/scan/github.com/fossas/fossa-cli@v1.1.10?importedby=1&serve=true' > /tmp/test.out
 	docker container stop `cat $(DOCKER_ID_FILE)`
+	if [[ `grep -c GO-2020-0016 /tmp/test.out` -ge 4 ]]; then \
+	    echo PASS; \
+	    rm /tmp/test.out; \
+	else \
+	    echo FAIL; \
+	    echo "output in /tmp/test.out"; \
+	    exit 1; \
+	fi
 
 clean:
 	rm -f go-image.tar.gz
