@@ -16,6 +16,7 @@ require (
 	github.com/client9/misspell v0.3.4
 	github.com/google/go-cmp v0.5.9
 	github.com/google/safehtml v0.1.0
+	github.com/jba/slog v0.0.0-20230215123854-3e7a1a563a4a
 	github.com/lib/pq v1.10.7
 	go.opencensus.io v0.24.0
 	go.opentelemetry.io/otel v1.11.2
@@ -49,7 +50,6 @@ require (
 	github.com/google/uuid v1.3.0 // indirect
 	github.com/googleapis/enterprise-certificate-proxy v0.2.0 // indirect
 	github.com/googleapis/gax-go/v2 v2.7.0 // indirect
-	github.com/jba/slog v0.0.0-20230215123854-3e7a1a563a4a // indirect
 	go.opentelemetry.io/otel/internal/metric v0.27.0 // indirect
 	go.opentelemetry.io/otel/metric v0.27.0 // indirect
 	go.opentelemetry.io/otel/sdk/export/metric v0.26.0 // indirect

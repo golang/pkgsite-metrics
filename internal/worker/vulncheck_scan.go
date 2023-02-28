@@ -833,7 +833,9 @@ func logMemory(ctx context.Context, prefix string) {
 	log.Infof(ctx, "%s: using %.1fG out of %.1fG", prefix, float64(cur)/G, float64(max)/G)
 }
 
-func (s *scanner) cleanGoCaches(ctx context.Context) error {
+const sandboxGoPath = "/usr/local/go/bin/go"
+
+func (s *scanner) cleanGoCaches(ctx context.Context) {
 	var (
 		out []byte
 		err error
@@ -848,25 +850,26 @@ func (s *scanner) cleanGoCaches(ctx context.Context) error {
 		if !config.OnCloudRun() {
 			// Avoid cleaning the developer's local caches.
 			log.Infof(ctx, "not on Cloud Run, so not cleaning caches")
-			return nil
+			return
 		}
 		out, err = exec.Command("go", "clean", "-cache", "-modcache").CombinedOutput()
 	} else {
 		logDiskUsage("before")
-		out, err = s.sbox.Command("go", "clean", "-cache", "-modcache").Output()
+		out, err = s.sbox.Command(sandboxGoPath, "clean", "-cache", "-modcache").Output()
 		if err == nil {
 			logDiskUsage("after")
 		}
 	}
-	if err != nil {
-		return fmt.Errorf("cleaning Go caches: %s", derrors.IncludeStderr(err))
-	}
+
 	output := ""
 	if len(out) > 0 {
 		output = fmt.Sprintf(" with output %s", out)
 	}
-	log.Infof(ctx, "'go clean' succeeded%s", output)
-	return nil
+	if err != nil {
+		log.Errorf(ctx, errors.New(derrors.IncludeStderr(err)), "'go clean' failed%s", output)
+	} else {
+		log.Infof(ctx, "'go clean' succeeded%s", output)
+	}
 }
 
 // vulncheckRequest contains information passed
