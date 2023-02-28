@@ -42,10 +42,13 @@ func (h *LineHandler) WithAttrs(as []slog.Attr) slog.Handler {
 
 func (h *LineHandler) Handle(ctx context.Context, r slog.Record) error {
 	var buf bytes.Buffer
-	fmt.Fprintf(&buf, "%s %-5s %s", r.Time.Format("2006/01/02 15:04:05"), r.Level, r.Message)
+	if !r.Time.IsZero() {
+		fmt.Fprintf(&buf, "%s ", r.Time.Format("2006/01/02 15:04:05"))
+	}
+	fmt.Fprintf(&buf, "%-5s %s", r.Level, r.Message)
 
 	prefix := ""
-	for ga := h.gora; ga != nil; ga = ga.Next {
+	for _, ga := range h.gora.Collect() {
 		if ga.Group != "" {
 			prefix += ga.Group + "."
 		} else {
@@ -63,17 +66,19 @@ func (h *LineHandler) Handle(ctx context.Context, r slog.Record) error {
 }
 
 func writeAttr(w io.Writer, prefix string, a slog.Attr) {
-	switch a.Value.Kind() {
-	case slog.KindGroup:
+	if a.Value.Kind() == slog.KindGroup {
 		if a.Key != "" {
 			prefix = a.Key + "."
 		}
 		for _, g := range a.Value.Group() {
 			writeAttr(w, prefix, g)
 		}
-	case slog.KindString:
-		fmt.Fprintf(w, " %s%s=%q", prefix, a.Key, a.Value)
-	default:
-		fmt.Fprintf(w, " %s%s=%v", prefix, a.Key, a.Value)
+	} else if a.Key != "" {
+		fmt.Fprintf(w, " %s%s=", prefix, a.Key)
+		if a.Value.Kind() == slog.KindString {
+			fmt.Fprintf(w, "%q", a.Value)
+		} else {
+			fmt.Fprintf(w, "%v", a.Value)
+		}
 	}
 }
