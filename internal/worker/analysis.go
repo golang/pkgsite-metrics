@@ -7,8 +7,8 @@ package worker
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
-	"io"
 	"net/http"
 	"os"
 	"os/exec"
@@ -141,37 +141,18 @@ func (s *analysisServer) scan(ctx context.Context, req *analysisRequest) (_ JSON
 
 // copyBinary copies a binary from srcPath to destPath.
 // If binaryBucket is non-empty, it reads srcPath from that GCS bucket.
-// If binaryBucket is empty, it reads srcPath from the local filesystem.
-// This is for testing, since a local docker container doesn't have the
-// credentials to read from a non-public bucket.
-func copyBinary(ctx context.Context, destPath, srcPath, binaryBucket string) (err error) {
+// If binaryBucket is empty, return an error.
+func copyBinary(ctx context.Context, destPath, srcPath, binaryBucket string) error {
 	if binaryBucket == "" {
-		// Assume srcPath is local.
-		srcf, err := os.Open(srcPath)
-		if err != nil {
-			return err
-		}
-		defer srcf.Close()
-		destf, err := os.OpenFile(destPath, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0755)
-		if err != nil {
-			return err
-		}
-		defer func() {
-			err1 := destf.Close()
-			if err == nil {
-				err = err1
-			}
-		}()
-		_, err = io.Copy(destf, srcf)
-		return err
+		return errors.New("missing binary bucket (define GO_ECOSYSTEM_BINARY_BUCKET)")
 	}
-	// Copy the binary from the bucket.
 	c, err := storage.NewClient(ctx)
 	if err != nil {
 		return err
 	}
 	bucket := c.Bucket(binaryBucket)
-	return copyFromGCS(ctx, bucket, path.Join(analysisBinariesBucketDir, srcPath), destPath, true)
+	bucketPath := path.Join(analysisBinariesBucketDir, srcPath)
+	return copyFromGCS(ctx, bucket, bucketPath, destPath, true)
 }
 
 // Run the binary on the module.
