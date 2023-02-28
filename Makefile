@@ -36,6 +36,9 @@ go-vulndb:
 	sed '/^[ \t]*#/d' $< > $@
 
 IMAGE := ecosystem-worker-test
+DOCKER_RUN_ARGS := --rm --privileged -p 8080:8080
+DOCKER_ID_FILE := /tmp/ecosystem-docker-container-id
+
 
 # Build a docker image for testing.
 # This target is a local file that marks the time of the last
@@ -47,26 +50,26 @@ docker-build: go-image.tar.gz go-vulndb cmd/worker/*.go internal/**/*.go cmd/vul
           --build-arg BQ_DATASET=disable
 	touch $@
 
+
 # Run the docker image locally, for testing.
 # The worker will start and listen at port 8080.
 docker-run: docker-build
-	docker run --rm --privileged -p 8080:8080 $(IMAGE)
+	docker run $(DOCKER_RUN_ARGS) $(IMAGE)
 
 # Run the docker image and enter an interactive shell.
 # The worker does not start.
 docker-run-shell: docker-build
-	docker run --rm -it --privileged ecosystem-worker-test /bin/bash
+	docker run -it $(DOCKER_RUN_ARGS) $(IMAGE) /bin/bash
 
 # Run the docker image in the background, waiting until the server is ready.
 docker-run-bg: docker-build
-	docker run --detach --rm --privileged -p 8080:8080 $(IMAGE) > /tmp/ecosystem-docker-container-id
+	docker run --detach $(DOCKER_RUN_ARGS) $(IMAGE) > $(DOCKER_ID_FILE)
 	while ! curl -s --head http://localhost:8080 > /dev/null; do sleep 1; done
 
 # Test by scanning a small module.
 test: docker-run-bg
-
 	curl -s 'http://localhost:8080/vulncheck/scan/github.com/fossas/fossa-cli@v1.1.10?importedby=1&serve=true' | grep GO-2020-0016
-	docker container stop `cat /tmp/ecosystem-docker-container-id`
+	docker container stop `cat $(DOCKER_ID_FILE)`
 
 clean:
 	rm -f go-image.tar.gz
