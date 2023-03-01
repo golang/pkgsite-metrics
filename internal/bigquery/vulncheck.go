@@ -108,15 +108,15 @@ func init() {
 	if err != nil {
 		panic(err)
 	}
-	VulncheckSchemaVersion = schemaVersion(s)
-	addTable(VulncheckTableName, s)
+	VulncheckSchemaVersion = SchemaVersion(s)
+	AddTable(VulncheckTableName, s)
 }
 
 // ReadVulncheckWorkVersions reads the most recent WorkVersions in the vulncheck table.
 func ReadVulncheckWorkVersions(ctx context.Context, c *Client) (_ map[[2]string]*VulncheckWorkVersion, err error) {
 	defer derrors.Wrap(&err, "ReadVulncheckWorkVersions")
 	m := map[[2]string]*VulncheckWorkVersion{}
-	query := partitionQuery(c.FullTableName(VulncheckTableName), "module_path, sort_version", "created_at DESC")
+	query := PartitionQuery(c.FullTableName(VulncheckTableName), "module_path, sort_version", "created_at DESC")
 	iter, err := c.Query(ctx, query)
 	if err != nil {
 		return nil, err
@@ -151,7 +151,7 @@ func FetchVulncheckResults(ctx context.Context, c *Client) (rows []*VulnResult, 
 
 func fetchVulncheckResults(ctx context.Context, c *Client, tableName string) (rows []*VulnResult, err error) {
 	name := c.FullTableName(tableName)
-	query := partitionQuery(name, "module_path, scan_mode", orderByClauses)
+	query := PartitionQuery(name, "module_path, scan_mode", orderByClauses)
 	log.Infof(ctx, "running latest query on %s", name)
 	iter, err := c.Query(ctx, query)
 	if err != nil {
@@ -189,7 +189,7 @@ func init() {
 	if err != nil {
 		panic(err)
 	}
-	addTable(VulncheckTableName+"-report", s)
+	AddTable(VulncheckTableName+"-report", s)
 }
 
 func InsertVulncheckResults(ctx context.Context, c *Client, results []*VulnResult, date civil.Date, allowDuplicates bool) (err error) {

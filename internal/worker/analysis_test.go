@@ -9,7 +9,7 @@ import (
 	"testing"
 
 	"github.com/google/go-cmp/cmp"
-	"golang.org/x/pkgsite-metrics/internal/bigquery"
+	"golang.org/x/pkgsite-metrics/internal/analysis"
 	"golang.org/x/pkgsite-metrics/internal/buildtest"
 )
 
@@ -22,17 +22,17 @@ func TestRunAnalysisBinary(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	want := JSONTree{
-		"test_module": map[string]diagnosticsOrError{
-			"findcall": diagnosticsOrError{
-				Diagnostics: []JSONDiagnostic{
+	want := analysis.JSONTree{
+		"test_module": map[string]analysis.DiagnosticsOrError{
+			"findcall": analysis.DiagnosticsOrError{
+				Diagnostics: []analysis.JSONDiagnostic{
 					{
 						Posn:    "a.go:7:17",
 						Message: "call of Fact(...)",
-						SuggestedFixes: []JSONSuggestedFix{
+						SuggestedFixes: []analysis.JSONSuggestedFix{
 							{
 								Message: "Add '_TEST_'",
-								Edits: []JSONTextEdit{{
+								Edits: []analysis.JSONTextEdit{{
 									Filename: "a.go",
 									Start:    77,
 									End:      77,
@@ -54,36 +54,4 @@ func TestRunAnalysisBinary(t *testing.T) {
 	if diff := cmp.Diff(want, got, cmp.Comparer(comparePaths)); diff != "" {
 		t.Errorf("mismatch (-want, +got):\n%s", diff)
 	}
-}
-
-func TestJSONTreeToDiagnostics(t *testing.T) {
-	in := JSONTree{
-		"pkg1": {
-			"a": {
-				Diagnostics: []JSONDiagnostic{
-					{Category: "c1", Posn: "pos1", Message: "m1"},
-					{Category: "c2", Posn: "pos2", Message: "m2"},
-				},
-			},
-			"b": {
-				Diagnostics: []JSONDiagnostic{{Category: "c3", Posn: "pos3", Message: "m3"}},
-			},
-		},
-		"pkg2": {
-			"c": {
-				Error: &jsonError{Err: "fail"},
-			},
-		},
-	}
-	got := jsonTreeToDiagnostics(in)
-	want := []*bigquery.Diagnostic{
-		{PackageID: "pkg1", AnalyzerName: "a", Category: "c1", Position: "pos1", Message: "m1"},
-		{PackageID: "pkg1", AnalyzerName: "a", Category: "c2", Position: "pos2", Message: "m2"},
-		{PackageID: "pkg1", AnalyzerName: "b", Category: "c3", Position: "pos3", Message: "m3"},
-		{PackageID: "pkg2", AnalyzerName: "c", Error: "fail"},
-	}
-	if diff := cmp.Diff(want, got); diff != "" {
-		t.Errorf("mismatch (-want, +got)\n%s", diff)
-	}
-
 }

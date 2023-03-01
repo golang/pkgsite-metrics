@@ -33,7 +33,7 @@ func init() {
 	if err != nil {
 		panic(err)
 	}
-	addTable(VulnDBRequestTableName, s)
+	AddTable(VulnDBRequestTableName, s)
 }
 
 // SetUploadTime is used by Client.Upload.
@@ -65,7 +65,7 @@ func ReadVulnDBRequestCounts(ctx context.Context, projectID string) (_ []*VulnDB
 func readVulnDBRequestCounts(ctx context.Context, c *Client) (_ []*VulnDBRequestCount, err error) {
 	// Select the most recently inserted row for each date.
 	q := fmt.Sprintf("(%s) ORDER BY date DESC",
-		partitionQuery(c.FullTableName(VulnDBRequestTableName), "date", "inserted_at DESC"))
+		PartitionQuery(c.FullTableName(VulnDBRequestTableName), "date", "inserted_at DESC"))
 	iter, err := c.Query(ctx, q)
 	if err != nil {
 		return nil, err

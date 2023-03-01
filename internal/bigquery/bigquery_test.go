@@ -106,7 +106,7 @@ func TestIntegration(t *testing.T) {
 
 	t.Run("latest", func(t *testing.T) {
 		latestTableID := VulncheckTableName + "-latest"
-		addTable(latestTableID, tableSchema(VulncheckTableName))
+		AddTable(latestTableID, tableSchema(VulncheckTableName))
 		must(client.CreateTable(ctx, latestTableID))
 		defer func() { must(client.Table(latestTableID).Delete(ctx)) }()
 
@@ -167,7 +167,7 @@ func TestIntegration(t *testing.T) {
 
 		// Test InsertVulncheckResults
 		reportTableID := latestTableID + "-report"
-		addTable(reportTableID, tableSchema(VulncheckTableName+"-report"))
+		AddTable(reportTableID, tableSchema(VulncheckTableName+"-report"))
 		reportTable := client.dataset.Table(reportTableID)
 		// Table is created by InsertVulncheckResults.
 		defer func() { must(reportTable.Delete(ctx)) }()

@@ -17,63 +17,19 @@ import (
 	"os/exec"
 	"path"
 	"path/filepath"
-	"sort"
 	"strings"
 
 	"cloud.google.com/go/storage"
-	"golang.org/x/exp/maps"
-	"golang.org/x/pkgsite-metrics/internal/bigquery"
+	"golang.org/x/pkgsite-metrics/internal/analysis"
 	"golang.org/x/pkgsite-metrics/internal/derrors"
 	"golang.org/x/pkgsite-metrics/internal/log"
 	"golang.org/x/pkgsite-metrics/internal/modules"
-	"golang.org/x/pkgsite-metrics/internal/queue"
 	"golang.org/x/pkgsite-metrics/internal/sandbox"
-	"golang.org/x/pkgsite-metrics/internal/scan"
 	"golang.org/x/pkgsite-metrics/internal/version"
 )
 
 type analysisServer struct {
 	*Server
-}
-
-type analysisRequest struct {
-	scan.ModuleURLPath
-	analysisParams
-}
-
-// analysisRequest implements queue.Task so it can be put on a TaskQueue.
-var _ queue.Task = (*analysisRequest)(nil)
-
-type analysisParams struct {
-	Binary     string // name of analysis binary to run
-	Args       string // command-line arguments to binary; split on whitespace
-	ImportedBy int    // imported-by count of module in path
-	Insecure   bool   // if true, run outside sandbox
-	Serve      bool   // serve results back to client instead of writing them to BigQuery
-}
-
-func (r *analysisRequest) Name() string { return r.Binary + "_" + r.Module + "@" + r.Version }
-
-func (r *analysisRequest) Path() string { return r.ModuleURLPath.Path() }
-
-func (r *analysisRequest) Params() string {
-	return scan.FormatParams(r.analysisParams)
-}
-
-func parseAnalysisRequest(r *http.Request, prefix string) (*analysisRequest, error) {
-	mp, err := scan.ParseModuleURLPath(strings.TrimPrefix(r.URL.Path, prefix))
-	if err != nil {
-		return nil, err
-	}
-
-	ap := analysisParams{}
-	if err := scan.ParseParams(r, &ap); err != nil {
-		return nil, err
-	}
-	return &analysisRequest{
-		ModuleURLPath:  mp,
-		analysisParams: ap,
-	}, nil
 }
 
 const analysisBinariesBucketDir = "analysis-binaries"
@@ -82,7 +38,7 @@ func (s *analysisServer) handleScan(w http.ResponseWriter, r *http.Request) (err
 	defer derrors.Wrap(&err, "analysisServer.handleScan")
 
 	ctx := r.Context()
-	req, err := parseAnalysisRequest(r, "/analysis/scan")
+	req, err := analysis.ParseRequest(r, "/analysis/scan")
 	if err != nil {
 		return fmt.Errorf("%w: %v", derrors.InvalidArgument, err)
 	}
@@ -104,7 +60,7 @@ func (s *analysisServer) handleScan(w http.ResponseWriter, r *http.Request) (err
 
 const sandboxRoot = "/bundle/rootfs"
 
-func (s *analysisServer) scan(ctx context.Context, req *analysisRequest) (_ JSONTree, binaryHash []byte, err error) {
+func (s *analysisServer) scan(ctx context.Context, req *analysis.Request) (_ analysis.JSONTree, binaryHash []byte, err error) {
 	if req.Binary == "" {
 		return nil, nil, fmt.Errorf("%w: analysis: missing binary", derrors.InvalidArgument)
 	}
@@ -200,7 +156,7 @@ func copyBinary(ctx context.Context, destPath, srcPath, binaryBucket string) err
 }
 
 // Run the binary on the module.
-func runAnalysisBinary(sbox *sandbox.Sandbox, binaryPath, reqArgs, moduleDir string) (JSONTree, error) {
+func runAnalysisBinary(sbox *sandbox.Sandbox, binaryPath, reqArgs, moduleDir string) (analysis.JSONTree, error) {
 	args := []string{"-json"}
 	args = append(args, strings.Fields(reqArgs)...)
 	args = append(args, "./...")
@@ -208,7 +164,7 @@ func runAnalysisBinary(sbox *sandbox.Sandbox, binaryPath, reqArgs, moduleDir str
 	if err != nil {
 		return nil, fmt.Errorf("running analysis binary %s: %s", binaryPath, derrors.IncludeStderr(err))
 	}
-	var tree JSONTree
+	var tree analysis.JSONTree
 	if err := json.Unmarshal(out, &tree); err != nil {
 		return nil, err
 	}
@@ -226,68 +182,16 @@ func runBinaryInDir(sbox *sandbox.Sandbox, path string, args []string, dir strin
 	return cmd.Output()
 }
 
-type diagnosticsOrError struct {
-	Diagnostics []JSONDiagnostic
-	Error       *jsonError
-}
-
-func (de *diagnosticsOrError) UnmarshalJSON(data []byte) error {
-	if err := json.Unmarshal(data, &de.Diagnostics); err == nil {
-		return nil
-	}
-	return json.Unmarshal(data, &de.Error)
-}
-
-////////////////////////////////////////////////////////////////
-
-// These structs were copied, with minor changes, from
-// golang.org/x/tools/go/analysis/internal/analysisflags.
-
-// A JSONTree is a mapping from package ID to analysis name to result.
-// Each result is either a jsonError or a list of JSONDiagnostic.
-type JSONTree map[string]map[string]diagnosticsOrError
-
-// A JSONDiagnostic can be used to encode and decode analysis.Diagnostics to and
-// from JSON.
-type JSONDiagnostic struct {
-	Category       string             `json:"category,omitempty"`
-	Posn           string             `json:"posn"`
-	Message        string             `json:"message"`
-	SuggestedFixes []JSONSuggestedFix `json:"suggested_fixes,omitempty"`
-}
-
-// A JSONSuggestedFix describes an edit that should be applied as a whole or not
-// at all. It might contain multiple TextEdits/text_edits if the SuggestedFix
-// consists of multiple non-contiguous edits.
-type JSONSuggestedFix struct {
-	Message string         `json:"message"`
-	Edits   []JSONTextEdit `json:"edits"`
-}
-
-// A TextEdit describes the replacement of a portion of a file.
-// Start and End are zero-based half-open indices into the original byte
-// sequence of the file, and New is the new text.
-type JSONTextEdit struct {
-	Filename string `json:"filename"`
-	Start    int    `json:"start"`
-	End      int    `json:"end"`
-	New      string `json:"new"`
-}
-
-type jsonError struct {
-	Err string `json:"error"`
-}
-
-func (s *analysisServer) writeToBigQuery(ctx context.Context, req *analysisRequest, jsonTree JSONTree, binaryHash []byte) (err error) {
+func (s *analysisServer) writeToBigQuery(ctx context.Context, req *analysis.Request, jsonTree analysis.JSONTree, binaryHash []byte) (err error) {
 	defer derrors.Wrap(&err, "analysisServer.writeToBigQuery(%q, %q)", req.Module, req.Version)
-	row := &bigquery.AnalysisResult{
+	row := &analysis.Result{
 		ModulePath: req.Module,
 		BinaryName: req.Binary,
-		AnalysisWorkVersion: bigquery.AnalysisWorkVersion{
+		WorkVersion: analysis.WorkVersion{
 			BinaryVersion: hex.EncodeToString(binaryHash),
 			BinaryArgs:    req.Args,
 			WorkerVersion: s.cfg.VersionID,
-			SchemaVersion: bigquery.AnalysisSchemaVersion,
+			SchemaVersion: analysis.SchemaVersion,
 		},
 	}
 	info, err := s.proxyClient.Info(ctx, req.Module, req.Version)
@@ -300,12 +204,12 @@ func (s *analysisServer) writeToBigQuery(ctx context.Context, req *analysisReque
 	row.SortVersion = version.ForSorting(row.Version)
 	row.CommitTime = info.Time
 
-	row.Diagnostics = jsonTreeToDiagnostics(jsonTree)
+	row.Diagnostics = analysis.JSONTreeToDiagnostics(jsonTree)
 	if s.bqClient == nil {
 		log.Infof(ctx, "bigquery disabled, not uploading")
 	} else {
 		log.Infof(ctx, "uploading to bigquery: %s", req.Path())
-		if err := s.bqClient.Upload(ctx, bigquery.AnalysisTableName, row); err != nil {
+		if err := s.bqClient.Upload(ctx, analysis.TableName, row); err != nil {
 			// This is often caused by:
 			// "Upload: googleapi: got HTTP response code 413 with body"
 			// which happens for some modules.
@@ -314,39 +218,4 @@ func (s *analysisServer) writeToBigQuery(ctx context.Context, req *analysisReque
 		}
 	}
 	return nil
-}
-
-// jsonTreeToDiagnostics converts a jsonTree to a list of diagnostics for BigQuery.
-// It ignores the suggested fixes of the diagnostics.
-func jsonTreeToDiagnostics(jsonTree JSONTree) []*bigquery.Diagnostic {
-	var diags []*bigquery.Diagnostic
-	// Sort for determinism.
-	pkgIDs := maps.Keys(jsonTree)
-	sort.Strings(pkgIDs)
-	for _, pkgID := range pkgIDs {
-		amap := jsonTree[pkgID]
-		aNames := maps.Keys(amap)
-		sort.Strings(aNames)
-		for _, aName := range aNames {
-			diagsOrErr := amap[aName]
-			if diagsOrErr.Error != nil {
-				diags = append(diags, &bigquery.Diagnostic{
-					PackageID:    pkgID,
-					AnalyzerName: aName,
-					Error:        diagsOrErr.Error.Err,
-				})
-			} else {
-				for _, jd := range diagsOrErr.Diagnostics {
-					diags = append(diags, &bigquery.Diagnostic{
-						PackageID:    pkgID,
-						AnalyzerName: aName,
-						Category:     jd.Category,
-						Position:     jd.Posn,
-						Message:      jd.Message,
-					})
-				}
-			}
-		}
-	}
-	return diags
 }

@@ -239,9 +239,9 @@ func NullTime(t time.Time) bq.NullTime {
 	return bq.NullTime{Time: civil.TimeOf(t), Valid: true}
 }
 
-// schemaVersion computes a relatively short string from a schema, such that
+// SchemaVersion computes a relatively short string from a schema, such that
 // different schemas result in different strings with high probability.
-func schemaVersion(schema bq.Schema) string {
+func SchemaVersion(schema bq.Schema) string {
 	hash := sha256.Sum256([]byte(schemaString(schema)))
 	return hex.EncodeToString(hash[:])
 }
@@ -275,7 +275,7 @@ var (
 	tables  = map[string]bq.Schema{}
 )
 
-func addTable(tableID string, s bq.Schema) {
+func AddTable(tableID string, s bq.Schema) {
 	tableMu.Lock()
 	defer tableMu.Unlock()
 	tables[tableID] = s
@@ -298,7 +298,7 @@ func Tables() []string {
 	return tableIDs
 }
 
-// partitionQuery returns a query that returns one row for each distinct value
+// PartitionQuery returns a query that returns one row for each distinct value
 // of partitionColumn in tableName.
 // The selected row will be the first one according to the orderings, which
 // should be comma-separated ORDER BY clauses.
@@ -313,7 +313,7 @@ func Tables() []string {
 //
 // (BigQuery SQL has no DISTINCT ON feature and doesn't allow columns of type RECORD
 // in queries with DISTINCT, so we have to take this approach.)
-func partitionQuery(tableName, partitionColumn, orderings string) string {
+func PartitionQuery(tableName, partitionColumn, orderings string) string {
 	// This query first organizes the table rows into windows that have the same partitionColumn.
 	// The rows in each window are sorted by the given orderings.
 	// They are then assigned numbers, where 1 is the first row in the window.
@@ -334,3 +334,7 @@ func partitionQuery(tableName, partitionColumn, orderings string) string {
 
 	return fmt.Sprintf(qf, partitionColumn, orderings, "`"+tableName+"`")
 }
+
+// Copy InferSchema so users don't have to import cloud.google.com/go/bigquery
+// just to get it.
+var InferSchema = bq.InferSchema
