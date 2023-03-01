@@ -218,7 +218,7 @@ func (s *scanner) ScanModule(ctx context.Context, w http.ResponseWriter, sreq *v
 		// If an error occurred, wrap it accordingly
 		if isVulnDBConnection(err) {
 			err = fmt.Errorf("%v: %w", err, derrors.ScanModuleVulncheckDBConnectionError)
-		} else if !errors.Is(err, derrors.ScanModuleMemoryLimitExceeded) {
+		} else if !errors.Is(err, derrors.ScanModuleMemoryLimitExceeded) && sreq.Mode != ModeGovulncheck {
 			err = fmt.Errorf("%v: %w", err, derrors.ScanModuleVulncheckError)
 		}
 		row.AddError(err)
@@ -298,7 +298,11 @@ func (s *scanner) runScanModule(ctx context.Context, modulePath, version, binary
 		if s.insecure {
 			vulns, err = s.runGovulncheckScanInsecure(ctx, modulePath, version, stats)
 		} else {
-			return nil, errors.New("govulncheck scan is currently unsupported in sandbox mode")
+			res, err := s.runGovulncheckScanSandbox(ctx, modulePath, version, stats)
+			if err != nil {
+				return nil, err
+			}
+			vulns = res.Vulns
 		}
 		if err != nil {
 			return nil, err
@@ -308,6 +312,41 @@ func (s *scanner) runScanModule(ctx context.Context, modulePath, version, binary
 		}
 	}
 	return bvulns, nil
+}
+
+func (s *scanner) runGovulncheckScanSandbox(ctx context.Context, modulePath, version string, stats *vulncheckStats) (*govulncheck.Result, error) {
+	sandboxDir := "/modules/" + modulePath + "@" + version
+	imageDir := "/bundle/rootfs" + sandboxDir
+	defer os.RemoveAll(imageDir)
+
+	log.Infof(ctx, "downloading %s@%s to %s", modulePath, version, imageDir)
+	if err := modules.Download(ctx, modulePath, version, imageDir, s.proxyClient, true); err != nil {
+		log.Debugf(ctx, "download error: %v (%[1]T)", err)
+		return nil, err
+	}
+	// Download all dependencies outside of the sandbox, but use the Go build
+	// cache inside the bundle.
+	log.Infof(ctx, "running go mod download")
+	cmd := exec.Command("go", "mod", "download")
+	cmd.Dir = imageDir
+	cmd.Env = append(cmd.Environ(),
+		"GOPROXY=https://proxy.golang.org",
+		"GOMODCACHE=/bundle/rootfs/"+sandboxGoModCache)
+	_, err := cmd.Output()
+	if err != nil {
+		return nil, fmt.Errorf("%w: 'go mod download' for %s@%s returned %s",
+			derrors.BadModule, modulePath, version, derrors.IncludeStderr(err))
+	}
+	log.Infof(ctx, "go mod download succeeded")
+	log.Infof(ctx, "%s@%s: running govulncheck in sandbox", modulePath, version)
+
+	govulncheckcmd := s.sbox.Command("/binaries/vulncheck_sandbox", ModeGovulncheck, sandboxDir)
+
+	stdout, err := govulncheckcmd.Output()
+	if err != nil {
+		return nil, errors.New(derrors.IncludeStderr(err))
+	}
+	return unmarshalGovulncheckOutput(stdout)
 }
 
 func (s *scanner) runScanModuleSandbox(ctx context.Context, modulePath, version, binaryDir, mode string, stats *vulncheckStats) ([]*vulncheck.Vuln, error) {
