@@ -72,6 +72,9 @@ RUN go build -mod=readonly -o /app/worker ./cmd/worker
 # binaries directory.
 RUN go build -mod=readonly -o /bundle/rootfs/binaries/vulncheck_sandbox ./cmd/vulncheck_sandbox
 
+# Install the latest version of govulncheck in the sandbox's binaries directory
+RUN GOBIN=/bundle/rootfs/binaries go install golang.org/x/vuln/cmd/govulncheck@latest
+
 # Build the sandbox runner program and put it in the bundle root.
 RUN go build -mod=readonly -o /bundle/rootfs/runner ./internal/sandbox/runner.go
 

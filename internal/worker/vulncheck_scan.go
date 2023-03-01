@@ -474,7 +474,11 @@ func (s *scanner) runGovulncheckScanInsecure(ctx context.Context, modulePath, ve
 }
 
 func runGovulncheckCmd(ctx context.Context, modulePath, tempDir string, stats *vulncheckStats) ([]*govulncheck.Vuln, error) {
-	govulncheckCmd := exec.Command("govulncheck", "-json", "./...")
+	govulncheckName := "/bundle/rootfs/binaries/govulncheck"
+	if !fileExists(govulncheckName) {
+		govulncheckName = "govulncheck"
+	}
+	govulncheckCmd := exec.Command(govulncheckName, "-json", "./...")
 	govulncheckCmd.Dir = tempDir
 	output, err := govulncheckCmd.Output()
 	if err != nil {
