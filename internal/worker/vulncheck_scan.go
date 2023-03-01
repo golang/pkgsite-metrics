@@ -53,7 +53,7 @@ const (
 	// ModeBinary runs vulncheck.Binary
 	ModeBinary string = "BINARY"
 
-	// Modegovulncheck runs the govulncheck binary
+	// ModeGovulncheck runs the govulncheck binary
 	ModeGovulncheck = "GOVULNCHECK"
 )
 
@@ -296,7 +296,7 @@ func (s *scanner) runScanModule(ctx context.Context, modulePath, version, binary
 	} else { // Govulncheck mode
 		var vulns []*govulncheck.Vuln
 		if s.insecure {
-			vulns, err = s.runGoVulncheckScanInsecure(ctx, modulePath, version, stats)
+			vulns, err = s.runGovulncheckScanInsecure(ctx, modulePath, version, stats)
 		} else {
 			return nil, errors.New("Govulncheck scan is currently unsupported in sandbox mode")
 		}
@@ -442,8 +442,8 @@ func unmarshalGovulncheckOutput(output []byte) (*govulncheck.Result, error) {
 	return &res, nil
 }
 
-func (s *scanner) runGoVulncheckScanInsecure(ctx context.Context, modulePath, version string, stats *vulncheckStats) (_ []*govulncheck.Vuln, err error) {
-	tempDir, err := os.MkdirTemp("", "runGoVulncheckScan")
+func (s *scanner) runGovulncheckScanInsecure(ctx context.Context, modulePath, version string, stats *vulncheckStats) (_ []*govulncheck.Vuln, err error) {
+	tempDir, err := os.MkdirTemp("", "runGovulncheckScan")
 	if err != nil {
 		return nil, err
 	}
