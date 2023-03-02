@@ -24,7 +24,9 @@ import (
 	"golang.org/x/pkgsite-metrics/internal/derrors"
 	"golang.org/x/pkgsite-metrics/internal/log"
 	"golang.org/x/pkgsite-metrics/internal/modules"
+	"golang.org/x/pkgsite-metrics/internal/queue"
 	"golang.org/x/pkgsite-metrics/internal/sandbox"
+	"golang.org/x/pkgsite-metrics/internal/scan"
 	"golang.org/x/pkgsite-metrics/internal/version"
 )
 
@@ -38,7 +40,7 @@ func (s *analysisServer) handleScan(w http.ResponseWriter, r *http.Request) (err
 	defer derrors.Wrap(&err, "analysisServer.handleScan")
 
 	ctx := r.Context()
-	req, err := analysis.ParseRequest(r, "/analysis/scan")
+	req, err := analysis.ParseScanRequest(r, "/analysis/scan")
 	if err != nil {
 		return fmt.Errorf("%w: %v", derrors.InvalidArgument, err)
 	}
@@ -60,7 +62,7 @@ func (s *analysisServer) handleScan(w http.ResponseWriter, r *http.Request) (err
 
 const sandboxRoot = "/bundle/rootfs"
 
-func (s *analysisServer) scan(ctx context.Context, req *analysis.Request) (_ analysis.JSONTree, binaryHash []byte, err error) {
+func (s *analysisServer) scan(ctx context.Context, req *analysis.ScanRequest) (_ analysis.JSONTree, binaryHash []byte, err error) {
 	if req.Binary == "" {
 		return nil, nil, fmt.Errorf("%w: analysis: missing binary", derrors.InvalidArgument)
 	}
@@ -182,7 +184,7 @@ func runBinaryInDir(sbox *sandbox.Sandbox, path string, args []string, dir strin
 	return cmd.Output()
 }
 
-func (s *analysisServer) writeToBigQuery(ctx context.Context, req *analysis.Request, jsonTree analysis.JSONTree, binaryHash []byte) (err error) {
+func (s *analysisServer) writeToBigQuery(ctx context.Context, req *analysis.ScanRequest, jsonTree analysis.JSONTree, binaryHash []byte) (err error) {
 	defer derrors.Wrap(&err, "analysisServer.writeToBigQuery(%q, %q)", req.Module, req.Version)
 	row := &analysis.Result{
 		ModulePath: req.Module,
@@ -218,4 +220,39 @@ func (s *analysisServer) writeToBigQuery(ctx context.Context, req *analysis.Requ
 		}
 	}
 	return nil
+}
+
+func (s *analysisServer) handleEnqueue(w http.ResponseWriter, r *http.Request) (err error) {
+	defer derrors.Wrap(&err, "analysisServer.handleEnqueue")
+	ctx := r.Context()
+	params := &analysis.EnqueueParams{Min: defaultMinImportedByCount}
+	if err := scan.ParseParams(r, params); err != nil {
+		return fmt.Errorf("%w: %v", derrors.InvalidArgument, err)
+	}
+	mods, err := readModules(ctx, s.cfg, params.File, params.Min)
+	if err != nil {
+		return err
+	}
+	tasks := createAnalysisQueueTasks(params, mods)
+	return enqueueTasks(ctx, tasks, s.queue,
+		&queue.Options{Namespace: "analysis", TaskNameSuffix: params.Suffix})
+}
+
+func createAnalysisQueueTasks(params *analysis.EnqueueParams, mods []scan.ModuleSpec) []queue.Task {
+	var tasks []queue.Task
+	for _, mod := range mods {
+		tasks = append(tasks, &analysis.ScanRequest{
+			ModuleURLPath: scan.ModuleURLPath{
+				Module:  mod.Path,
+				Version: mod.Version,
+			},
+			ScanParams: analysis.ScanParams{
+				Binary:     params.Binary,
+				Args:       params.Args,
+				ImportedBy: mod.ImportedBy,
+				Insecure:   params.Insecure,
+			},
+		})
+	}
+	return tasks
 }

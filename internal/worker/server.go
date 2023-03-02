@@ -191,6 +191,7 @@ func (s *Server) registerVulncheckHandlers(ctx context.Context) error {
 func (s *Server) registerAnalysisHandlers(ctx context.Context) error {
 	h := &analysisServer{s}
 	s.handle("/analysis/scan/", h.handleScan)
+	s.handle("/analysis/enqueue", h.handleEnqueue)
 	return nil
 }
 

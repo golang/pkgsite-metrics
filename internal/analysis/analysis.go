@@ -19,12 +19,12 @@ import (
 	"golang.org/x/pkgsite-metrics/internal/scan"
 )
 
-type Request struct {
+type ScanRequest struct {
 	scan.ModuleURLPath
-	QueryParams
+	ScanParams
 }
 
-type QueryParams struct {
+type ScanParams struct {
 	Binary     string // name of analysis binary to run
 	Args       string // command-line arguments to binary; split on whitespace
 	ImportedBy int    // imported-by count of module in path
@@ -32,30 +32,39 @@ type QueryParams struct {
 	Serve      bool   // serve results back to client instead of writing them to BigQuery
 }
 
-// Request implements queue.Task so it can be put on a TaskQueue.
-var _ queue.Task = (*Request)(nil)
-
-func (r *Request) Name() string { return r.Binary + "_" + r.Module + "@" + r.Version }
-
-func (r *Request) Path() string { return r.ModuleURLPath.Path() }
-
-func (r *Request) Params() string {
-	return scan.FormatParams(r.QueryParams)
+type EnqueueParams struct {
+	Binary   string // name of analysis binary to run
+	Args     string // command-line arguments to binary; split on whitespace
+	Insecure bool   // if true, run outside sandbox
+	Min      int    // minimum import-by count for a module to be included
+	File     string // path to file containing modules; if missing, use DB
+	Suffix   string // appended to task queue IDs to generate unique tasks
 }
 
-func ParseRequest(r *http.Request, prefix string) (*Request, error) {
+// Request implements queue.Task so it can be put on a TaskQueue.
+var _ queue.Task = (*ScanRequest)(nil)
+
+func (r *ScanRequest) Name() string { return r.Binary + "_" + r.Module + "@" + r.Version }
+
+func (r *ScanRequest) Path() string { return r.ModuleURLPath.Path() }
+
+func (r *ScanRequest) Params() string {
+	return scan.FormatParams(r.ScanParams)
+}
+
+func ParseScanRequest(r *http.Request, prefix string) (*ScanRequest, error) {
 	mp, err := scan.ParseModuleURLPath(strings.TrimPrefix(r.URL.Path, prefix))
 	if err != nil {
 		return nil, err
 	}
 
-	ap := QueryParams{}
+	ap := ScanParams{}
 	if err := scan.ParseParams(r, &ap); err != nil {
 		return nil, err
 	}
-	return &Request{
+	return &ScanRequest{
 		ModuleURLPath: mp,
-		QueryParams:   ap,
+		ScanParams:    ap,
 	}, nil
 }
 

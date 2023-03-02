@@ -11,6 +11,8 @@ import (
 	"github.com/google/go-cmp/cmp"
 	"golang.org/x/pkgsite-metrics/internal/analysis"
 	"golang.org/x/pkgsite-metrics/internal/buildtest"
+	"golang.org/x/pkgsite-metrics/internal/queue"
+	"golang.org/x/pkgsite-metrics/internal/scan"
 )
 
 func TestRunAnalysisBinary(t *testing.T) {
@@ -53,5 +55,33 @@ func TestRunAnalysisBinary(t *testing.T) {
 
 	if diff := cmp.Diff(want, got, cmp.Comparer(comparePaths)); diff != "" {
 		t.Errorf("mismatch (-want, +got):\n%s", diff)
+	}
+}
+
+func TestCreateAnalysisQueueTasks(t *testing.T) {
+	mods := []scan.ModuleSpec{
+		{Path: "a.com/a", Version: "v1.2.3", ImportedBy: 1},
+		{Path: "b.com/b", Version: "v1.0.0", ImportedBy: 2},
+	}
+	got := createAnalysisQueueTasks(&analysis.EnqueueParams{
+		Binary:   "bin",
+		Args:     "args",
+		Insecure: true,
+		Suffix:   "suff",
+	}, mods)
+	want := []queue.Task{
+		&analysis.ScanRequest{
+			ModuleURLPath: scan.ModuleURLPath{Module: "a.com/a", Version: "v1.2.3"},
+			ScanParams: analysis.ScanParams{Binary: "bin", Args: "args",
+				ImportedBy: 1, Insecure: true},
+		},
+		&analysis.ScanRequest{
+			ModuleURLPath: scan.ModuleURLPath{Module: "b.com/b", Version: "v1.0.0"},
+			ScanParams: analysis.ScanParams{Binary: "bin", Args: "args",
+				ImportedBy: 2, Insecure: true},
+		},
+	}
+	if diff := cmp.Diff(want, got); diff != "" {
+		t.Errorf("mismatch (-want +got):\n%s", diff)
 	}
 }
