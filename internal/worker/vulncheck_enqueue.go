@@ -107,8 +107,8 @@ func createVulncheckQueueTasks(ctx context.Context, cfg *config.Config, params *
 
 func vulncheckMode(mode string) (string, error) {
 	if mode == "" {
-		// VTA is the default mode
-		return ModeVTA, nil
+		// VTAStacks is the default mode
+		return ModeVTAStacks, nil
 	}
 	mode = strings.ToUpper(mode)
 	if _, ok := modes[mode]; !ok {

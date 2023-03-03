@@ -39,12 +39,12 @@ import (
 )
 
 const (
-	// ModeVTA is the default vulncheck mode
-	ModeVTA string = "VTA"
-
-	// modeVTStacks is modeVTA where call stacks are
-	// computed additionally. Closely resembles the
-	// actual logic of govulncheck.
+	// ModeVTAStacks computes vulnerability call graph
+	// and representative call stacks for each
+	// vulnerability. Closely resembles the actual logic
+	// of govulncheck.
+	//
+	// ModeVTAStacks is default vulncheck mode.
 	ModeVTAStacks string = "VTASTACKS"
 
 	// ModeImports only computes import-level analysis.
@@ -60,7 +60,6 @@ const (
 // modes is a set of supported vulncheck modes
 var modes = map[string]bool{
 	ModeImports:     true,
-	ModeVTA:         true,
 	ModeVTAStacks:   true,
 	ModeBinary:      true,
 	ModeGovulncheck: true,
@@ -91,7 +90,7 @@ func (h *VulncheckServer) handleScan(w http.ResponseWriter, r *http.Request) (er
 		return fmt.Errorf("%w: %v", derrors.InvalidArgument, err)
 	}
 	if sreq.Mode == "" {
-		sreq.Mode = ModeVTA
+		sreq.Mode = ModeVTAStacks
 	}
 	if shouldSkip[sreq.Module] {
 		log.Infof(ctx, "skipping %s (module in shouldSkip list)", sreq.Path())

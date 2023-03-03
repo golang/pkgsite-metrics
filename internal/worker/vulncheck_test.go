@@ -22,9 +22,9 @@ func TestVulnsScanned(t *testing.T) {
 
 	rows := []*bigquery.VulnResult{
 		{ModulePath: "m1", ScanMode: ModeImports, Vulns: []*bigquery.Vuln{vuln1A, vuln1B, vuln1C, vuln2A}},
-		{ModulePath: "m1", ScanMode: ModeVTA, Vulns: []*bigquery.Vuln{vuln1A, vuln1B}},
+		{ModulePath: "m1", ScanMode: ModeVTAStacks, Vulns: []*bigquery.Vuln{vuln1A, vuln1B}},
 		{ModulePath: "m2", ScanMode: ModeImports, Vulns: []*bigquery.Vuln{vuln2A}},
-		{ModulePath: "m2", ScanMode: ModeVTA, Vulns: []*bigquery.Vuln{}},
+		{ModulePath: "m2", ScanMode: ModeVTAStacks, Vulns: []*bigquery.Vuln{}},
 	}
 
 	got := handleVulncheckRows(context.Background(), p, rows)

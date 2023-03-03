@@ -58,14 +58,14 @@ func TestCreateQueueTasks(t *testing.T) {
 	}
 
 	params := &vulncheckEnqueueParams{Min: 8, File: "testdata/modules.txt"}
-	gotTasks, err := createVulncheckQueueTasks(context.Background(), &config.Config{}, params, []string{ModeVTA})
+	gotTasks, err := createVulncheckQueueTasks(context.Background(), &config.Config{}, params, []string{ModeVTAStacks})
 	if err != nil {
 		t.Fatal(err)
 	}
 
 	wantTasks := []queue.Task{
-		vreq("github.com/pkg/errors", "v0.9.1", ModeVTA, 10),
-		vreq("golang.org/x/net", "v0.4.0", ModeVTA, 20),
+		vreq("github.com/pkg/errors", "v0.9.1", ModeVTAStacks, 10),
+		vreq("golang.org/x/net", "v0.4.0", ModeVTAStacks, 20),
 	}
 	if diff := cmp.Diff(wantTasks, gotTasks, cmp.AllowUnexported(vulncheckRequest{})); diff != "" {
 		t.Errorf("mismatch (-want, +got):\n%s", diff)
@@ -81,7 +81,7 @@ func TestCreateQueueTasks(t *testing.T) {
 	}
 	wantTasks = nil
 	// cfg.BinaryBucket is empty, so no binary-mode tasks are created.
-	for _, mode := range []string{ModeGovulncheck, ModeImports, ModeVTA, ModeVTAStacks} {
+	for _, mode := range []string{ModeGovulncheck, ModeImports, ModeVTAStacks} {
 		wantTasks = append(wantTasks,
 			vreq("github.com/pkg/errors", "v0.9.1", mode, 10),
 			vreq("golang.org/x/net", "v0.4.0", mode, 20))
@@ -99,8 +99,8 @@ func TestListModes(t *testing.T) {
 		want    []string
 		wantErr bool
 	}{
-		{"", true, []string{ModeBinary, ModeGovulncheck, ModeImports, ModeVTA, ModeVTAStacks}, false},
-		{"", false, []string{ModeVTA}, false},
+		{"", true, []string{ModeBinary, ModeGovulncheck, ModeImports, ModeVTAStacks}, false},
+		{"", false, []string{ModeVTAStacks}, false},
 		{"imports", false, []string{ModeImports}, false},
 		{"imports", true, nil, true},
 	} {

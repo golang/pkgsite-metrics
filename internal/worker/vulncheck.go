@@ -124,7 +124,6 @@ type VulncheckPage struct {
 	NumVulnsInDatabase int
 	NumVulnsScanned    int
 
-	VTAResult       *VulncheckResult
 	VTAStacksResult *VulncheckResult
 	ImportsResult   *VulncheckResult
 
@@ -142,7 +141,7 @@ func (p *VulncheckPage) PercentVulnsScanned() float64 {
 }
 
 func (p *VulncheckPage) NumModulesSuccess() int {
-	return p.VTAResult.NumModulesSuccess + p.ImportsResult.NumModulesSuccess
+	return p.VTAStacksResult.NumModulesSuccess + p.ImportsResult.NumModulesSuccess
 }
 
 type VulncheckResult struct {
@@ -248,8 +247,6 @@ func handleVulncheckRows(ctx context.Context, page *VulncheckPage, rows []*bigqu
 	vulnsScanned := map[string]*ReportResult{}
 	for _, row := range rows {
 		switch row.ScanMode {
-		case ModeVTA:
-			page.VTAResult.update(row)
 		case ModeVTAStacks:
 			page.VTAStacksResult.update(row)
 		case ModeImports:
@@ -278,7 +275,7 @@ func handleVulncheckRows(ctx context.Context, page *VulncheckPage, rows []*bigqu
 				importsSeen[v.ID] = true
 			}
 
-			if row.ScanMode == ModeVTA && v.CallSink.Int64 > 0 {
+			if row.ScanMode == ModeVTAStacks && v.CallSink.Int64 > 0 {
 				if !callsSeen[v.ID] {
 					r.VTANumModules++
 				}
@@ -292,7 +289,6 @@ func handleVulncheckRows(ctx context.Context, page *VulncheckPage, rows []*bigqu
 func newPage(table string) *VulncheckPage {
 	return &VulncheckPage{
 		TableName:       table,
-		VTAResult:       &VulncheckResult{ErrorCategory: make(map[string]int)},
 		VTAStacksResult: &VulncheckResult{ErrorCategory: make(map[string]int)},
 		ImportsResult:   &VulncheckResult{ErrorCategory: make(map[string]int)},
 	}
@@ -300,7 +296,7 @@ func newPage(table string) *VulncheckPage {
 
 func (page *VulncheckPage) addErrors() {
 	ecs := map[string]*ErrorCategory{}
-	for category, count := range page.VTAResult.ErrorCategory {
+	for category, count := range page.VTAStacksResult.ErrorCategory {
 		if _, ok := ecs[category]; !ok {
 			ecs[category] = &ErrorCategory{Name: category}
 		}
