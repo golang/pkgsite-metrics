@@ -298,7 +298,7 @@ func (s *scanner) runScanModule(ctx context.Context, modulePath, version, binary
 		if s.insecure {
 			vulns, err = s.runGovulncheckScanInsecure(ctx, modulePath, version, stats)
 		} else {
-			return nil, errors.New("Govulncheck scan is currently unsupported in sandbox mode")
+			return nil, errors.New("govulncheck scan is currently unsupported in sandbox mode")
 		}
 		if err != nil {
 			return nil, err
@@ -335,9 +335,13 @@ func (s *scanner) runSourceScanSandbox(ctx context.Context, modulePath, version,
 	return unmarshalVulncheckOutput(stdout)
 }
 
-// The Go module cache resides in its default location, $HOME/go/pkg/mod.
-// Inside the sandbox, the user is root and their home directory is /root.
-const sandboxGoModCache = "root/go/pkg/mod"
+// Inside the sandbox, the user is root and their $HOME directory is /root.
+const (
+	// The Go module cache resides in its default location, $HOME/go/pkg/mod.
+	sandboxGoModCache = "root/go/pkg/mod"
+	// The Go cache resides in its default location, $HOME/.cache/go-build.
+	sandboxGoCache = "root/.cache/go-build"
+)
 
 func runSourceScanSandbox(ctx context.Context, modulePath, version, mode string, proxyClient *proxy.Client, sbox *sandbox.Sandbox) ([]byte, error) {
 	sandboxDir, cleanup, err := downloadModuleSandbox(ctx, modulePath, version, proxyClient)
@@ -363,7 +367,7 @@ func downloadModuleSandbox(ctx context.Context, modulePath, version string, prox
 		return "", nil, err
 	}
 	// Download all dependencies outside of the sandbox, but use the Go build
-	// cache inside the bundle.
+	// cache ("/bundle/rootfs/" + sandboxGoCache) inside the bundle.
 	log.Infof(ctx, "running go mod download")
 	cmd := exec.Command("go", "mod", "download")
 	cmd.Dir = imageDir
@@ -855,7 +859,11 @@ func (s *scanner) cleanGoCaches(ctx context.Context) {
 		out, err = exec.Command("go", "clean", "-cache", "-modcache").CombinedOutput()
 	} else {
 		logDiskUsage("before")
-		out, err = s.sbox.Command(sandboxGoPath, "clean", "-cache", "-modcache").Output()
+		// TODO(zpavlinovic): clean within sandbox. Currently, there is a memory leak.
+		//out, err = s.sbox.Command(sandboxGoPath, "clean", "-cache", "-modcache").Output()
+		c := exec.Command("go", "clean", "-cache", "-modcache")
+		c.Env = append(os.Environ(), "GOCACHE=/bundle/rootfs/"+sandboxGoCache, "GOMODCACHE=/bundle/rootfs/"+sandboxGoModCache)
+		out, err = c.CombinedOutput()
 		if err == nil {
 			logDiskUsage("after")
 		}
