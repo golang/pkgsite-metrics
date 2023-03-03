@@ -41,52 +41,57 @@ func (h *VulncheckServer) handleEnqueueAll(w http.ResponseWriter, r *http.Reques
 }
 
 func (h *VulncheckServer) enqueue(r *http.Request, allModes bool) error {
-	tasks, params, err := createVulncheckQueueTasks(r, h.cfg, allModes)
-	if err != nil {
-		return err
-	}
-	return enqueueTasks(r.Context(), tasks, h.queue,
-		&queue.Options{Namespace: "vulncheck", TaskNameSuffix: params.Suffix})
-}
-
-func createVulncheckQueueTasks(r *http.Request, cfg *config.Config, allModes bool) (_ []queue.Task, _ *vulncheckEnqueueParams, err error) {
-	defer derrors.Wrap(&err, "createQueueTasks(%s, %t)", r.URL, allModes)
 	ctx := r.Context()
 	params := &vulncheckEnqueueParams{Min: defaultMinImportedByCount}
 	if err := scan.ParseParams(r, params); err != nil {
-		return nil, nil, err
+		return fmt.Errorf("%w: %v", derrors.InvalidArgument, err)
 	}
-	if allModes && params.Mode != "" {
-		return nil, nil, errors.New("mode query param provided for enqueueAll")
+	modes, err := listModes(params.Mode, allModes)
+	if err != nil {
+		return fmt.Errorf("%w: %v", derrors.InvalidArgument, err)
 	}
-	var enqueueModes []string
-	if allModes {
-		enqueueModes = maps.Keys(modes)
-		sort.Strings(enqueueModes) // make deterministic for testing
-	} else {
-		mode, err := vulncheckMode(params.Mode)
-		if err != nil {
-			return nil, nil, err
-		}
-		enqueueModes = []string{mode}
+	tasks, err := createVulncheckQueueTasks(ctx, h.cfg, params, modes)
+	if err != nil {
+		return err
 	}
+	return enqueueTasks(ctx, tasks, h.queue,
+		&queue.Options{Namespace: "vulncheck", TaskNameSuffix: params.Suffix})
+}
 
+func listModes(modeParam string, allModes bool) ([]string, error) {
+	if allModes {
+		if modeParam != "" {
+			return nil, errors.New("mode query param provided for enqueueAll")
+		}
+		ms := maps.Keys(modes)
+		sort.Strings(ms) // make deterministic for testing
+		return ms, nil
+	}
+	mode, err := vulncheckMode(modeParam)
+	if err != nil {
+		return nil, err
+	}
+	return []string{mode}, nil
+}
+
+func createVulncheckQueueTasks(ctx context.Context, cfg *config.Config, params *vulncheckEnqueueParams, modes []string) (_ []queue.Task, err error) {
+	defer derrors.Wrap(&err, "createVulncheckQueueTasks(%v)", modes)
 	var (
 		tasks    []queue.Task
 		modspecs []scan.ModuleSpec
 	)
-	for _, mode := range enqueueModes {
+	for _, mode := range modes {
 		var reqs []*vulncheckRequest
 		if mode == ModeBinary {
 			reqs, err = readBinaries(ctx, cfg.BinaryBucket)
 			if err != nil {
-				return nil, nil, err
+				return nil, err
 			}
 		} else {
 			if modspecs == nil {
 				modspecs, err = readModules(ctx, cfg, params.File, params.Min)
 				if err != nil {
-					return nil, nil, err
+					return nil, err
 				}
 			}
 			reqs = moduleSpecsToScanRequests(modspecs, mode)
@@ -97,7 +102,7 @@ func createVulncheckQueueTasks(r *http.Request, cfg *config.Config, allModes boo
 			}
 		}
 	}
-	return tasks, params, nil
+	return tasks, nil
 }
 
 func vulncheckMode(mode string) (string, error) {

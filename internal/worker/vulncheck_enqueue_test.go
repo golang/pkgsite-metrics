@@ -7,7 +7,7 @@ package worker
 import (
 	"context"
 	"flag"
-	"net/http"
+	"fmt"
 	"testing"
 
 	"github.com/google/go-cmp/cmp"
@@ -57,11 +57,8 @@ func TestCreateQueueTasks(t *testing.T) {
 		}
 	}
 
-	req, err := http.NewRequest("GET", "https://path?min=8&file=testdata/modules.txt", nil)
-	if err != nil {
-		t.Fatal(err)
-	}
-	gotTasks, _, err := createVulncheckQueueTasks(req, &config.Config{}, false)
+	params := &vulncheckEnqueueParams{Min: 8, File: "testdata/modules.txt"}
+	gotTasks, err := createVulncheckQueueTasks(context.Background(), &config.Config{}, params, []string{ModeVTA})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -74,7 +71,11 @@ func TestCreateQueueTasks(t *testing.T) {
 		t.Errorf("mismatch (-want, +got):\n%s", diff)
 	}
 
-	gotTasks, _, err = createVulncheckQueueTasks(req, &config.Config{}, true)
+	allModes, err := listModes("", true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	gotTasks, err = createVulncheckQueueTasks(context.Background(), &config.Config{}, params, allModes)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -88,5 +89,29 @@ func TestCreateQueueTasks(t *testing.T) {
 
 	if diff := cmp.Diff(wantTasks, gotTasks, cmp.AllowUnexported(vulncheckRequest{})); diff != "" {
 		t.Errorf("mismatch (-want, +got):\n%s", diff)
+	}
+}
+
+func TestListModes(t *testing.T) {
+	for _, test := range []struct {
+		param   string
+		all     bool
+		want    []string
+		wantErr bool
+	}{
+		{"", true, []string{ModeBinary, ModeGovulncheck, ModeImports, ModeVTA, ModeVTAStacks}, false},
+		{"", false, []string{ModeVTA}, false},
+		{"imports", false, []string{ModeImports}, false},
+		{"imports", true, nil, true},
+	} {
+		t.Run(fmt.Sprintf("%q,%t", test.param, test.all), func(t *testing.T) {
+			got, err := listModes(test.param, test.all)
+			if err != nil && !test.wantErr {
+				t.Fatal(err)
+			}
+			if err == nil && !cmp.Equal(got, test.want) {
+				t.Errorf("got %v, want %v", got, test.want)
+			}
+		})
 	}
 }
