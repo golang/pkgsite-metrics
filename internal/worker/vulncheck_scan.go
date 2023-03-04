@@ -571,20 +571,6 @@ func (s *scanner) runSourceScanInsecure(ctx context.Context, modulePath, version
 	if err == nil && len(pkgErrors) > 0 {
 		err = fmt.Errorf("%v", pkgErrors)
 	}
-	if err != nil {
-		if !fileExists(filepath.Join(tempDir, "go.mod")) {
-			err = fmt.Errorf("%v: %w", err, derrors.ScanModuleLoadPackagesNoGoModError)
-		} else if !fileExists(filepath.Join(tempDir, "go.sum")) {
-			err = fmt.Errorf("%v: %w", err, derrors.ScanModuleLoadPackagesNoGoSumError)
-		} else if isNoRequiredModule(err) {
-			err = fmt.Errorf("%v: %w", err, derrors.ScanModuleLoadPackagesNoRequiredModuleError)
-		} else if isMissingGoSumEntry(err.Error()) {
-			err = fmt.Errorf("%v: %w", err, derrors.ScanModuleLoadPackagesMissingGoSumEntryError)
-		} else {
-			err = fmt.Errorf("%v: %w", err, derrors.ScanModuleLoadPackagesError)
-		}
-		return nil, err
-	}
 
 	stats.pkgsMemory = memSubtract(currHeapUsage(), preScanMemory)
 
@@ -710,32 +696,10 @@ func copyFromGCSToWriter(ctx context.Context, w io.Writer, bucket *storage.Bucke
 	return err
 }
 
-// fileExists checks if file path exists. Returns true
-// if the file exists or it cannot prove that it does
-// not exist. Otherwise, returns false.
-func fileExists(file string) bool {
-	if _, err := os.Stat(file); err == nil {
-		return true
-	} else if errors.Is(err, os.ErrNotExist) {
-		return false
-	}
-	// Conservatively return true if os.Stat fails
-	// for some other reason.
-	return true
-}
-
 func isVulnDBConnection(err error) bool {
 	s := err.Error()
 	return strings.Contains(s, "https://vuln.go.dev") &&
 		strings.Contains(s, "connection")
-}
-
-func isNoRequiredModule(err error) bool {
-	return strings.Contains(err.Error(), "no required module")
-}
-
-func isMissingGoSumEntry(errMsg string) bool {
-	return strings.Contains(errMsg, "missing go.sum entry")
 }
 
 func vulncheckConfig(dbClient vulnc.Client, mode string) *vulncheck.Config {

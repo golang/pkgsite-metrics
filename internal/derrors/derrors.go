@@ -51,38 +51,38 @@ var (
 	// to disk during the scan setup process. This is not an error with vulncheck.
 	ScanModuleOSError = errors.New("scan module OS error")
 
-	// ScanModuleLoadPackagesError is used to capture general unclassified issues
-	// with load packages during the scan setup process. This is not an error with
+	// LoadPackagesError is used to capture general unclassified issues with
+	// load packages during the scan setup process. This is not an error with
 	// vulncheck. There are specific load packages errors that are categorized
-	// separately, e.g., ScanModuleLoadPackagesNoGoModError.
-	ScanModuleLoadPackagesError = errors.New("scan module load packages error")
+	// separately, e.g., LoadPackagesNoGoModError.
+	LoadPackagesError = errors.New("scan module load packages error")
 
-	// ScanModuleLoadPackagesGoVersionError is used to capture issues with loading
-	// packages where the module is not supported by the current Go version. This
-	// is not an error with any specific scan technique.
-	ScanModuleLoadPackagesGoVersionError = errors.New("scan module load packages error: Go version mismatch")
+	// LoadPackagesGoVersionError is used to capture issues with loading
+	// packages where the module is not supported by the current Go version.
+	// This is not an error with any specific scan technique.
+	LoadPackagesGoVersionError = errors.New("scan module load packages error: Go version mismatch")
 
-	// ScanModuleLoadPackagesNoGoModError is used to capture a specific issue
-	// with loading packages during the scan setup process where a go.mod file
+	// LoadPackagesNoGoModError is used to capture a specific issue with
+	// loading packages during the scan setup process where a go.mod file
 	// is missing. This is not an error with vulncheck.
-	ScanModuleLoadPackagesNoGoModError = errors.New("scan module load packages error: does not have go.mod")
+	LoadPackagesNoGoModError = errors.New("scan module load packages error: does not have go.mod")
 
-	// ScanModuleLoadPackagesNoGoSumError is used to capture a specific issue
-	// with loading packages during the scan setup process where a go.sum file
+	// LoadPackagesNoGoSumError is used to capture a specific issue with
+	// loading packages during the scan setup process where a go.sum file
 	// is missing. This is not an error with vulncheck.
-	ScanModuleLoadPackagesNoGoSumError = errors.New("scan module load packages error: does not have go.sum")
+	LoadPackagesNoGoSumError = errors.New("scan module load packages error: does not have go.sum")
 
-	// ScanModuleLoadPackagesNoRequiredModuleError is used to capture a specific
+	// LoadPackagesNoRequiredModuleError is used to capture a specific
 	// issue with loading packages during the scan setup process where a package
 	// is imported but no required module is provided. This is not an error with
 	// vulncheck and is likely happening due to outdated go.sum file.
-	ScanModuleLoadPackagesNoRequiredModuleError = errors.New("scan module load packages error: no required module provided")
+	LoadPackagesNoRequiredModuleError = errors.New("scan module load packages error: no required module provided")
 
-	// ScanModuleLoadPackagesMissingGoSumEntryError is used to capture a specific
+	// LoadPackagesMissingGoSumEntryError is used to capture a specific
 	// issue with loading packages during the scan setup process where a package
 	// is imported but some of its go.sum entries are missing. This is not an error
 	// with vulncheck and is likely happening due to outdated go.sum file.
-	ScanModuleLoadPackagesMissingGoSumEntryError = errors.New("scan module load packages error: missing go.sum entry")
+	LoadPackagesMissingGoSumEntryError = errors.New("scan module load packages error: missing go.sum entry")
 
 	// ScanModuleVulncheckDBConnectionError is used to capture a specific
 	// vulncheck scan error where a connection to vuln db failed.
@@ -177,17 +177,17 @@ func CategorizeError(err error) string {
 		return "VULNCHECK - MISC"
 	case errors.Is(err, ScanModuleVulncheckDBConnectionError):
 		return "VULNCHECK - DB CONNECTION"
-	case errors.Is(err, ScanModuleLoadPackagesError):
+	case errors.Is(err, LoadPackagesError):
 		return "LOAD"
-	case errors.Is(err, ScanModuleLoadPackagesGoVersionError):
+	case errors.Is(err, LoadPackagesGoVersionError):
 		return "LOAD - WRONG GO VERSION"
-	case errors.Is(err, ScanModuleLoadPackagesNoGoModError):
+	case errors.Is(err, LoadPackagesNoGoModError):
 		return "LOAD - NO GO.MOD"
-	case errors.Is(err, ScanModuleLoadPackagesNoGoSumError):
+	case errors.Is(err, LoadPackagesNoGoSumError):
 		return "LOAD - NO GO.SUM"
-	case errors.Is(err, ScanModuleLoadPackagesNoRequiredModuleError):
+	case errors.Is(err, LoadPackagesNoRequiredModuleError):
 		return "LOAD - NO REQUIRED MODULE"
-	case errors.Is(err, ScanModuleLoadPackagesMissingGoSumEntryError):
+	case errors.Is(err, LoadPackagesMissingGoSumEntryError):
 		return "LOAD - NO GO.SUM ENTRY"
 	case errors.Is(err, ScanModuleOSError):
 		return "OS"
