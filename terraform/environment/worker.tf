@@ -150,6 +150,10 @@ resource "google_cloud_run_service" "worker" {
           name  = "GO_ECOSYSTEM_PKGSITE_DB_SECRET"
           value = "projects/${var.pkgsite_db_project}/secrets/frontend-database-password"
         }
+        env {
+          name  = "GO_ECOSYSTEM_BINARY_BUCKET"
+          value = "go-ecosystem"
+        }
       }
 
       service_account_name = local.worker_service_account
