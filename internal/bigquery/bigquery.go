@@ -136,13 +136,16 @@ func (c *Client) CreateOrUpdateTable(ctx context.Context, tableID string) (creat
 	return false, err
 }
 
+// A Row is something that can be uploaded to BigQuery.
+type Row interface {
+	SetUploadTime(time.Time)
+}
+
 // Upload inserts a row into the table.
-func (c *Client) Upload(ctx context.Context, tableID string, row any) (err error) {
+func (c *Client) Upload(ctx context.Context, tableID string, row Row) (err error) {
 	defer derrors.Wrap(&err, "Upload(ctx, %q)", tableID)
 	u := c.Table(tableID).Inserter()
-	if s, ok := row.(interface{ SetUploadTime(time.Time) }); ok {
-		s.SetUploadTime(time.Now())
-	}
+	row.SetUploadTime(time.Now())
 	return u.Put(ctx, row)
 }
 
@@ -151,15 +154,13 @@ func (c *Client) Upload(ctx context.Context, tableID string, row any) (err error
 // The chunkSize parameter limits the number of rows sent in a single request; this may
 // be necessary to avoid reaching the maximum size of a request.
 // If chunkSize is <= 0, all rows will be sent in one request.
-func UploadMany[T any](ctx context.Context, client *Client, tableID string, rows []T, chunkSize int) (err error) {
+func UploadMany[T Row](ctx context.Context, client *Client, tableID string, rows []T, chunkSize int) (err error) {
 	defer derrors.Wrap(&err, "UploadMany(%q), %d rows, chunkSize=%d", tableID, len(rows), chunkSize)
 
 	now := time.Now()
 	// Set upload time.
 	for _, r := range rows {
-		if s, ok := any(r).(interface{ SetUploadTime(time.Time) }); ok {
-			s.SetUploadTime(now)
-		}
+		r.SetUploadTime(now)
 	}
 
 	ins := client.Table(tableID).Inserter()

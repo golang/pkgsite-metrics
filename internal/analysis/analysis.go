@@ -156,6 +156,8 @@ func (r *Result) AddError(err error) {
 	r.ErrorCategory = derrors.CategorizeError(err)
 }
 
+func (r *Result) SetUploadTime(t time.Time) { r.CreatedAt = t }
+
 // WorkVersion contains information that can be used to avoid duplicate work.
 // Given two WorkVersion values v1 and v2 for the same module path and version,
 // if v1 == v2 then it is not necessary to scan the module.
