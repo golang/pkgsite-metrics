@@ -570,6 +570,9 @@ func (s *scanner) runSourceScanInsecure(ctx context.Context, modulePath, version
 	if err == nil && len(pkgErrors) > 0 {
 		err = fmt.Errorf("%v", pkgErrors)
 	}
+	if err != nil {
+		return nil, err
+	}
 
 	stats.pkgsMemory = memSubtract(currHeapUsage(), preScanMemory)
 
@@ -946,4 +949,18 @@ func diskUsage(dirs ...string) string {
 		return fmt.Sprintf("ERROR: %s", derrors.IncludeStderr(err))
 	}
 	return strings.TrimSpace(string(out))
+}
+
+// fileExists checks if file path exists. Returns true
+// if the file exists or it cannot prove that it does
+// not exist. Otherwise, returns false.
+func fileExists(file string) bool {
+	if _, err := os.Stat(file); err == nil {
+		return true
+	} else if errors.Is(err, os.ErrNotExist) {
+		return false
+	}
+	// Conservatively return true if os.Stat fails
+	// for some other reason.
+	return true
 }
