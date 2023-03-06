@@ -187,7 +187,6 @@ resource "google_monitoring_alert_policy" "scheduler_job_failing" {
     condition_threshold {
       filter          = <<-EOT
         metric.type="logging.googleapis.com/user/cloud-scheduler-errors"
-	resource.type="audited_resource"
       EOT
       comparison      = "COMPARISON_GT"
       threshold_value = 1
@@ -216,7 +215,6 @@ resource "google_monitoring_alert_policy" "build_job_failing" {
     condition_threshold {
       filter          = <<-EOT
         metric.type="logging.googleapis.com/user/cloud-build-errors"
-	resource.type="audited_resource"
       EOT
       comparison      = "COMPARISON_GT"
       threshold_value = 1
