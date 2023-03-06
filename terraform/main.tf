@@ -157,6 +157,19 @@ resource "google_logging_metric" "scheduler_errors" {
   }
 }
 
+resource "google_logging_metric" "build_errors" {
+  name = "cloud-build-errors"
+  description = "Errors from Cloud Build"
+  filter = "resource.type=build AND textPayload=ERROR"
+  metric_descriptor {
+    metric_kind = "DELTA"
+    unit        = "1"
+    value_type  = "INT64"
+  }
+}
+
+
+
 resource "google_monitoring_notification_channel" "email" {
   display_name = "Go Ecosystem Team Alerts"
   type         = "email"
@@ -193,6 +206,36 @@ resource "google_monitoring_alert_policy" "scheduler_job_failing" {
   notification_channels = [google_monitoring_notification_channel.email.name]
 
 }
+
+resource "google_monitoring_alert_policy" "build_job_failing" {
+  display_name = "Cloud Build Job Failing"
+
+  conditions {
+    display_name = "Instance Count"
+
+    condition_threshold {
+      filter          = <<-EOT
+        metric.type="logging.googleapis.com/user/cloud-build-errors"
+	resource.type="audited_resource"
+      EOT
+      comparison      = "COMPARISON_GT"
+      threshold_value = 1
+      aggregations {
+        alignment_period     = "600s"
+        cross_series_reducer = "REDUCE_SUM"
+        per_series_aligner   = "ALIGN_DELTA"
+      }
+      duration = "0s"
+      trigger { count = 1 }
+    }
+  }
+
+  combiner = "OR"
+
+  notification_channels = [google_monitoring_notification_channel.email.name]
+
+}
+
 
 # Cloud Build trigger to deploy the prod worker on every push to master.
 resource "google_cloudbuild_trigger" "deploy_prod_worker" {
