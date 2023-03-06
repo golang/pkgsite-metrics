@@ -69,6 +69,7 @@ resource "google_project_service" "apis" {
   for_each = toset([
     "bigquery",
     "cloudbuild",
+    "clouderrorreporting",
     "cloudscheduler",
     "cloudtasks",
     "cloudtrace",
