@@ -203,12 +203,26 @@ func (s *scanner) ScanModule(ctx context.Context, w http.ResponseWriter, sreq *i
 	row.PkgsMemory = int64(stats.pkgsMemory)
 	row.Workers = config.GetEnvInt("CLOUD_RUN_CONCURRENCY", "0", -1)
 	if err != nil {
-		// If an error occurred, wrap it accordingly
-		if isVulnDBConnection(err) {
+		switch {
+		case errors.Is(err, derrors.LoadPackagesNoGoModError) ||
+			errors.Is(err, derrors.LoadPackagesNoGoSumError):
+			// errors already classified by package loading.
+		case isMissingGoMod(err):
+			// specific for govulncheck
+			err = fmt.Errorf("%v: %w", err, derrors.LoadPackagesNoGoModError)
+		case isNoRequiredModule(err):
+			err = fmt.Errorf("%v: %w", err, derrors.LoadPackagesNoRequiredModuleError)
+		case isMissingGoSumEntry(err):
+			err = fmt.Errorf("%v: %w", err, derrors.LoadPackagesMissingGoSumEntryError)
+		case errors.Is(err, derrors.LoadPackagesError):
+			// general load packages error
+		case isVulnDBConnection(err):
 			err = fmt.Errorf("%v: %w", err, derrors.ScanModuleVulncheckDBConnectionError)
-		} else if !errors.Is(err, derrors.ScanModuleMemoryLimitExceeded) && sreq.Mode != ModeGovulncheck {
+		default:
 			err = fmt.Errorf("%v: %w", err, derrors.ScanModuleVulncheckError)
 		}
+
+		fmt.Printf("ZP: %v\n", derrors.CategorizeError(err))
 		row.AddError(err)
 		log.Infof(ctx, "scanner.runScanModule return error for %s (%v)", sreq.Path(), err)
 	} else {
@@ -628,6 +642,18 @@ func copyFromGCSToWriter(ctx context.Context, w io.Writer, bucket *storage.Bucke
 	}
 	_, err = io.Copy(w, gcsReader)
 	return err
+}
+
+func isNoRequiredModule(err error) bool {
+	return strings.Contains(err.Error(), "no required module")
+}
+
+func isMissingGoSumEntry(err error) bool {
+	return strings.Contains(err.Error(), "missing go.sum entry")
+}
+
+func isMissingGoMod(err error) bool {
+	return strings.Contains(err.Error(), "no go.mod file")
 }
 
 func isVulnDBConnection(err error) bool {

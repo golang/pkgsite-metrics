@@ -42,10 +42,6 @@ func Packages(cfg *packages.Config, patterns ...string) ([]*packages.Package, []
 			err = fmt.Errorf("%v: %w", err, derrors.LoadPackagesNoGoModError)
 		case !fileExists(filepath.Join(cfg.Dir, "go.sum")):
 			err = fmt.Errorf("%v: %w", err, derrors.LoadPackagesNoGoSumError)
-		case isNoRequiredModule(err):
-			err = fmt.Errorf("%v: %w", err, derrors.LoadPackagesNoRequiredModuleError)
-		case isMissingGoSumEntry(err.Error()):
-			err = fmt.Errorf("%v: %w", err, derrors.LoadPackagesMissingGoSumEntryError)
 		default:
 			err = fmt.Errorf("%v: %w", err, derrors.LoadPackagesError)
 		}
@@ -65,14 +61,6 @@ func Packages(cfg *packages.Config, patterns ...string) ([]*packages.Package, []
 		errors = append(errors[:maxErrors], fmt.Errorf("... and %d more errors", len(errors)-maxErrors))
 	}
 	return pkgs, errors, nil
-}
-
-func isNoRequiredModule(err error) bool {
-	return strings.Contains(err.Error(), "no required module")
-}
-
-func isMissingGoSumEntry(errMsg string) bool {
-	return strings.Contains(errMsg, "missing go.sum entry")
 }
 
 // fileExists checks if file path exists. Returns true
