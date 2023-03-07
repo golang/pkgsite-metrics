@@ -44,12 +44,18 @@ func (s *analysisServer) handleScan(w http.ResponseWriter, r *http.Request) (err
 	if err != nil {
 		return fmt.Errorf("%w: %v", derrors.InvalidArgument, err)
 	}
-	jsonTree, binaryHash, err := s.scan(ctx, req)
-	if err != nil {
-		return err
+	if req.Binary == "" {
+		return fmt.Errorf("%w: analysis: missing binary", derrors.InvalidArgument)
+	}
+	if req.Suffix != "" {
+		return fmt.Errorf("%w: analysis: only implemented for whole modules (no suffix)", derrors.InvalidArgument)
 	}
 
+	jsonTree, binaryHash, err := s.scan(ctx, req)
 	if req.Serve {
+		if err != nil {
+			return err
+		}
 		out, err := json.Marshal(jsonTree)
 		if err != nil {
 			return err
@@ -57,19 +63,12 @@ func (s *analysisServer) handleScan(w http.ResponseWriter, r *http.Request) (err
 		_, err = w.Write(out)
 		return err
 	}
-	return s.writeToBigQuery(ctx, req, jsonTree, binaryHash)
+	return s.writeToBigQuery(ctx, req, jsonTree, binaryHash, err)
 }
 
 const sandboxRoot = "/bundle/rootfs"
 
 func (s *analysisServer) scan(ctx context.Context, req *analysis.ScanRequest) (jt analysis.JSONTree, binaryHash []byte, err error) {
-	if req.Binary == "" {
-		return nil, nil, fmt.Errorf("%w: analysis: missing binary", derrors.InvalidArgument)
-	}
-	if req.Suffix != "" {
-		return nil, nil, fmt.Errorf("%w: analysis: only implemented for whole modules (no suffix)", derrors.InvalidArgument)
-	}
-
 	err = doScan(ctx, req.Module, req.Version, req.Insecure, func() error {
 		jt, binaryHash, err = s.scanInternal(ctx, req)
 		return err
@@ -195,7 +194,7 @@ func runBinaryInDir(sbox *sandbox.Sandbox, path string, args []string, dir strin
 	return cmd.Output()
 }
 
-func (s *analysisServer) writeToBigQuery(ctx context.Context, req *analysis.ScanRequest, jsonTree analysis.JSONTree, binaryHash []byte) (err error) {
+func (s *analysisServer) writeToBigQuery(ctx context.Context, req *analysis.ScanRequest, jsonTree analysis.JSONTree, binaryHash []byte, scanErr error) (err error) {
 	defer derrors.Wrap(&err, "analysisServer.writeToBigQuery(%q, %q)", req.Module, req.Version)
 	row := &analysis.Result{
 		ModulePath: req.Module,
@@ -207,17 +206,20 @@ func (s *analysisServer) writeToBigQuery(ctx context.Context, req *analysis.Scan
 			SchemaVersion: analysis.SchemaVersion,
 		},
 	}
-	info, err := s.proxyClient.Info(ctx, req.Module, req.Version)
-	if err != nil {
+	if info, err := s.proxyClient.Info(ctx, req.Module, req.Version); err != nil {
 		log.Errorf(ctx, err, "proxy error")
 		row.AddError(fmt.Errorf("%v: %w", err, derrors.ProxyError))
-		return nil
+		row.Version = req.Version
+	} else {
+		row.Version = info.Version
+		row.CommitTime = info.Time
 	}
-	row.Version = info.Version
 	row.SortVersion = version.ForSorting(row.Version)
-	row.CommitTime = info.Time
-
-	row.Diagnostics = analysis.JSONTreeToDiagnostics(jsonTree)
+	if scanErr != nil {
+		row.AddError(scanErr)
+	} else {
+		row.Diagnostics = analysis.JSONTreeToDiagnostics(jsonTree)
+	}
 	if s.bqClient == nil {
 		log.Infof(ctx, "bigquery disabled, not uploading")
 	} else {
