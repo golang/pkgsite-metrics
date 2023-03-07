@@ -11,24 +11,24 @@ import (
 	"net/http"
 	"runtime/debug"
 
-	"golang.org/x/pkgsite-metrics/internal/bigquery"
 	"golang.org/x/pkgsite-metrics/internal/derrors"
 	"golang.org/x/pkgsite-metrics/internal/log"
+	ivulncheck "golang.org/x/pkgsite-metrics/internal/vulncheck"
 )
 
 type VulncheckServer struct {
 	*Server
-	storedWorkVersions map[[2]string]*bigquery.VulncheckWorkVersion
-	workVersion        *bigquery.VulncheckWorkVersion
+	storedWorkVersions map[[2]string]*ivulncheck.WorkVersion
+	workVersion        *ivulncheck.WorkVersion
 }
 
 func newVulncheckServer(ctx context.Context, s *Server) (*VulncheckServer, error) {
 	var (
-		swv map[[2]string]*bigquery.VulncheckWorkVersion
+		swv map[[2]string]*ivulncheck.WorkVersion
 		err error
 	)
 	if s.bqClient != nil {
-		swv, err = bigquery.ReadVulncheckWorkVersions(ctx, s.bqClient)
+		swv, err = ivulncheck.ReadWorkVersions(ctx, s.bqClient)
 		if err != nil {
 			return nil, err
 		}
@@ -40,7 +40,7 @@ func newVulncheckServer(ctx context.Context, s *Server) (*VulncheckServer, error
 	}, nil
 }
 
-func (h *VulncheckServer) getWorkVersion(ctx context.Context) (_ *bigquery.VulncheckWorkVersion, err error) {
+func (h *VulncheckServer) getWorkVersion(ctx context.Context) (_ *ivulncheck.WorkVersion, err error) {
 	defer derrors.Wrap(&err, "VulncheckServer.getWorkVersion")
 	h.mu.Lock()
 	defer h.mu.Unlock()
@@ -54,10 +54,10 @@ func (h *VulncheckServer) getWorkVersion(ctx context.Context) (_ *bigquery.Vulnc
 		if err != nil {
 			return nil, err
 		}
-		h.workVersion = &bigquery.VulncheckWorkVersion{
+		h.workVersion = &ivulncheck.WorkVersion{
 			VulnDBLastModified: lmt,
 			WorkerVersion:      h.cfg.VersionID,
-			SchemaVersion:      bigquery.VulncheckSchemaVersion,
+			SchemaVersion:      ivulncheck.SchemaVersion,
 			VulnVersion:        vulnVersion,
 		}
 		log.Infof(ctx, "vulncheck work version: %+v", h.workVersion)
@@ -101,11 +101,11 @@ func (h *VulncheckServer) createVulncheckPage(ctx context.Context) (*VulncheckPa
 	if h.bqClient == nil {
 		return nil, errBQDisabled
 	}
-	table := h.bqClient.FullTableName(bigquery.VulncheckTableName)
+	table := h.bqClient.FullTableName(ivulncheck.TableName)
 	page := newPage(table)
 	page.basePage = newBasePage()
 
-	rows, err := bigquery.FetchVulncheckResults(ctx, h.bqClient)
+	rows, err := ivulncheck.FetchResults(ctx, h.bqClient)
 	if err != nil {
 		return nil, err
 	}
@@ -197,7 +197,7 @@ func (v *VulncheckResult) PercentNoVuln() float64 {
 	return (float64(v.NumModulesNoVuln()) / float64(v.NumModulesSuccess)) * 100
 }
 
-func (r *VulncheckResult) update(row *bigquery.VulnResult) {
+func (r *VulncheckResult) update(row *ivulncheck.Result) {
 	r.NumModulesScanned++
 	if row.Error != "" {
 		r.NumModulesError++
@@ -243,7 +243,7 @@ type ReportResult struct {
 
 // handleVulncheckRows populates page based on vulncheck result rows and
 // returns statistics for each vulnerability detected.
-func handleVulncheckRows(ctx context.Context, page *VulncheckPage, rows []*bigquery.VulnResult) map[string]*ReportResult {
+func handleVulncheckRows(ctx context.Context, page *VulncheckPage, rows []*ivulncheck.Result) map[string]*ReportResult {
 	vulnsScanned := map[string]*ReportResult{}
 	for _, row := range rows {
 		switch row.ScanMode {

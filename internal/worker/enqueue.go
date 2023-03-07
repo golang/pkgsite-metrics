@@ -14,6 +14,7 @@ import (
 	"golang.org/x/pkgsite-metrics/internal/pkgsitedb"
 	"golang.org/x/pkgsite-metrics/internal/queue"
 	"golang.org/x/pkgsite-metrics/internal/scan"
+	ivulncheck "golang.org/x/pkgsite-metrics/internal/vulncheck"
 )
 
 const defaultMinImportedByCount = 10
@@ -72,15 +73,15 @@ func enqueueTasks(ctx context.Context, tasks []queue.Task, q queue.Queue, opts *
 	return nil
 }
 
-func moduleSpecsToScanRequests(modspecs []scan.ModuleSpec, mode string) []*vulncheckRequest {
-	var sreqs []*vulncheckRequest
+func moduleSpecsToScanRequests(modspecs []scan.ModuleSpec, mode string) []*ivulncheck.Request {
+	var sreqs []*ivulncheck.Request
 	for _, ms := range modspecs {
-		sreqs = append(sreqs, &vulncheckRequest{
-			scan.ModuleURLPath{
+		sreqs = append(sreqs, &ivulncheck.Request{
+			ModuleURLPath: scan.ModuleURLPath{
 				Module:  ms.Path,
 				Version: ms.Version,
 			},
-			vulncheckRequestParams{
+			QueryParams: ivulncheck.QueryParams{
 				ImportedBy: ms.ImportedBy,
 				Mode:       mode,
 			},

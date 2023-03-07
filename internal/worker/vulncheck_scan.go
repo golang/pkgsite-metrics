@@ -31,9 +31,9 @@ import (
 	"golang.org/x/pkgsite-metrics/internal/modules"
 	"golang.org/x/pkgsite-metrics/internal/proxy"
 	"golang.org/x/pkgsite-metrics/internal/sandbox"
-	"golang.org/x/pkgsite-metrics/internal/scan"
 	"golang.org/x/pkgsite-metrics/internal/version"
-	vulnc "golang.org/x/vuln/client"
+	ivulncheck "golang.org/x/pkgsite-metrics/internal/vulncheck"
+	vulnclient "golang.org/x/vuln/client"
 	"golang.org/x/vuln/exp/govulncheck"
 	"golang.org/x/vuln/vulncheck"
 )
@@ -76,7 +76,7 @@ var shouldSkip = map[string]bool{}
 var scanCounter = event.NewCounter("scans", &event.MetricOptions{Namespace: metricNamespace})
 
 // path: /vulncheck/scan/MODULE_VERSION_SUFFIX?params
-// See parseVulncheckRequest for allowed path forms and query params.
+// See internal/vulncheck.ParseRequest for allowed path forms and query params.
 func (h *VulncheckServer) handleScan(w http.ResponseWriter, r *http.Request) (err error) {
 	defer derrors.Wrap(&err, "handleScan")
 
@@ -85,7 +85,7 @@ func (h *VulncheckServer) handleScan(w http.ResponseWriter, r *http.Request) (er
 	}()
 
 	ctx := r.Context()
-	sreq, err := parseVulncheckRequest(r, "/vulncheck/scan")
+	sreq, err := ivulncheck.ParseRequest(r, "/vulncheck/scan")
 	if err != nil {
 		return fmt.Errorf("%w: %v", derrors.InvalidArgument, err)
 	}
@@ -127,16 +127,16 @@ func (h *VulncheckServer) readVulncheckWorkVersions(ctx context.Context) error {
 		return nil
 	}
 	var err error
-	h.storedWorkVersions, err = bigquery.ReadVulncheckWorkVersions(ctx, h.bqClient)
+	h.storedWorkVersions, err = ivulncheck.ReadWorkVersions(ctx, h.bqClient)
 	return err
 }
 
 // A scanner holds state for scanning modules.
 type scanner struct {
 	proxyClient *proxy.Client
-	dbClient    vulnc.Client
+	dbClient    vulnclient.Client
 	bqClient    *bigquery.Client
-	workVersion *bigquery.VulncheckWorkVersion
+	workVersion *ivulncheck.WorkVersion
 	goMemLimit  uint64
 	gcsBucket   *storage.BucketHandle
 	insecure    bool
@@ -182,14 +182,14 @@ func (s scanError) Unwrap() error {
 	return s.err
 }
 
-func (s *scanner) ScanModule(ctx context.Context, w http.ResponseWriter, sreq *vulncheckRequest) error {
+func (s *scanner) ScanModule(ctx context.Context, w http.ResponseWriter, sreq *ivulncheck.Request) error {
 	if sreq.Module == "std" {
 		return nil // ignore the standard library
 	}
-	row := &bigquery.VulnResult{
-		ModulePath:           sreq.Module,
-		Suffix:               sreq.Suffix,
-		VulncheckWorkVersion: *s.workVersion,
+	row := &ivulncheck.Result{
+		ModulePath:  sreq.Module,
+		Suffix:      sreq.Suffix,
+		WorkVersion: *s.workVersion,
 	}
 	// Scan the version.
 	log.Infof(ctx, "fetching proxy info: %s@%s", sreq.Module, sreq.Version)
@@ -238,7 +238,7 @@ func (s *scanner) ScanModule(ctx context.Context, w http.ResponseWriter, sreq *v
 		log.Infof(ctx, "bigquery disabled, not uploading")
 	} else {
 		log.Infof(ctx, "uploading to bigquery: %s", sreq.Path())
-		if err := s.bqClient.Upload(ctx, bigquery.VulncheckTableName, row); err != nil {
+		if err := s.bqClient.Upload(ctx, ivulncheck.TableName, row); err != nil {
 			// This is often caused by:
 			// "Upload: googleapi: got HTTP response code 413 with body"
 			// which happens for some modules.
@@ -259,7 +259,7 @@ var activeScans atomic.Int32
 
 // runScanModule fetches the module version from the proxy, and analyzes it for
 // vulnerabilities.
-func (s *scanner) runScanModule(ctx context.Context, modulePath, version, binaryDir, mode string, stats *vulncheckStats) (bvulns []*bigquery.Vuln, err error) {
+func (s *scanner) runScanModule(ctx context.Context, modulePath, version, binaryDir, mode string, stats *vulncheckStats) (bvulns []*ivulncheck.Vuln, err error) {
 	defer func() {
 		if e := recover(); e != nil {
 			err = fmt.Errorf("%w: %v\n\n%s", derrors.ScanModulePanicError, e, debug.Stack())
@@ -290,7 +290,7 @@ func (s *scanner) runScanModule(ctx context.Context, modulePath, version, binary
 			return nil, err
 		}
 		for _, v := range vulns {
-			bvulns = append(bvulns, convertVuln(v))
+			bvulns = append(bvulns, ivulncheck.ConvertVulncheckOutput(v))
 		}
 	} else { // Govulncheck mode
 		var vulns []*govulncheck.Vuln
@@ -307,7 +307,7 @@ func (s *scanner) runScanModule(ctx context.Context, modulePath, version, binary
 			return nil, err
 		}
 		for _, v := range vulns {
-			bvulns = append(bvulns, convertGovulncheckOutput(v)...)
+			bvulns = append(bvulns, ivulncheck.ConvertGovulncheckOutput(v)...)
 		}
 	}
 	return bvulns, nil
@@ -704,7 +704,7 @@ func isVulnDBConnection(err error) bool {
 		strings.Contains(s, "connection")
 }
 
-func vulncheckConfig(dbClient vulnc.Client, mode string) *vulncheck.Config {
+func vulncheckConfig(dbClient vulnclient.Client, mode string) *vulncheck.Config {
 	cfg := &vulncheck.Config{Client: dbClient}
 	switch mode {
 	case ModeImports:
@@ -713,62 +713,6 @@ func vulncheckConfig(dbClient vulnc.Client, mode string) *vulncheck.Config {
 		cfg.ImportsOnly = false
 	}
 	return cfg
-}
-
-func convertVuln(v *vulncheck.Vuln) *bigquery.Vuln {
-	return &bigquery.Vuln{
-		ID:          v.OSV.ID,
-		ModulePath:  v.ModPath,
-		PackagePath: v.PkgPath,
-		Symbol:      v.Symbol,
-		CallSink:    bigquery.NullInt(v.CallSink),
-		ImportSink:  bigquery.NullInt(v.ImportSink),
-		RequireSink: bigquery.NullInt(v.RequireSink),
-	}
-}
-
-func convertGovulncheckOutput(v *govulncheck.Vuln) (vulns []*bigquery.Vuln) {
-	for _, module := range v.Modules {
-		for pkgNum, pkg := range module.Packages {
-			addedSymbols := make(map[string]bool)
-			baseVuln := &bigquery.Vuln{
-				ID:          v.OSV.ID,
-				ModulePath:  module.Path,
-				PackagePath: pkg.Path,
-				CallSink:    bigquery.NullInt(0),
-				ImportSink:  bigquery.NullInt(pkgNum + 1),
-				RequireSink: bigquery.NullInt(pkgNum + 1),
-			}
-
-			// For each called symbol, reconstruct sinks and create the corresponding bigquery vuln
-			for symbolNum, cs := range pkg.CallStacks {
-				addedSymbols[cs.Symbol] = true
-				toAdd := *baseVuln
-				toAdd.Symbol = cs.Symbol
-				toAdd.CallSink = bigquery.NullInt(symbolNum + 1)
-				vulns = append(vulns, &toAdd)
-			}
-
-			// Find the rest of the vulnerable imported symbols that haven't been called
-			// and create corresponding bigquery vulns
-			for _, affected := range v.OSV.Affected {
-				if affected.Package.Name == module.Path {
-					for _, imp := range affected.EcosystemSpecific.Imports {
-						if imp.Path == pkg.Path {
-							for _, symbol := range imp.Symbols {
-								if !addedSymbols[symbol] {
-									toAdd := *baseVuln
-									toAdd.Symbol = symbol
-									vulns = append(vulns, &toAdd)
-								}
-							}
-						}
-					}
-				}
-			}
-		}
-	}
-	return vulns
 }
 
 // currHeapUsage computes currently allocate heap bytes.
@@ -887,58 +831,6 @@ func (s *scanner) cleanGoCaches(ctx context.Context) {
 	} else {
 		log.Infof(ctx, "'go clean' succeeded%s", output)
 	}
-}
-
-// vulncheckRequest contains information passed
-// to a scan endpoint.
-type vulncheckRequest struct {
-	scan.ModuleURLPath
-	vulncheckRequestParams
-}
-
-// vulncheckRequestParams has query parameters for a vulncheck scan request.
-type vulncheckRequestParams struct {
-	ImportedBy int    // imported-by count
-	Mode       string // vulncheck mode (VTA, etc)
-	Insecure   bool   // if true, run outside sandbox
-	Serve      bool   // serve results back to client instead of writing them to BigQuery
-}
-
-// These methods implement queue.Task.
-func (r *vulncheckRequest) Name() string { return r.Module + "@" + r.Version }
-
-func (r *vulncheckRequest) Path() string { return r.ModuleURLPath.Path() }
-
-func (r *vulncheckRequest) Params() string {
-	return scan.FormatParams(r.vulncheckRequestParams)
-}
-
-// parseVulncheckRequest parses an http request r for an endpoint
-// prefix and produces a corresponding ScanRequest.
-//
-// The module and version should have one of the following three forms:
-//   - <module>/@v/<version>
-//   - <module>@<version>
-//   - <module>/@latest
-//
-// (These are the same forms that the module proxy accepts.)
-func parseVulncheckRequest(r *http.Request, prefix string) (*vulncheckRequest, error) {
-	mp, err := scan.ParseModuleURLPath(strings.TrimPrefix(r.URL.Path, prefix))
-	if err != nil {
-		return nil, err
-	}
-
-	rp := vulncheckRequestParams{ImportedBy: -1}
-	if err := scan.ParseParams(r, &rp); err != nil {
-		return nil, err
-	}
-	if rp.ImportedBy < 0 {
-		return nil, errors.New(`missing or negative "importedby" query param`)
-	}
-	return &vulncheckRequest{
-		ModuleURLPath:          mp,
-		vulncheckRequestParams: rp,
-	}, nil
 }
 
 // diskUsage runs the du command to determine how much disk space the given

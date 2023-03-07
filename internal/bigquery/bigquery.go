@@ -91,6 +91,11 @@ func hasCode(err error, code int) bool {
 	return gerr.Code == code
 }
 
+// Dataset returns the underlying client dataset.
+func (c *Client) Dataset() *bq.Dataset {
+	return c.dataset
+}
+
 // Table returns a handle for the given tableID in the client's dataset.
 func (c *Client) Table(tableID string) *bq.Table {
 	return c.dataset.Table(tableID)
@@ -106,7 +111,7 @@ func (c *Client) FullTableName(tableID string) string {
 // CreateTable creates a table with the given name if it doesn't exist.
 func (c *Client) CreateTable(ctx context.Context, tableID string) (err error) {
 	defer derrors.Wrap(&err, "CreateTable(%q)", tableID)
-	schema := tableSchema(tableID)
+	schema := TableSchema(tableID)
 	if schema == nil {
 		return fmt.Errorf("no schema registered for table %q", tableID)
 	}
@@ -128,7 +133,7 @@ func (c *Client) CreateOrUpdateTable(ctx context.Context, tableID string) (creat
 		}
 		return true, c.CreateTable(ctx, tableID)
 	}
-	schema := tableSchema(tableID)
+	schema := TableSchema(tableID)
 	if schema == nil {
 		return false, fmt.Errorf("no schema registered for table %q", tableID)
 	}
@@ -243,12 +248,12 @@ func NullTime(t time.Time) bq.NullTime {
 // SchemaVersion computes a relatively short string from a schema, such that
 // different schemas result in different strings with high probability.
 func SchemaVersion(schema bq.Schema) string {
-	hash := sha256.Sum256([]byte(schemaString(schema)))
+	hash := sha256.Sum256([]byte(SchemaString(schema)))
 	return hex.EncodeToString(hash[:])
 }
 
-// schemaString returns a long, human-readable string summarizing schema.
-func schemaString(schema bq.Schema) string {
+// SchemaString returns a long, human-readable string summarizing schema.
+func SchemaString(schema bq.Schema) string {
 	var b strings.Builder
 	for i, field := range schema {
 		if i > 0 {
@@ -263,7 +268,7 @@ func schemaString(schema bq.Schema) string {
 		}
 		b.WriteByte(':')
 		if field.Type == bq.RecordFieldType {
-			fmt.Fprintf(&b, "(%s)", schemaString(field.Schema))
+			fmt.Fprintf(&b, "(%s)", SchemaString(field.Schema))
 		} else {
 			b.WriteString(string(field.Type))
 		}
@@ -282,9 +287,9 @@ func AddTable(tableID string, s bq.Schema) {
 	tables[tableID] = s
 }
 
-// tableSchema returns the schema associated with the given table,
+// TableSchema returns the schema associated with the given table,
 // or nil if there is none.
-func tableSchema(tableID string) bq.Schema {
+func TableSchema(tableID string) bq.Schema {
 	tableMu.Lock()
 	defer tableMu.Unlock()
 	return tables[tableID]

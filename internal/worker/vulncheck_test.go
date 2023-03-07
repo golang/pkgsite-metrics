@@ -10,21 +10,22 @@ import (
 
 	"github.com/google/go-cmp/cmp"
 	"golang.org/x/pkgsite-metrics/internal/bigquery"
+	ivulncheck "golang.org/x/pkgsite-metrics/internal/vulncheck"
 )
 
 func TestVulnsScanned(t *testing.T) {
 	p := newPage("test")
 
-	vuln1A := &bigquery.Vuln{ID: "1", Symbol: "A", CallSink: bigquery.NullInt(100)}
-	vuln1B := &bigquery.Vuln{ID: "1", Symbol: "B", CallSink: bigquery.NullInt(101)}
-	vuln1C := &bigquery.Vuln{ID: "1", Symbol: "C"}
-	vuln2A := &bigquery.Vuln{ID: "2", Symbol: "A"}
+	vuln1A := &ivulncheck.Vuln{ID: "1", Symbol: "A", CallSink: bigquery.NullInt(100)}
+	vuln1B := &ivulncheck.Vuln{ID: "1", Symbol: "B", CallSink: bigquery.NullInt(101)}
+	vuln1C := &ivulncheck.Vuln{ID: "1", Symbol: "C"}
+	vuln2A := &ivulncheck.Vuln{ID: "2", Symbol: "A"}
 
-	rows := []*bigquery.VulnResult{
-		{ModulePath: "m1", ScanMode: ModeImports, Vulns: []*bigquery.Vuln{vuln1A, vuln1B, vuln1C, vuln2A}},
-		{ModulePath: "m1", ScanMode: ModeVTAStacks, Vulns: []*bigquery.Vuln{vuln1A, vuln1B}},
-		{ModulePath: "m2", ScanMode: ModeImports, Vulns: []*bigquery.Vuln{vuln2A}},
-		{ModulePath: "m2", ScanMode: ModeVTAStacks, Vulns: []*bigquery.Vuln{}},
+	rows := []*ivulncheck.Result{
+		{ModulePath: "m1", ScanMode: ModeImports, Vulns: []*ivulncheck.Vuln{vuln1A, vuln1B, vuln1C, vuln2A}},
+		{ModulePath: "m1", ScanMode: ModeVTAStacks, Vulns: []*ivulncheck.Vuln{vuln1A, vuln1B}},
+		{ModulePath: "m2", ScanMode: ModeImports, Vulns: []*ivulncheck.Vuln{vuln2A}},
+		{ModulePath: "m2", ScanMode: ModeVTAStacks, Vulns: []*ivulncheck.Vuln{}},
 	}
 
 	got := handleVulncheckRows(context.Background(), p, rows)
