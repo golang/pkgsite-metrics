@@ -62,7 +62,7 @@ func (s *analysisServer) handleScan(w http.ResponseWriter, r *http.Request) (err
 
 const sandboxRoot = "/bundle/rootfs"
 
-func (s *analysisServer) scan(ctx context.Context, req *analysis.ScanRequest) (_ analysis.JSONTree, binaryHash []byte, err error) {
+func (s *analysisServer) scan(ctx context.Context, req *analysis.ScanRequest) (jt analysis.JSONTree, binaryHash []byte, err error) {
 	if req.Binary == "" {
 		return nil, nil, fmt.Errorf("%w: analysis: missing binary", derrors.InvalidArgument)
 	}
@@ -70,6 +70,17 @@ func (s *analysisServer) scan(ctx context.Context, req *analysis.ScanRequest) (_
 		return nil, nil, fmt.Errorf("%w: analysis: only implemented for whole modules (no suffix)", derrors.InvalidArgument)
 	}
 
+	err = doScan(ctx, req.Module, req.Version, req.Insecure, func() error {
+		jt, binaryHash, err = s.scanInternal(ctx, req)
+		return err
+	})
+	if err != nil {
+		return nil, nil, err
+	}
+	return jt, binaryHash, nil
+}
+
+func (s *analysisServer) scanInternal(ctx context.Context, req *analysis.ScanRequest) (jt analysis.JSONTree, binaryHash []byte, err error) {
 	var tempDir string
 	if req.Insecure {
 		tempDir, err = os.MkdirTemp("", "analysis")

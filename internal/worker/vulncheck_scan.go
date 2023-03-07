@@ -15,10 +15,8 @@ import (
 	"os/exec"
 	"path/filepath"
 	"runtime"
-	"runtime/debug"
 	"strconv"
 	"strings"
-	"sync/atomic"
 	"time"
 
 	"cloud.google.com/go/storage"
@@ -255,62 +253,45 @@ type vulncheckStats struct {
 	pkgsMemory  uint64
 }
 
-var activeScans atomic.Int32
-
 // runScanModule fetches the module version from the proxy, and analyzes it for
 // vulnerabilities.
 func (s *scanner) runScanModule(ctx context.Context, modulePath, version, binaryDir, mode string, stats *vulncheckStats) (bvulns []*ivulncheck.Vuln, err error) {
-	defer func() {
-		if e := recover(); e != nil {
-			err = fmt.Errorf("%w: %v\n\n%s", derrors.ScanModulePanicError, e, debug.Stack())
-		}
-	}()
-
-	logMemory(ctx, fmt.Sprintf("before scanning %s@%s", modulePath, version))
-	defer logMemory(ctx, fmt.Sprintf("after scanning %s@%s", modulePath, version))
-
-	activeScans.Add(1)
-	defer func() {
-		if activeScans.Add(-1) == 0 {
-			logMemory(ctx, fmt.Sprintf("before 'go clean' for %s@%s", modulePath, version))
-			s.cleanGoCaches(ctx)
-			logMemory(ctx, "after 'go clean'")
-		}
-	}()
-
-	if mode != ModeGovulncheck {
-		var vulns []*vulncheck.Vuln
-		if s.insecure {
-			vulns, err = s.runScanModuleInsecure(ctx, modulePath, version, binaryDir, mode, stats)
-		} else {
-			vulns, err = s.runScanModuleSandbox(ctx, modulePath, version, binaryDir, mode, stats)
-		}
-
-		if err != nil {
-			return nil, err
-		}
-		for _, v := range vulns {
-			bvulns = append(bvulns, ivulncheck.ConvertVulncheckOutput(v))
-		}
-	} else { // Govulncheck mode
-		var vulns []*govulncheck.Vuln
-		if s.insecure {
-			vulns, err = s.runGovulncheckScanInsecure(ctx, modulePath, version, stats)
-		} else {
-			res, err := s.runGovulncheckScanSandbox(ctx, modulePath, version, stats)
-			if err != nil {
-				return nil, err
+	err = doScan(ctx, modulePath, version, s.insecure, func() error {
+		if mode != ModeGovulncheck {
+			var vulns []*vulncheck.Vuln
+			if s.insecure {
+				vulns, err = s.runScanModuleInsecure(ctx, modulePath, version, binaryDir, mode, stats)
+			} else {
+				vulns, err = s.runScanModuleSandbox(ctx, modulePath, version, binaryDir, mode, stats)
 			}
-			vulns = res.Vulns
+
+			if err != nil {
+				return err
+			}
+			for _, v := range vulns {
+				bvulns = append(bvulns, ivulncheck.ConvertVulncheckOutput(v))
+			}
+		} else { // Govulncheck mode
+			var vulns []*govulncheck.Vuln
+			if s.insecure {
+				vulns, err = s.runGovulncheckScanInsecure(ctx, modulePath, version, stats)
+			} else {
+				res, err := s.runGovulncheckScanSandbox(ctx, modulePath, version, stats)
+				if err != nil {
+					return err
+				}
+				vulns = res.Vulns
+			}
+			if err != nil {
+				return err
+			}
+			for _, v := range vulns {
+				bvulns = append(bvulns, ivulncheck.ConvertGovulncheckOutput(v)...)
+			}
 		}
-		if err != nil {
-			return nil, err
-		}
-		for _, v := range vulns {
-			bvulns = append(bvulns, ivulncheck.ConvertGovulncheckOutput(v)...)
-		}
-	}
-	return bvulns, nil
+		return nil
+	})
+	return bvulns, err
 }
 
 func (s *scanner) runGovulncheckScanSandbox(ctx context.Context, modulePath, version string, stats *vulncheckStats) (*govulncheck.Result, error) {
@@ -756,91 +737,6 @@ func parseGoMemLimit(s string) uint64 {
 		return 0
 	}
 	return v * m
-}
-
-func logMemory(ctx context.Context, prefix string) {
-	if !config.OnCloudRun() {
-		return
-	}
-
-	readIntFile := func(filename string) (int, error) {
-		data, err := os.ReadFile(filename)
-		if err != nil {
-			return 0, err
-		}
-		return strconv.Atoi(strings.TrimSpace(string(data)))
-	}
-
-	const (
-		curFilename = "/sys/fs/cgroup/memory/memory.usage_in_bytes"
-		maxFilename = "/sys/fs/cgroup/memory/memory.limit_in_bytes"
-	)
-
-	cur, err := readIntFile(curFilename)
-	if err != nil {
-		log.Errorf(ctx, err, "reading %s", curFilename)
-	}
-	max, err := readIntFile(maxFilename)
-	if err != nil {
-		log.Errorf(ctx, err, "reading %s", maxFilename)
-	}
-
-	const G float64 = 1024 * 1024 * 1024
-
-	log.Infof(ctx, "%s: using %.1fG out of %.1fG", prefix, float64(cur)/G, float64(max)/G)
-}
-
-const sandboxGoPath = "/usr/local/go/bin/go"
-
-func (s *scanner) cleanGoCaches(ctx context.Context) {
-	var (
-		out []byte
-		err error
-	)
-
-	logDiskUsage := func(msg string) {
-		log.Debugf(ctx, "sandbox disk usage %s clean:\n%s",
-			msg, diskUsage("/bundle/rootfs/root", "/bundle/rootfs/modules"))
-	}
-
-	if s.insecure {
-		if !config.OnCloudRun() {
-			// Avoid cleaning the developer's local caches.
-			log.Infof(ctx, "not on Cloud Run, so not cleaning caches")
-			return
-		}
-		out, err = exec.Command("go", "clean", "-cache", "-modcache").CombinedOutput()
-	} else {
-		logDiskUsage("before")
-		// TODO(zpavlinovic): clean within sandbox. Currently, there is a memory leak.
-		//out, err = s.sbox.Command(sandboxGoPath, "clean", "-cache", "-modcache").Output()
-		c := exec.Command("go", "clean", "-cache", "-modcache")
-		c.Env = append(os.Environ(), "GOCACHE=/bundle/rootfs/"+sandboxGoCache, "GOMODCACHE=/bundle/rootfs/"+sandboxGoModCache)
-		out, err = c.CombinedOutput()
-		if err == nil {
-			logDiskUsage("after")
-		}
-	}
-
-	output := ""
-	if len(out) > 0 {
-		output = fmt.Sprintf(" with output %s", out)
-	}
-	if err != nil {
-		log.Errorf(ctx, errors.New(derrors.IncludeStderr(err)), "'go clean' failed%s", output)
-	} else {
-		log.Infof(ctx, "'go clean' succeeded%s", output)
-	}
-}
-
-// diskUsage runs the du command to determine how much disk space the given
-// directories occupy.
-func diskUsage(dirs ...string) string {
-	out, err := exec.Command("du", append([]string{"-h", "-s"}, dirs...)...).Output()
-	if err != nil {
-		return fmt.Sprintf("ERROR: %s", derrors.IncludeStderr(err))
-	}
-	return strings.TrimSpace(string(out))
 }
 
 // fileExists checks if file path exists. Returns true
