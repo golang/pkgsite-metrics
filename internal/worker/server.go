@@ -74,14 +74,17 @@ func NewServer(ctx context.Context, cfg *config.Config) (_ *Server, err error) {
 			log.Infof(ctx, "enqueuing %s?%s", t.Path(), t.Params())
 			return 0, nil
 		})
+	log.Debugf(ctx, "queue.New returned err %v", err)
 	if err != nil {
 		return nil, err
 	}
 	dbClient, err := vulnc.NewClient([]string{cfg.VulnDBURL}, vulnc.Options{})
+	log.Debugf(ctx, "vulnc.NewClient returned err %v", err)
 	if err != nil {
 		return nil, err
 	}
 	proxyClient, err := proxy.New(cfg.ProxyURL)
+	log.Debugf(ctx, "proxy.New returned err %v", err)
 	if err != nil {
 		return nil, err
 	}
@@ -96,6 +99,7 @@ func NewServer(ctx context.Context, cfg *config.Config) (_ *Server, err error) {
 
 	if cfg.ProjectID != "" && cfg.ServiceID != "" {
 		s.observer, err = observe.NewObserver(ctx, cfg.ProjectID, cfg.ServiceID)
+		log.Debugf(ctx, "observe.NewObserver returned err %v", err)
 		if err != nil {
 			return nil, err
 
@@ -108,6 +112,7 @@ func NewServer(ctx context.Context, cfg *config.Config) (_ *Server, err error) {
 				log.Errorf(ctx, err, "error-reporting failed")
 			},
 		})
+		log.Debugf(ctx, "errorreporting.NewClient returned err %v", err)
 		if err != nil {
 			return nil, err
 		}

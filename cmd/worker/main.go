@@ -11,6 +11,7 @@ import (
 	"fmt"
 	"net/http"
 	"os"
+	"time"
 
 	"golang.org/x/exp/slog"
 	"golang.org/x/pkgsite-metrics/internal/config"
@@ -48,6 +49,8 @@ func main() {
 	slog.SetDefault(slog.New(h))
 	if err := runServer(ctx); err != nil {
 		log.Error(ctx, "fail", err)
+		// Give the log message a chance to be captured (?).
+		time.Sleep(5 * time.Second)
 		os.Exit(1)
 	}
 }
