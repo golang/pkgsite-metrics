@@ -124,10 +124,6 @@ func runVulncheck(ctx context.Context, filePath, mode, vulnDBDir string) (*vulnc
 	if err != nil {
 		return nil, err
 	}
-	if mode == worker.ModeVTAStacks {
-		// Do this for call graph analysis.
-		_ = vulncheck.CallStacks(res)
-	}
 	return res, nil
 
 }

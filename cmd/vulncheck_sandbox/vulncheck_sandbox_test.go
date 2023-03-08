@@ -36,7 +36,7 @@ func Test(t *testing.T) {
 	}
 
 	t.Run("source", func(t *testing.T) {
-		res, err := runTest([]string{worker.ModeVTAStacks, "testdata/module"}, "testdata/vulndb")
+		res, err := runTest([]string{worker.ModeImports, "testdata/module"}, "testdata/vulndb")
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -74,7 +74,7 @@ func Test(t *testing.T) {
 		},
 		{
 			name:   "no vulndb",
-			args:   []string{worker.ModeVTAStacks, "testdata/module"},
+			args:   []string{worker.ModeImports, "testdata/module"},
 			vulndb: "does not exist",
 			want:   "no such file",
 		},
@@ -86,7 +86,7 @@ func Test(t *testing.T) {
 		},
 		{
 			name:   "no module",
-			args:   []string{worker.ModeVTAStacks, "testdata/nosuchmodule"},
+			args:   []string{worker.ModeImports, "testdata/nosuchmodule"},
 			vulndb: "testdata/vulndb",
 			want:   "no such file",
 		},

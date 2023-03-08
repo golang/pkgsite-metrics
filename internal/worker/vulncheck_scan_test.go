@@ -54,7 +54,7 @@ func TestRunScanModule(t *testing.T) {
 		stats := &vulncheckStats{}
 		vulns, err := s.runScanModule(ctx,
 			"golang.org/x/exp/event", "v0.0.0-20220929112958-4a82f8963a65",
-			"", ModeVTAStacks, stats)
+			"", ModeGovulncheck, stats)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -79,7 +79,7 @@ func TestRunScanModule(t *testing.T) {
 	t.Run("memoryLimit", func(t *testing.T) {
 		s := &scanner{proxyClient: proxyClient, dbClient: dbClient, insecure: true, goMemLimit: 2000}
 		_, err := s.runScanModule(ctx, "golang.org/x/mod", "v0.5.1",
-			"", ModeVTAStacks, &vulncheckStats{})
+			"", ModeGovulncheck, &vulncheckStats{})
 		if !errors.Is(err, derrors.ScanModuleMemoryLimitExceeded) {
 			t.Errorf("got %v, want MemoryLimitExceeded", err)
 		}

@@ -37,14 +37,6 @@ import (
 )
 
 const (
-	// ModeVTAStacks computes vulnerability call graph
-	// and representative call stacks for each
-	// vulnerability. Closely resembles the actual logic
-	// of govulncheck.
-	//
-	// ModeVTAStacks is default vulncheck mode.
-	ModeVTAStacks string = "VTASTACKS"
-
 	// ModeImports only computes import-level analysis.
 	ModeImports string = "IMPORTS"
 
@@ -58,7 +50,6 @@ const (
 // modes is a set of supported vulncheck modes
 var modes = map[string]bool{
 	ModeImports:     true,
-	ModeVTAStacks:   true,
 	ModeBinary:      true,
 	ModeGovulncheck: true,
 }
@@ -88,7 +79,7 @@ func (h *VulncheckServer) handleScan(w http.ResponseWriter, r *http.Request) (er
 		return fmt.Errorf("%w: %v", derrors.InvalidArgument, err)
 	}
 	if sreq.Mode == "" {
-		sreq.Mode = ModeVTAStacks
+		sreq.Mode = ModeGovulncheck
 	}
 	if shouldSkip[sreq.Module] {
 		log.Infof(ctx, "skipping %s (module in shouldSkip list)", sreq.Path())
@@ -552,11 +543,6 @@ func (s *scanner) runSourceScanInsecure(ctx context.Context, modulePath, version
 
 		if err != nil {
 			return res, err
-		}
-		if mode == ModeVTAStacks {
-			log.Debugf(ctx, "running vulncheck.CallStacks: %s@%s", modulePath, version)
-			vulncheck.CallStacks(res)
-			log.Debugf(ctx, "completed run for vulncheck.CallStacks: %s@%s, err=%v", modulePath, version, err)
 		}
 		return res, nil
 	})
