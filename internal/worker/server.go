@@ -178,8 +178,6 @@ func (s *Server) registerVulncheckHandlers(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
-	// returns an HTML page displaying information about vulncheck.
-	s.handle("/vulncheck", h.handlePage)
 
 	s.handle("/vulncheck/enqueueall", h.handleEnqueueAll)
 	s.handle("/vulncheck/enqueue", h.handleEnqueue)
