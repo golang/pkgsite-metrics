@@ -51,32 +51,44 @@ func (s *analysisServer) handleScan(w http.ResponseWriter, r *http.Request) (err
 		return fmt.Errorf("%w: analysis: only implemented for whole modules (no suffix)", derrors.InvalidArgument)
 	}
 
-	jsonTree, binaryHash, err := s.scan(ctx, req)
-	if req.Serve {
-		if err != nil {
-			return err
-		}
-		out, err := json.Marshal(jsonTree)
-		if err != nil {
-			return err
-		}
-		_, err = w.Write(out)
-		return err
-	}
-	return s.writeToBigQuery(ctx, req, jsonTree, binaryHash, err)
+	row := s.scan(ctx, req)
+	return writeResult(ctx, req.Serve, w, s.bqClient, analysis.TableName, row)
 }
 
 const sandboxRoot = "/bundle/rootfs"
 
-func (s *analysisServer) scan(ctx context.Context, req *analysis.ScanRequest) (jt analysis.JSONTree, binaryHash []byte, err error) {
-	err = doScan(ctx, req.Module, req.Version, req.Insecure, func() error {
-		jt, binaryHash, err = s.scanInternal(ctx, req)
-		return err
+func (s *analysisServer) scan(ctx context.Context, req *analysis.ScanRequest) *analysis.Result {
+	row := &analysis.Result{
+		ModulePath: req.Module,
+		Version:    req.Version,
+		BinaryName: req.Binary,
+		WorkVersion: analysis.WorkVersion{
+			BinaryArgs:    req.Args,
+			WorkerVersion: s.cfg.VersionID,
+			SchemaVersion: analysis.SchemaVersion,
+		},
+	}
+
+	err := doScan(ctx, req.Module, req.Version, req.Insecure, func() error {
+		jsonTree, binaryHash, err := s.scanInternal(ctx, req)
+		if err != nil {
+			return err
+		}
+		row.WorkVersion.BinaryVersion = hex.EncodeToString(binaryHash)
+		info, err := s.proxyClient.Info(ctx, req.Module, req.Version)
+		if err != nil {
+			return fmt.Errorf("%w: %v", derrors.ProxyError, err)
+		}
+		row.Version = info.Version
+		row.CommitTime = info.Time
+		row.Diagnostics = analysis.JSONTreeToDiagnostics(jsonTree)
+		return nil
 	})
 	if err != nil {
-		return nil, nil, err
+		row.AddError(err)
 	}
-	return jt, binaryHash, nil
+	row.SortVersion = version.ForSorting(row.Version)
+	return row
 }
 
 func (s *analysisServer) scanInternal(ctx context.Context, req *analysis.ScanRequest) (jt analysis.JSONTree, binaryHash []byte, err error) {
@@ -192,47 +204,6 @@ func runBinaryInDir(sbox *sandbox.Sandbox, path string, args []string, dir strin
 	cmd := sbox.Command(path, args...)
 	cmd.Dir = dir
 	return cmd.Output()
-}
-
-func (s *analysisServer) writeToBigQuery(ctx context.Context, req *analysis.ScanRequest, jsonTree analysis.JSONTree, binaryHash []byte, scanErr error) (err error) {
-	defer derrors.Wrap(&err, "analysisServer.writeToBigQuery(%q, %q)", req.Module, req.Version)
-	row := &analysis.Result{
-		ModulePath: req.Module,
-		BinaryName: req.Binary,
-		WorkVersion: analysis.WorkVersion{
-			BinaryVersion: hex.EncodeToString(binaryHash),
-			BinaryArgs:    req.Args,
-			WorkerVersion: s.cfg.VersionID,
-			SchemaVersion: analysis.SchemaVersion,
-		},
-	}
-	if info, err := s.proxyClient.Info(ctx, req.Module, req.Version); err != nil {
-		log.Errorf(ctx, err, "proxy error")
-		row.AddError(fmt.Errorf("%v: %w", err, derrors.ProxyError))
-		row.Version = req.Version
-	} else {
-		row.Version = info.Version
-		row.CommitTime = info.Time
-	}
-	row.SortVersion = version.ForSorting(row.Version)
-	if scanErr != nil {
-		row.AddError(scanErr)
-	} else {
-		row.Diagnostics = analysis.JSONTreeToDiagnostics(jsonTree)
-	}
-	if s.bqClient == nil {
-		log.Infof(ctx, "bigquery disabled, not uploading")
-	} else {
-		log.Infof(ctx, "uploading to bigquery: %s", req.Path())
-		if err := s.bqClient.Upload(ctx, analysis.TableName, row); err != nil {
-			// This is often caused by:
-			// "Upload: googleapi: got HTTP response code 413 with body"
-			// which happens for some modules.
-			row.AddError(fmt.Errorf("%v: %w", err, derrors.BigQueryError))
-			log.Errorf(ctx, err, "bq.Upload for %s", req.Path())
-		}
-	}
-	return nil
 }
 
 func (s *analysisServer) handleEnqueue(w http.ResponseWriter, r *http.Request) (err error) {

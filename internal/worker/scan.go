@@ -6,8 +6,10 @@ package worker
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
+	"net/http"
 	"os"
 	"os/exec"
 	"runtime/debug"
@@ -15,6 +17,7 @@ import (
 	"strings"
 	"sync/atomic"
 
+	"golang.org/x/pkgsite-metrics/internal/bigquery"
 	"golang.org/x/pkgsite-metrics/internal/config"
 	"golang.org/x/pkgsite-metrics/internal/derrors"
 	"golang.org/x/pkgsite-metrics/internal/log"
@@ -127,4 +130,28 @@ func diskUsage(dirs ...string) string {
 		return fmt.Sprintf("ERROR: %s", derrors.IncludeStderr(err))
 	}
 	return strings.TrimSpace(string(out))
+}
+
+func writeResult(ctx context.Context, serve bool, w http.ResponseWriter, client *bigquery.Client, table string, row bigquery.Row) (err error) {
+	defer derrors.Wrap(&err, "writeResult")
+
+	if serve {
+		// Write the result to the client instead of uploading to BigQuery.
+		log.Infof(ctx, "serving result to client")
+		data, err := json.MarshalIndent(row, "", "    ")
+		if err != nil {
+			return fmt.Errorf("marshaling result: %w", err)
+		}
+		_, err = w.Write(data)
+		if err != nil {
+			log.Errorf(ctx, err, "writing to client")
+		}
+		return nil // No point serving an error, the write already happened.
+	}
+	// Upload to BigQuery.
+	if client == nil {
+		log.Infof(ctx, "bigquery disabled, not uploading")
+		return nil
+	}
+	return client.Upload(ctx, table, row)
 }

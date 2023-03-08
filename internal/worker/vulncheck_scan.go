@@ -224,27 +224,7 @@ func (s *scanner) ScanModule(ctx context.Context, w http.ResponseWriter, sreq *i
 		row.Vulns = vulns
 		log.Infof(ctx, "scanner.runScanModule returned %d vulns: %s", len(vulns), sreq.Path())
 	}
-	if sreq.Serve {
-		// Write the result to the client instead of uploading to BigQuery.
-		log.Infof(ctx, "serving result to client")
-		data, err := json.MarshalIndent(row, "", "    ")
-		if err != nil {
-			return fmt.Errorf("marshaling result: %w", err)
-		}
-		w.Write(data)
-	} else if s.bqClient == nil {
-		log.Infof(ctx, "bigquery disabled, not uploading")
-	} else {
-		log.Infof(ctx, "uploading to bigquery: %s", sreq.Path())
-		if err := s.bqClient.Upload(ctx, ivulncheck.TableName, row); err != nil {
-			// This is often caused by:
-			// "Upload: googleapi: got HTTP response code 413 with body"
-			// which happens for some modules.
-			row.AddError(fmt.Errorf("%v: %w", err, derrors.BigQueryError))
-			log.Errorf(ctx, err, "bq.Upload for %s", sreq.Path())
-		}
-	}
-	return nil
+	return writeResult(ctx, sreq.Serve, w, s.bqClient, ivulncheck.TableName, row)
 }
 
 type vulncheckStats struct {
