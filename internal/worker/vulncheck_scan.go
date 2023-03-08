@@ -222,7 +222,6 @@ func (s *scanner) ScanModule(ctx context.Context, w http.ResponseWriter, sreq *i
 			err = fmt.Errorf("%v: %w", err, derrors.ScanModuleVulncheckError)
 		}
 
-		fmt.Printf("ZP: %v\n", derrors.CategorizeError(err))
 		row.AddError(err)
 		log.Infof(ctx, "scanner.runScanModule return error for %s (%v)", sreq.Path(), err)
 	} else {

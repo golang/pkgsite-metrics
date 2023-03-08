@@ -11,7 +11,6 @@ import (
 	"fmt"
 	"net/http"
 	"os"
-	"path/filepath"
 	"strings"
 	"sync"
 	"time"
@@ -36,7 +35,6 @@ type Server struct {
 	vulndbClient vulnc.Client
 	proxyClient  *proxy.Client
 	queue        queue.Queue
-	staticPath   template.TrustedSource
 
 	devMode   bool
 	mu        sync.Mutex
@@ -94,10 +92,6 @@ func NewServer(ctx context.Context, cfg *config.Config) (_ *Server, err error) {
 		queue:        q,
 		proxyClient:  proxyClient,
 		devMode:      cfg.DevMode,
-		staticPath:   cfg.StaticPath,
-	}
-	if err := s.loadTemplates(); err != nil {
-		return nil, err
 	}
 
 	if cfg.ProjectID != "" && cfg.ServiceID != "" {
@@ -119,14 +113,6 @@ func NewServer(ctx context.Context, cfg *config.Config) (_ *Server, err error) {
 		}
 		derrors.SetReportingClient(reportingClient)
 	}
-
-	http.Handle("/static/", http.StripPrefix("/static/", http.FileServer(http.Dir(s.staticPath.String()))))
-
-	s.handle("/favicon.ico", func(w http.ResponseWriter, r *http.Request) error {
-		http.ServeFile(w, r, filepath.Join(s.staticPath.String(), "favicon.ico"))
-		return nil
-	})
-	s.handle("/", s.handleIndexPage)
 
 	if err := s.registerVulncheckHandlers(ctx); err != nil {
 		return nil, err

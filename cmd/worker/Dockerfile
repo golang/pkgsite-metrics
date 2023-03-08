@@ -82,8 +82,6 @@ RUN go build -mod=readonly -o /bundle/rootfs/runner ./internal/sandbox/runner.go
 
 WORKDIR /app
 
-COPY static		static
-
 ARG DOCKER_IMAGE
 ENV DOCKER_IMAGE=$DOCKER_IMAGE
 
