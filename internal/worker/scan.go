@@ -9,6 +9,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"net/http"
 	"os"
 	"os/exec"
@@ -17,6 +18,7 @@ import (
 	"strings"
 	"sync/atomic"
 
+	"cloud.google.com/go/storage"
 	"golang.org/x/pkgsite-metrics/internal/bigquery"
 	"golang.org/x/pkgsite-metrics/internal/config"
 	"golang.org/x/pkgsite-metrics/internal/derrors"
@@ -154,4 +156,45 @@ func writeResult(ctx context.Context, serve bool, w http.ResponseWriter, client 
 		return nil
 	}
 	return client.Upload(ctx, table, row)
+}
+
+type openFileFunc func(filename string) (io.ReadCloser, error)
+
+// copyToLocalFile opens destPath for writing locally, making it executable if specified.
+// It then uses openFile to open srcPath and copies it to the local file.
+func copyToLocalFile(destPath string, executable bool, srcPath string, openFile openFileFunc) (err error) {
+	defer derrors.Wrap(&err, "copyToFile(%q, %q)", destPath, srcPath)
+
+	var mode os.FileMode
+	if executable {
+		mode = 0755
+	} else {
+		mode = 0644
+	}
+	destf, err := os.OpenFile(destPath, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, mode)
+	if err != nil {
+		return err
+	}
+	rc, err := openFile(srcPath)
+	if err != nil {
+		return err
+	}
+	defer rc.Close()
+	return copyAndClose(destf, rc)
+}
+
+// copyAndClose copies r to wc and closes wc.
+func copyAndClose(wc io.WriteCloser, r io.Reader) error {
+	_, err := io.Copy(wc, r)
+	err2 := wc.Close()
+	if err == nil {
+		err = err2
+	}
+	return err
+}
+
+func gcsOpenFileFunc(ctx context.Context, bucket *storage.BucketHandle) openFileFunc {
+	return func(name string) (io.ReadCloser, error) {
+		return bucket.Object(name).NewReader(ctx)
+	}
 }

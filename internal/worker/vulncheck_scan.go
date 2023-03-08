@@ -400,7 +400,12 @@ func (s *scanner) runBinaryScanSandbox(ctx context.Context, modulePath, version,
 		return nil, err
 	}
 	defer os.Remove(destf.Name())
-	if err := copyFromGCSToWriter(ctx, destf, s.gcsBucket, gcsPathname); err != nil {
+	rc, err := s.gcsBucket.Object(gcsPathname).NewReader(ctx)
+	if err != nil {
+		return nil, err
+	}
+	defer rc.Close()
+	if err := copyAndClose(destf, rc); err != nil {
 		return nil, err
 	}
 	log.Infof(ctx, "%s@%s/%s: running vulncheck in sandbox on %s", modulePath, version, binDir, destf.Name())
@@ -604,7 +609,7 @@ func (s *scanner) runBinaryScanInsecure(ctx context.Context, modulePath, version
 	log.Debug(ctx, "copying to temp dir",
 		"from", gcsPathname, "module", modulePath, "version", version, "dir", binDir)
 	localPathname := filepath.Join(tempDir, "binary")
-	if err := copyFromGCS(ctx, s.gcsBucket, gcsPathname, localPathname, false); err != nil {
+	if err := copyToLocalFile(localPathname, false, gcsPathname, gcsOpenFileFunc(ctx, s.gcsBucket)); err != nil {
 		return nil, err
 	}
 
@@ -628,26 +633,6 @@ func (s *scanner) runBinaryScanInsecure(ctx context.Context, modulePath, version
 		return nil, err
 	}
 	return res.Vulns, nil
-}
-
-func copyFromGCS(ctx context.Context, bucket *storage.BucketHandle, srcPath, destPath string, executable bool) (err error) {
-	defer derrors.Wrap(&err, "copyFromGCS(%q, %q)", srcPath, destPath)
-	var mode os.FileMode
-	if executable {
-		mode = 0755
-	} else {
-		mode = 0644
-	}
-	destf, err := os.OpenFile(destPath, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, mode)
-	if err != nil {
-		return err
-	}
-	err1 := copyFromGCSToWriter(ctx, destf, bucket, srcPath)
-	err2 := destf.Close()
-	if err1 != nil {
-		return err1
-	}
-	return err2
 }
 
 func copyFromGCSToWriter(ctx context.Context, w io.Writer, bucket *storage.BucketHandle, srcPath string) error {

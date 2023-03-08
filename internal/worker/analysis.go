@@ -19,7 +19,6 @@ import (
 	"path/filepath"
 	"strings"
 
-	"cloud.google.com/go/storage"
 	"golang.org/x/pkgsite-metrics/internal/analysis"
 	"golang.org/x/pkgsite-metrics/internal/derrors"
 	"golang.org/x/pkgsite-metrics/internal/log"
@@ -32,6 +31,7 @@ import (
 
 type analysisServer struct {
 	*Server
+	openFile openFileFunc // Used to open binary files from GCS, except for testing.
 }
 
 const analysisBinariesBucketDir = "analysis-binaries"
@@ -112,7 +112,11 @@ func (s *analysisServer) scanInternal(ctx context.Context, req *analysis.ScanReq
 	} else {
 		destPath = path.Join(sandboxRoot, "binaries", path.Base(req.Binary))
 	}
-	if err := copyBinary(ctx, destPath, req.Binary, s.cfg.BinaryBucket); err != nil {
+	if s.cfg.BinaryBucket == "" {
+		return nil, nil, errors.New("missing binary bucket (define GO_ECOSYSTEM_BINARY_BUCKET)")
+	}
+	srcPath := path.Join(analysisBinariesBucketDir, req.Binary)
+	if err := copyToLocalFile(destPath, true, srcPath, s.openFile); err != nil {
 		return nil, nil, err
 	}
 	binaryHash, err = hashFile(destPath)
@@ -161,22 +165,6 @@ func hashFile(filename string) (_ []byte, err error) {
 		return nil, err
 	}
 	return h.Sum(nil), nil
-}
-
-// copyBinary copies a binary from srcPath to destPath.
-// If binaryBucket is non-empty, it reads srcPath from that GCS bucket.
-// If binaryBucket is empty, return an error.
-func copyBinary(ctx context.Context, destPath, srcPath, binaryBucket string) error {
-	if binaryBucket == "" {
-		return errors.New("missing binary bucket (define GO_ECOSYSTEM_BINARY_BUCKET)")
-	}
-	c, err := storage.NewClient(ctx)
-	if err != nil {
-		return err
-	}
-	bucket := c.Bucket(binaryBucket)
-	bucketPath := path.Join(analysisBinariesBucketDir, srcPath)
-	return copyFromGCS(ctx, bucket, bucketPath, destPath, true)
 }
 
 // Run the binary on the module.
