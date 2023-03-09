@@ -16,7 +16,7 @@ import (
 // See https://cloud.google.com/logging/docs/agent/logging/configuration#special-fields
 // for treatment of special fields.
 func NewGoogleCloudHandler() slog.Handler {
-	return slog.HandlerOptions{ReplaceAttr: gcpReplaceAttr}.
+	return slog.HandlerOptions{ReplaceAttr: gcpReplaceAttr, Level: slog.LevelDebug}.
 		NewJSONHandler(os.Stderr)
 }
 
