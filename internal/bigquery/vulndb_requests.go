@@ -64,8 +64,11 @@ func ReadVulnDBRequestCounts(ctx context.Context, projectID string) (_ []*VulnDB
 
 func readVulnDBRequestCounts(ctx context.Context, c *Client) (_ []*VulnDBRequestCount, err error) {
 	// Select the most recently inserted row for each date.
-	q := fmt.Sprintf("(%s) ORDER BY date DESC",
-		PartitionQuery(c.FullTableName(VulnDBRequestTableName), "date", "inserted_at DESC"))
+	q := fmt.Sprintf("(%s) ORDER BY date DESC", PartitionQuery{
+		Table:       c.FullTableName(VulnDBRequestTableName),
+		PartitionOn: "date",
+		OrderBy:     "inserted_at DESC",
+	})
 	iter, err := c.Query(ctx, q)
 	if err != nil {
 		return nil, err

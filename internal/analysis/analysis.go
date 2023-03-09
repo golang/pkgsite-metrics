@@ -200,7 +200,12 @@ func init() {
 func ReadWorkVersions(ctx context.Context, c *bigquery.Client) (_ map[[2]string]*WorkVersion, err error) {
 	defer derrors.Wrap(&err, "ReadWorkVersions")
 	m := map[[2]string]*WorkVersion{}
-	query := bigquery.PartitionQuery(c.FullTableName(TableName), "module_path, sort_version", "created_at DESC")
+	query := bigquery.PartitionQuery{
+		Table:       c.FullTableName(TableName),
+		Columns:     "module_path, version, binary_version, binary_args, worker_version, schema_version",
+		PartitionOn: "module_path, sort_version",
+		OrderBy:     "created_at DESC",
+	}.String()
 	iter, err := c.Query(ctx, query)
 	if err != nil {
 		return nil, err

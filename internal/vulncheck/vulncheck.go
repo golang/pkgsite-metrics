@@ -239,7 +239,12 @@ func init() {
 func ReadWorkVersions(ctx context.Context, c *bigquery.Client) (_ map[[2]string]*WorkVersion, err error) {
 	defer derrors.Wrap(&err, "ReadWorkVersions")
 	m := map[[2]string]*WorkVersion{}
-	query := bigquery.PartitionQuery(c.FullTableName(TableName), "module_path, sort_version", "created_at DESC")
+	query := bigquery.PartitionQuery{
+		Table:       c.FullTableName(TableName),
+		Columns:     "module_path, version, worker_version, schema_version, x_vuln_version, vulndb_last_modified",
+		PartitionOn: "module_path, sort_version",
+		OrderBy:     "created_at DESC",
+	}.String()
 	iter, err := c.Query(ctx, query)
 	if err != nil {
 		return nil, err
@@ -274,7 +279,11 @@ func FetchResults(ctx context.Context, c *bigquery.Client) (rows []*Result, err 
 
 func fetchResults(ctx context.Context, c *bigquery.Client, tableName string) (rows []*Result, err error) {
 	name := c.FullTableName(tableName)
-	query := bigquery.PartitionQuery(name, "module_path, scan_mode", orderByClauses)
+	query := bigquery.PartitionQuery{
+		Table:       name,
+		PartitionOn: "module_path, scan_mode",
+		OrderBy:     orderByClauses,
+	}.String()
 	log.Infof(ctx, "running latest query on %s", name)
 	iter, err := c.Query(ctx, query)
 	if err != nil {

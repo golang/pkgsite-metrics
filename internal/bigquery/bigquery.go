@@ -304,22 +304,34 @@ func Tables() []string {
 	return tableIDs
 }
 
-// PartitionQuery returns a query that returns one row for each distinct value
-// of partitionColumn in tableName.
-// The selected row will be the first one according to the orderings, which
-// should be comma-separated ORDER BY clauses.
+// PartitionQuery describes a query that returns one row for each distinct value
+// of the partition column in the given table.
+//
+// The selected row will be the first one according to the OrderBy clauses.
 //
 // For example, say the students table holds student names and classes.
 // Then
 //
-//	partitionQuery("students", "class", "name ASC")
+//	  PartitionQuery{
+//		   Table: "students",
+//		   PartitionOn: "class",
+//		   OrderBy: "name ASC",
+//		 }.String()
 //
 // will construct a query returning the student in each class whose name is
 // alphabetically first.
 //
 // (BigQuery SQL has no DISTINCT ON feature and doesn't allow columns of type RECORD
 // in queries with DISTINCT, so we have to take this approach.)
-func PartitionQuery(tableName, partitionColumn, orderings string) string {
+type PartitionQuery struct {
+	Table       string // full table name
+	Columns     string // comma-separated columns to select, or "*" ("" => "*")
+	PartitionOn string // comma-separated columns defining the partition
+	OrderBy     string // text after ORDER BY: comma-separated columns, each
+	// optionally followed by DESC or ASC
+}
+
+func (q PartitionQuery) String() string {
 	// This query first organizes the table rows into windows that have the same partitionColumn.
 	// The rows in each window are sorted by the given orderings.
 	// They are then assigned numbers, where 1 is the first row in the window.
@@ -330,15 +342,18 @@ func PartitionQuery(tableName, partitionColumn, orderings string) string {
 	const qf = `
 		SELECT * EXCEPT (rownum)
 		FROM (
-			SELECT *, ROW_NUMBER() OVER (
+			SELECT %s, ROW_NUMBER() OVER (
 				PARTITION BY %s
 				ORDER BY %s
 			) AS rownum
 			FROM %s
 		) WHERE rownum = 1
 	`
-
-	return fmt.Sprintf(qf, partitionColumn, orderings, "`"+tableName+"`")
+	cols := q.Columns
+	if cols == "" {
+		cols = "*"
+	}
+	return fmt.Sprintf(qf, cols, q.PartitionOn, q.OrderBy, "`"+q.Table+"`")
 }
 
 // Copy InferSchema so users don't have to import cloud.google.com/go/bigquery
