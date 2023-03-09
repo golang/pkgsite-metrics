@@ -84,7 +84,7 @@ func (h *VulncheckServer) handleScan(w http.ResponseWriter, r *http.Request) (er
 		sreq.Mode = ModeGovulncheck
 	}
 	if shouldSkip[sreq.Module] {
-		log.Infof(ctx, "skipping %s (module in shouldSkip list)", sreq.Path())
+		log.Infof(ctx, "skipping (module in shouldSkip list): %s", sreq.Path())
 		return nil
 	}
 	if err := h.readVulncheckWorkVersions(ctx); err != nil {
@@ -100,11 +100,10 @@ func (h *VulncheckServer) handleScan(w http.ResponseWriter, r *http.Request) (er
 	}
 	wv := h.storedWorkVersions[[2]string{sreq.Module, sreq.Version}]
 	if scanner.workVersion.Equal(wv) {
-		log.Infof(ctx, "skipping %s@%s (work version unchanged)", sreq.Module, sreq.Version)
+		log.Infof(ctx, "skipping (work version unchanged): %s@%s", sreq.Module, sreq.Version)
 		return nil
 	}
 
-	log.Infof(ctx, "scanning: %s", sreq.Path())
 	return scanner.ScanModule(ctx, w, sreq)
 }
 
@@ -183,7 +182,7 @@ func (s *scanner) ScanModule(ctx context.Context, w http.ResponseWriter, sreq *i
 		WorkVersion: *s.workVersion,
 	}
 	// Scan the version.
-	log.Infof(ctx, "fetching proxy info: %s@%s", sreq.Module, sreq.Version)
+	log.Debugf(ctx, "fetching proxy info: %s@%s", sreq.Path(), sreq.Version)
 	info, err := s.proxyClient.Info(ctx, sreq.Module, sreq.Version)
 	if err != nil {
 		log.Errorf(ctx, err, "proxy error")
@@ -197,7 +196,7 @@ func (s *scanner) ScanModule(ctx context.Context, w http.ResponseWriter, sreq *i
 	row.VulnDBLastModified = s.workVersion.VulnDBLastModified
 	row.ScanMode = sreq.Mode
 
-	log.Infof(ctx, "scanning: %s", sreq.Path())
+	log.Infof(ctx, "running scanner.runScanModule: %s@%s", sreq.Path(), sreq.Version)
 	stats := &vulncheckStats{}
 	vulns, err := s.runScanModule(ctx, sreq.Module, info.Version, sreq.Suffix, sreq.Mode, stats)
 	row.ScanSeconds = stats.scanSeconds
@@ -223,13 +222,11 @@ func (s *scanner) ScanModule(ctx context.Context, w http.ResponseWriter, sreq *i
 		default:
 			err = fmt.Errorf("%v: %w", err, derrors.ScanModuleVulncheckError)
 		}
-
 		row.AddError(err)
-		log.Infof(ctx, "scanner.runScanModule return error for %s (%v)", sreq.Path(), err)
 	} else {
 		row.Vulns = vulns
-		log.Infof(ctx, "scanner.runScanModule returned %d vulns: %s", len(vulns), sreq.Path())
 	}
+	log.Infof(ctx, "done with scanner.runScanModule: %s@%s #vulns=%d err=%v", sreq.Path(), sreq.Version, len(vulns), err)
 	return writeResult(ctx, sreq.Serve, w, s.bqClient, ivulncheck.TableName, row)
 }
 
@@ -258,7 +255,6 @@ func (s *scanner) runScanModule(ctx context.Context, modulePath, version, binary
 			} else {
 				vulns, err = s.runImportsScanSandbox(ctx, modulePath, version, stats)
 			}
-
 			if err != nil {
 				return err
 			}
@@ -285,7 +281,7 @@ func (s *scanner) runScanModule(ctx context.Context, modulePath, version, binary
 }
 
 func (s *scanner) runImportsScanInsecure(ctx context.Context, modulePath, version string, stats *vulncheckStats) (_ []*vulncheck.Vuln, err error) {
-	tempDir, err := os.MkdirTemp("", "runScanModule")
+	tempDir, err := os.MkdirTemp("", "runImportsScan")
 	if err != nil {
 		return nil, err
 	}
@@ -328,10 +324,9 @@ func (s *scanner) runImportsScanInsecure(ctx context.Context, modulePath, versio
 	start := time.Now()
 	vcfg := &vulncheck.Config{Client: s.dbClient, ImportsOnly: true}
 	res, peakMem, err := s.runWithMemoryMonitor(ctx, func() (*vulncheck.Result, error) {
-		log.Debugf(ctx, "running vulncheck.Source: %s@%s", modulePath, version)
+		log.Infof(ctx, "running imports analysis (vulncheck.Source): %s@%s", modulePath, version)
 		res, err := vulncheck.Source(cctx, vulncheck.Convert(pkgs), vcfg)
-		log.Debugf(ctx, "completed run for vulncheck.Source: %s@%s, err=%v", modulePath, version, err)
-
+		log.Infof(ctx, "done with imports analysis (vulncheck.Source): %s@%s, err=%v", modulePath, version, err)
 		if err != nil {
 			return res, err
 		}
@@ -359,16 +354,13 @@ func (s *scanner) runImportsScanSandbox(ctx context.Context, modulePath, version
 	}
 	defer cleanup()
 
-	log.Infof(ctx, "running vulncheck in sandbox: %s@%s", modulePath, version)
+	log.Infof(ctx, "running imports analysis in sandbox: %s@%s", modulePath, version)
 	stdout, err := s.sbox.Command("/binaries/vulncheck_sandbox", ModeImports, sandboxDir).Output()
+	log.Infof(ctx, "done with imports analysis in sandbox: %s@%s err=%v", modulePath, version, err)
+
 	if err != nil {
 		return nil, errors.New(derrors.IncludeStderr(err))
 	}
-	log.Debugf(ctx, "completed run for vulncheck in sandbox: %s@%s err=%v", modulePath, version, err)
-	if err != nil {
-		return nil, err
-	}
-
 	res, err := unmarshalVulncheckOutput(stdout)
 	if err != nil {
 		return nil, err
@@ -381,34 +373,16 @@ func (s *scanner) runGovulncheckScanSandbox(ctx context.Context, modulePath, ver
 		return s.runBinaryScanSandbox(ctx, modulePath, version, binaryDir, stats)
 	}
 
-	sandboxDir := "/modules/" + modulePath + "@" + version
-	imageDir := "/bundle/rootfs" + sandboxDir
-	defer os.RemoveAll(imageDir)
-
-	log.Infof(ctx, "downloading %s@%s to %s", modulePath, version, imageDir)
-	if err := modules.Download(ctx, modulePath, version, imageDir, s.proxyClient, true); err != nil {
-		log.Debugf(ctx, "download error: %v (%[1]T)", err)
+	sandboxDir, cleanup, err := downloadModuleSandbox(ctx, modulePath, version, s.proxyClient)
+	if err != nil {
 		return nil, err
 	}
-	// Download all dependencies outside of the sandbox, but use the Go build
-	// cache inside the bundle.
-	log.Infof(ctx, "running go mod download")
-	cmd := exec.Command("go", "mod", "download")
-	cmd.Dir = imageDir
-	cmd.Env = append(cmd.Environ(),
-		"GOPROXY=https://proxy.golang.org",
-		"GOMODCACHE=/bundle/rootfs/"+sandboxGoModCache)
-	_, err := cmd.Output()
-	if err != nil {
-		return nil, fmt.Errorf("%w: 'go mod download' for %s@%s returned %s",
-			derrors.BadModule, modulePath, version, derrors.IncludeStderr(err))
-	}
-	log.Infof(ctx, "go mod download succeeded")
-	log.Infof(ctx, "%s@%s: running govulncheck in sandbox", modulePath, version)
+	defer cleanup()
 
-	govulncheckcmd := s.sbox.Command("/binaries/vulncheck_sandbox", ModeGovulncheck, sandboxDir)
+	log.Infof(ctx, "running govulncheck in sandbox: %s@%s", modulePath, version)
+	stdout, err := s.sbox.Command("/binaries/vulncheck_sandbox", ModeGovulncheck, sandboxDir).Output()
+	log.Infof(ctx, "done with govulncheck in sandbox: %s@%s err=%v", modulePath, version, err)
 
-	stdout, err := govulncheckcmd.Output()
 	if err != nil {
 		return nil, errors.New(derrors.IncludeStderr(err))
 	}
@@ -423,14 +397,14 @@ func downloadModuleSandbox(ctx context.Context, modulePath, version string, prox
 	sandboxDir := "/modules/" + modulePath + "@" + version
 	imageDir := "/bundle/rootfs" + sandboxDir
 
-	log.Infof(ctx, "downloading %s@%s to %s", modulePath, version, imageDir)
+	log.Debugf(ctx, "downloading %s@%s to %s", modulePath, version, imageDir)
 	if err := modules.Download(ctx, modulePath, version, imageDir, proxyClient, true); err != nil {
 		log.Debugf(ctx, "download error: %v (%[1]T)", err)
 		return "", nil, err
 	}
 	// Download all dependencies outside of the sandbox, but use the Go build
 	// cache ("/bundle/rootfs/" + sandboxGoCache) inside the bundle.
-	log.Infof(ctx, "running go mod download")
+	log.Debugf(ctx, "running go mod download")
 	cmd := exec.Command("go", "mod", "download")
 	cmd.Dir = imageDir
 	cmd.Env = append(cmd.Environ(),
@@ -441,7 +415,7 @@ func downloadModuleSandbox(ctx context.Context, modulePath, version string, prox
 		return "", nil, fmt.Errorf("%w: 'go mod download' for %s@%s returned %s",
 			derrors.BadModule, modulePath, version, derrors.IncludeStderr(err))
 	}
-	log.Infof(ctx, "go mod download succeeded")
+	log.Debugf(ctx, "go mod download succeeded")
 	return sandboxDir, func() { os.RemoveAll(imageDir) }, nil
 }
 
@@ -471,8 +445,11 @@ func (s *scanner) runBinaryScanSandbox(ctx context.Context, modulePath, version,
 	if err := copyAndClose(destf, rc); err != nil {
 		return nil, err
 	}
-	log.Infof(ctx, "%s@%s/%s: running vulncheck in sandbox on %s", modulePath, version, binDir, destf.Name())
+
+	log.Infof(ctx, "running vulncheck in sandbox on %s: %s@%s/%s", modulePath, version, binDir, destf.Name())
 	stdout, err := s.sbox.Command("/binaries/vulncheck_sandbox", ModeBinary, destf.Name()).Output()
+	log.Infof(ctx, "done with vulncheck in sandbox on %s: %s@%s/%s err=%v", modulePath, version, binDir, destf.Name(), err)
+
 	if err != nil {
 		return nil, errors.New(derrors.IncludeStderr(err))
 	}
