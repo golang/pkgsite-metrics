@@ -37,13 +37,15 @@ import (
 )
 
 const (
-	// ModeImports only computes import-level analysis.
+	// ModeImports performs import-level analysis.
 	ModeImports string = "IMPORTS"
 
-	// ModeBinary runs vulncheck.Binary
+	// ModeBinary runs the govulncheck binary in
+	// binary mode.
 	ModeBinary string = "BINARY"
 
-	// ModeGovulncheck runs the govulncheck binary
+	// ModeGovulncheck runs the govulncheck binary in
+	// default (source) mode.
 	ModeGovulncheck = "GOVULNCHECK"
 )
 
@@ -237,16 +239,24 @@ type vulncheckStats struct {
 	pkgsMemory  uint64
 }
 
+// Inside the sandbox, the user is root and their $HOME directory is /root.
+const (
+	// The Go module cache resides in its default location, $HOME/go/pkg/mod.
+	sandboxGoModCache = "root/go/pkg/mod"
+	// The Go cache resides in its default location, $HOME/.cache/go-build.
+	sandboxGoCache = "root/.cache/go-build"
+)
+
 // runScanModule fetches the module version from the proxy, and analyzes it for
 // vulnerabilities.
 func (s *scanner) runScanModule(ctx context.Context, modulePath, version, binaryDir, mode string, stats *vulncheckStats) (bvulns []*ivulncheck.Vuln, err error) {
 	err = doScan(ctx, modulePath, version, s.insecure, func() error {
-		if mode != ModeGovulncheck {
+		if mode == ModeImports {
 			var vulns []*vulncheck.Vuln
 			if s.insecure {
-				vulns, err = s.runScanModuleInsecure(ctx, modulePath, version, binaryDir, mode, stats)
+				vulns, err = s.runImportsScanInsecure(ctx, modulePath, version, stats)
 			} else {
-				vulns, err = s.runScanModuleSandbox(ctx, modulePath, version, binaryDir, mode, stats)
+				vulns, err = s.runImportsScanSandbox(ctx, modulePath, version, stats)
 			}
 
 			if err != nil {
@@ -255,16 +265,12 @@ func (s *scanner) runScanModule(ctx context.Context, modulePath, version, binary
 			for _, v := range vulns {
 				bvulns = append(bvulns, ivulncheck.ConvertVulncheckOutput(v))
 			}
-		} else { // Govulncheck mode
+		} else {
 			var vulns []*govulncheck.Vuln
 			if s.insecure {
-				vulns, err = s.runGovulncheckScanInsecure(ctx, modulePath, version, stats)
+				vulns, err = s.runGovulncheckScanInsecure(ctx, modulePath, version, binaryDir, mode, stats)
 			} else {
-				res, err := s.runGovulncheckScanSandbox(ctx, modulePath, version, stats)
-				if err != nil {
-					return err
-				}
-				vulns = res.Vulns
+				vulns, err = s.runGovulncheckScanSandbox(ctx, modulePath, version, binaryDir, mode, stats)
 			}
 			if err != nil {
 				return err
@@ -278,7 +284,103 @@ func (s *scanner) runScanModule(ctx context.Context, modulePath, version, binary
 	return bvulns, err
 }
 
-func (s *scanner) runGovulncheckScanSandbox(ctx context.Context, modulePath, version string, stats *vulncheckStats) (*govulncheck.Result, error) {
+func (s *scanner) runImportsScanInsecure(ctx context.Context, modulePath, version string, stats *vulncheckStats) (_ []*vulncheck.Vuln, err error) {
+	tempDir, err := os.MkdirTemp("", "runScanModule")
+	if err != nil {
+		return nil, err
+	}
+
+	defer func() {
+		err1 := os.RemoveAll(tempDir)
+		if err == nil {
+			err = err1
+		}
+	}()
+
+	log.Debugf(ctx, "fetching module zip: %s@%s", modulePath, version)
+	if err = modules.Download(ctx, modulePath, version, tempDir, s.proxyClient, true); err != nil {
+		return nil, err
+	}
+
+	cctx, cancel := context.WithCancel(ctx)
+	defer cancel()
+
+	cfg := load.DefaultConfig()
+	cfg.Dir = tempDir // filepath.Join(dir, modulePath+"@"+version,
+	cfg.Context = cctx
+
+	runtime.GC()
+	// current memory not related to core (go)vulncheck operations.
+	preScanMemory := currHeapUsage()
+
+	log.Debugf(ctx, "loading packages: %s@%s", modulePath, version)
+	pkgs, pkgErrors, err := load.Packages(cfg, "./...")
+	if err == nil && len(pkgErrors) > 0 {
+		err = fmt.Errorf("%v", pkgErrors)
+	}
+	if err != nil {
+		return nil, err
+	}
+
+	stats.pkgsMemory = memSubtract(currHeapUsage(), preScanMemory)
+
+	// Run vulncheck.Source and collect results.
+	start := time.Now()
+	vcfg := &vulncheck.Config{Client: s.dbClient, ImportsOnly: true}
+	res, peakMem, err := s.runWithMemoryMonitor(ctx, func() (*vulncheck.Result, error) {
+		log.Debugf(ctx, "running vulncheck.Source: %s@%s", modulePath, version)
+		res, err := vulncheck.Source(cctx, vulncheck.Convert(pkgs), vcfg)
+		log.Debugf(ctx, "completed run for vulncheck.Source: %s@%s, err=%v", modulePath, version, err)
+
+		if err != nil {
+			return res, err
+		}
+		return res, nil
+	})
+	// scanMemory is peak heap memory used during vulncheck + pkgs.
+	// We subtract any memory not related to these core (go)vulncheck
+	// operations.
+	stats.scanMemory = memSubtract(peakMem, preScanMemory)
+
+	// scanSeconds is the time it took for vulncheck.Source to run.
+	// We want to know this information regardless of whether an error
+	// occurred.
+	stats.scanSeconds = time.Since(start).Seconds()
+	if err != nil {
+		return nil, err
+	}
+	return res.Vulns, nil
+}
+
+func (s *scanner) runImportsScanSandbox(ctx context.Context, modulePath, version string, stats *vulncheckStats) ([]*vulncheck.Vuln, error) {
+	sandboxDir, cleanup, err := downloadModuleSandbox(ctx, modulePath, version, s.proxyClient)
+	if err != nil {
+		return nil, err
+	}
+	defer cleanup()
+
+	log.Infof(ctx, "running vulncheck in sandbox: %s@%s", modulePath, version)
+	stdout, err := s.sbox.Command("/binaries/vulncheck_sandbox", ModeImports, sandboxDir).Output()
+	if err != nil {
+		return nil, errors.New(derrors.IncludeStderr(err))
+	}
+	log.Debugf(ctx, "completed run for vulncheck in sandbox: %s@%s err=%v", modulePath, version, err)
+	if err != nil {
+		return nil, err
+	}
+
+	res, err := unmarshalVulncheckOutput(stdout)
+	if err != nil {
+		return nil, err
+	}
+	return res.Vulns, nil
+}
+
+func (s *scanner) runGovulncheckScanSandbox(ctx context.Context, modulePath, version, binaryDir, mode string, stats *vulncheckStats) ([]*govulncheck.Vuln, error) {
+	if mode == ModeBinary {
+		return s.runBinaryScanSandbox(ctx, modulePath, version, binaryDir, stats)
+	}
+
 	sandboxDir := "/modules/" + modulePath + "@" + version
 	imageDir := "/bundle/rootfs" + sandboxDir
 	defer os.RemoveAll(imageDir)
@@ -310,54 +412,11 @@ func (s *scanner) runGovulncheckScanSandbox(ctx context.Context, modulePath, ver
 	if err != nil {
 		return nil, errors.New(derrors.IncludeStderr(err))
 	}
-	return unmarshalGovulncheckOutput(stdout)
-}
-
-func (s *scanner) runScanModuleSandbox(ctx context.Context, modulePath, version, binaryDir, mode string, stats *vulncheckStats) ([]*vulncheck.Vuln, error) {
-	var (
-		res *vulncheck.Result
-		err error
-	)
-	if mode == ModeBinary {
-		res, err = s.runBinaryScanSandbox(ctx, modulePath, version, binaryDir, stats)
-	} else {
-		res, err = s.runSourceScanSandbox(ctx, modulePath, version, mode, stats)
-	}
-	log.Debugf(ctx, "runScanModuleSandbox %s@%s bin %s, mode %s: got %+v, %v", modulePath, version, binaryDir, mode, res, err)
+	res, err := unmarshalGovulncheckOutput(stdout)
 	if err != nil {
 		return nil, err
 	}
 	return res.Vulns, nil
-}
-
-func (s *scanner) runSourceScanSandbox(ctx context.Context, modulePath, version, mode string, stats *vulncheckStats) (*vulncheck.Result, error) {
-	stdout, err := runSourceScanSandbox(ctx, modulePath, version, mode, s.proxyClient, s.sbox)
-	if err != nil {
-		return nil, err
-	}
-	return unmarshalVulncheckOutput(stdout)
-}
-
-// Inside the sandbox, the user is root and their $HOME directory is /root.
-const (
-	// The Go module cache resides in its default location, $HOME/go/pkg/mod.
-	sandboxGoModCache = "root/go/pkg/mod"
-	// The Go cache resides in its default location, $HOME/.cache/go-build.
-	sandboxGoCache = "root/.cache/go-build"
-)
-
-func runSourceScanSandbox(ctx context.Context, modulePath, version, mode string, proxyClient *proxy.Client, sbox *sandbox.Sandbox) ([]byte, error) {
-	sandboxDir, cleanup, err := downloadModuleSandbox(ctx, modulePath, version, proxyClient)
-	if err != nil {
-		return nil, err
-	}
-	defer cleanup()
-	log.Infof(ctx, "%s@%s: running vulncheck in sandbox", modulePath, version)
-	stdout, err := sbox.Command("/binaries/vulncheck_sandbox", mode, sandboxDir).Output()
-	if err != nil {
-		return nil, errors.New(derrors.IncludeStderr(err))
-	}
-	return stdout, nil
 }
 
 func downloadModuleSandbox(ctx context.Context, modulePath, version string, proxyClient *proxy.Client) (string, func(), error) {
@@ -386,7 +445,7 @@ func downloadModuleSandbox(ctx context.Context, modulePath, version string, prox
 	return sandboxDir, func() { os.RemoveAll(imageDir) }, nil
 }
 
-func (s *scanner) runBinaryScanSandbox(ctx context.Context, modulePath, version, binDir string, stats *vulncheckStats) (*vulncheck.Result, error) {
+func (s *scanner) runBinaryScanSandbox(ctx context.Context, modulePath, version, binDir string, stats *vulncheckStats) ([]*govulncheck.Vuln, error) {
 	if s.gcsBucket == nil {
 		return nil, errors.New("binary bucket not configured; set GO_ECOSYSTEM_BINARY_BUCKET")
 	}
@@ -417,7 +476,82 @@ func (s *scanner) runBinaryScanSandbox(ctx context.Context, modulePath, version,
 	if err != nil {
 		return nil, errors.New(derrors.IncludeStderr(err))
 	}
-	return unmarshalVulncheckOutput(stdout)
+	res, err := unmarshalGovulncheckOutput(stdout)
+	if err != nil {
+		return nil, err
+	}
+	return res.Vulns, nil
+}
+
+func (s *scanner) runGovulncheckScanInsecure(ctx context.Context, modulePath, version, binaryDir, mode string, stats *vulncheckStats) (_ []*govulncheck.Vuln, err error) {
+	tempDir, err := os.MkdirTemp("", "runGovulncheckScan")
+	if err != nil {
+		return nil, err
+	}
+
+	defer func() {
+		err1 := os.RemoveAll(tempDir)
+		if err == nil {
+			err = err1
+		}
+	}()
+
+	if mode == ModeBinary {
+		return s.runBinaryScanInsecure(ctx, modulePath, version, binaryDir, tempDir, stats)
+	}
+
+	log.Debugf(ctx, "fetching module zip: %s@%s", modulePath, version)
+	if err := modules.Download(ctx, modulePath, version, tempDir, s.proxyClient, true); err != nil {
+		return nil, err
+	}
+	start := time.Now()
+	vulns, err := runGovulncheckCmd(ctx, "./...", tempDir, stats)
+	if err != nil {
+		return nil, err
+	}
+	stats.scanSeconds = time.Since(start).Seconds()
+	return vulns, nil
+}
+
+func (s *scanner) runBinaryScanInsecure(ctx context.Context, modulePath, version, binDir, tempDir string, stats *vulncheckStats) ([]*govulncheck.Vuln, error) {
+	if s.gcsBucket == nil {
+		return nil, errors.New("binary bucket not configured; set GO_ECOSYSTEM_BINARY_BUCKET")
+	}
+	// Copy the binary from GCS to the local disk, because vulncheck.Binary
+	// requires a ReaderAt and GCS doesn't provide that.
+	gcsPathname := fmt.Sprintf("%s/%s@%s/%s", binaryDir, modulePath, version, binDir)
+	log.Debug(ctx, "copying to temp dir",
+		"from", gcsPathname, "module", modulePath, "version", version, "dir", binDir)
+	localPathname := filepath.Join(tempDir, "binary")
+	if err := copyToLocalFile(localPathname, false, gcsPathname, gcsOpenFileFunc(ctx, s.gcsBucket)); err != nil {
+		return nil, err
+	}
+
+	start := time.Now()
+	vulns, err := runGovulncheckCmd(ctx, localPathname, "", stats)
+	if err != nil {
+		return nil, err
+	}
+	stats.scanSeconds = time.Since(start).Seconds()
+	return vulns, nil
+}
+
+func runGovulncheckCmd(ctx context.Context, pattern, tempDir string, stats *vulncheckStats) ([]*govulncheck.Vuln, error) {
+	govulncheckName := "/bundle/rootfs/binaries/govulncheck"
+	if !fileExists(govulncheckName) {
+		govulncheckName = "govulncheck"
+	}
+	govulncheckCmd := exec.Command(govulncheckName, "-json", pattern)
+	govulncheckCmd.Dir = tempDir
+	output, err := govulncheckCmd.Output()
+	if err != nil {
+		return nil, err
+	}
+	res, err := unmarshalGovulncheckOutput(output)
+	if err != nil {
+		return nil, err
+	}
+	return res.Vulns, nil
 }
 
 func unmarshalVulncheckOutput(output []byte) (*vulncheck.Result, error) {
@@ -454,126 +588,6 @@ func unmarshalGovulncheckOutput(output []byte) (*govulncheck.Result, error) {
 	return &res, nil
 }
 
-func (s *scanner) runGovulncheckScanInsecure(ctx context.Context, modulePath, version string, stats *vulncheckStats) (_ []*govulncheck.Vuln, err error) {
-	tempDir, err := os.MkdirTemp("", "runGovulncheckScan")
-	if err != nil {
-		return nil, err
-	}
-
-	defer func() {
-		err1 := os.RemoveAll(tempDir)
-		if err == nil {
-			err = err1
-		}
-	}()
-
-	log.Debugf(ctx, "fetching module zip: %s@%s", modulePath, version)
-	if err := modules.Download(ctx, modulePath, version, tempDir, s.proxyClient, true); err != nil {
-		return nil, err
-	}
-	start := time.Now()
-	vulns, err := runGovulncheckCmd(ctx, modulePath, tempDir, stats)
-	if err != nil {
-		return nil, err
-	}
-	stats.scanSeconds = time.Since(start).Seconds()
-
-	return vulns, nil
-}
-
-func runGovulncheckCmd(ctx context.Context, modulePath, tempDir string, stats *vulncheckStats) ([]*govulncheck.Vuln, error) {
-	govulncheckName := "/bundle/rootfs/binaries/govulncheck"
-	if !fileExists(govulncheckName) {
-		govulncheckName = "govulncheck"
-	}
-	govulncheckCmd := exec.Command(govulncheckName, "-json", "./...")
-	govulncheckCmd.Dir = tempDir
-	output, err := govulncheckCmd.Output()
-	if err != nil {
-		return nil, err
-	}
-	res, err := unmarshalGovulncheckOutput(output)
-	if err != nil {
-		return nil, err
-	}
-	return res.Vulns, nil
-}
-
-func (s *scanner) runScanModuleInsecure(ctx context.Context, modulePath, version, binaryDir, mode string, stats *vulncheckStats) (_ []*vulncheck.Vuln, err error) {
-	tempDir, err := os.MkdirTemp("", "runScanModule")
-	if err != nil {
-		return nil, err
-	}
-
-	defer func() {
-		err1 := os.RemoveAll(tempDir)
-		if err == nil {
-			err = err1
-		}
-	}()
-
-	if mode == ModeBinary {
-		return s.runBinaryScanInsecure(ctx, modulePath, version, binaryDir, tempDir, stats)
-	}
-	return s.runSourceScanInsecure(ctx, modulePath, version, mode, tempDir, stats)
-}
-
-func (s *scanner) runSourceScanInsecure(ctx context.Context, modulePath, version, mode, tempDir string, stats *vulncheckStats) ([]*vulncheck.Vuln, error) {
-	log.Debugf(ctx, "fetching module zip: %s@%s", modulePath, version)
-	if err := modules.Download(ctx, modulePath, version, tempDir, s.proxyClient, true); err != nil {
-		return nil, err
-	}
-
-	cctx, cancel := context.WithCancel(ctx)
-	defer cancel()
-
-	cfg := load.DefaultConfig()
-	cfg.Dir = tempDir // filepath.Join(dir, modulePath+"@"+version,
-	cfg.Context = cctx
-
-	runtime.GC()
-	// current memory not related to core (go)vulncheck operations.
-	preScanMemory := currHeapUsage()
-
-	log.Debugf(ctx, "loading packages: %s@%s", modulePath, version)
-	pkgs, pkgErrors, err := load.Packages(cfg, "./...")
-	if err == nil && len(pkgErrors) > 0 {
-		err = fmt.Errorf("%v", pkgErrors)
-	}
-	if err != nil {
-		return nil, err
-	}
-
-	stats.pkgsMemory = memSubtract(currHeapUsage(), preScanMemory)
-
-	// Run vulncheck.Source and collect results.
-	start := time.Now()
-	vcfg := vulncheckConfig(s.dbClient, mode)
-	res, peakMem, err := s.runWithMemoryMonitor(ctx, func() (*vulncheck.Result, error) {
-		log.Debugf(ctx, "running vulncheck.Source: %s@%s", modulePath, version)
-		res, err := vulncheck.Source(cctx, vulncheck.Convert(pkgs), vcfg)
-		log.Debugf(ctx, "completed run for vulncheck.Source: %s@%s, err=%v", modulePath, version, err)
-
-		if err != nil {
-			return res, err
-		}
-		return res, nil
-	})
-	// scanMemory is peak heap memory used during vulncheck + pkgs.
-	// We subtract any memory not related to these core (go)vulncheck
-	// operations.
-	stats.scanMemory = memSubtract(peakMem, preScanMemory)
-
-	// scanSeconds is the time it took for vulncheck.Source to run.
-	// We want to know this information regardless of whether an error
-	// occurred.
-	stats.scanSeconds = time.Since(start).Seconds()
-	if err != nil {
-		return nil, err
-	}
-	return res.Vulns, nil
-}
-
 // runWithMemoryMonitor runs f in a goroutine with its memory tracked.
 // It returns f's peak memory usage.
 func (s *scanner) runWithMemoryMonitor(ctx context.Context, f func() (*vulncheck.Result, error)) (res *vulncheck.Result, mem uint64, err error) {
@@ -596,42 +610,6 @@ func (s *scanner) runWithMemoryMonitor(ctx context.Context, f func() (*vulncheck
 		err = derrors.ScanModuleMemoryLimitExceeded
 	}
 	return res, monitor.stop(), err
-}
-
-func (s *scanner) runBinaryScanInsecure(ctx context.Context, modulePath, version, binDir, tempDir string, stats *vulncheckStats) ([]*vulncheck.Vuln, error) {
-	if s.gcsBucket == nil {
-		return nil, errors.New("binary bucket not configured; set GO_ECOSYSTEM_BINARY_BUCKET")
-	}
-	// Copy the binary from GCS to the local disk, because vulncheck.Binary
-	// requires a ReaderAt and GCS doesn't provide that.
-	gcsPathname := fmt.Sprintf("%s/%s@%s/%s", binaryDir, modulePath, version, binDir)
-	log.Debug(ctx, "copying to temp dir",
-		"from", gcsPathname, "module", modulePath, "version", version, "dir", binDir)
-	localPathname := filepath.Join(tempDir, "binary")
-	if err := copyToLocalFile(localPathname, false, gcsPathname, gcsOpenFileFunc(ctx, s.gcsBucket)); err != nil {
-		return nil, err
-	}
-
-	binaryFile, err := os.Open(localPathname)
-	if err != nil {
-		return nil, err
-	}
-	defer binaryFile.Close()
-
-	start := time.Now()
-	runtime.GC()
-	// current memory not related to core (go)vulncheck operations.
-	preScanMemory := currHeapUsage()
-	log.Debugf(ctx, "running vulncheck.Binary: %s", gcsPathname)
-	res, err := vulncheck.Binary(ctx, binaryFile, vulncheckConfig(s.dbClient, ModeBinary))
-	log.Debugf(ctx, "completed run for vulncheck.Binary: %s, err=%v", gcsPathname, err)
-	stats.scanSeconds = time.Since(start).Seconds()
-	// TODO: measure peak usage?
-	stats.scanMemory = memSubtract(currHeapUsage(), preScanMemory)
-	if err != nil {
-		return nil, err
-	}
-	return res.Vulns, nil
 }
 
 func copyFromGCSToWriter(ctx context.Context, w io.Writer, bucket *storage.BucketHandle, srcPath string) error {
@@ -659,17 +637,6 @@ func isVulnDBConnection(err error) bool {
 	s := err.Error()
 	return strings.Contains(s, "https://vuln.go.dev") &&
 		strings.Contains(s, "connection")
-}
-
-func vulncheckConfig(dbClient vulnclient.Client, mode string) *vulncheck.Config {
-	cfg := &vulncheck.Config{Client: dbClient}
-	switch mode {
-	case ModeImports:
-		cfg.ImportsOnly = true
-	default:
-		cfg.ImportsOnly = false
-	}
-	return cfg
 }
 
 // currHeapUsage computes currently allocate heap bytes.

@@ -54,14 +54,8 @@ func run(w io.Writer, args []string, vulnDBDir string) {
 
 	var b []byte
 	var err error
-	if mode == worker.ModeGovulncheck {
-		b, err = runGovulncheck(context.Background(), args[1], vulnDBDir)
-		if err != nil {
-			fail(err)
-			return
-		}
-	} else {
-		res, err := runVulncheck(context.Background(), args[1], mode, vulnDBDir)
+	if mode == worker.ModeImports {
+		res, err := runImportsAnalysis(context.Background(), args[1], vulnDBDir)
 		if err != nil {
 			fail(err)
 			return
@@ -71,40 +65,44 @@ func run(w io.Writer, args []string, vulnDBDir string) {
 			fail(fmt.Errorf("json.MarshalIndent: %v", err))
 			return
 		}
+	} else {
+		b, err = runGovulncheck(context.Background(), args[1], mode, vulnDBDir)
+		if err != nil {
+			fail(err)
+			return
+		}
 	}
 
 	w.Write(b)
 	fmt.Println()
 }
 
-func runGovulncheck(ctx context.Context, moduleDir, vulnDBDir string) ([]byte, error) {
-	goVulncheckCmd := exec.Command("/binaries/govulncheck", "-json", "./...")
-	goVulncheckCmd.Dir = moduleDir
-	goVulncheckCmd.Env = append(goVulncheckCmd.Environ(), "GOVULNDB=file://"+vulnDBDir)
+func runGovulncheck(ctx context.Context, filePath, mode, vulnDBDir string) ([]byte, error) {
+	pattern := "./..."
+	dir := ""
+	if mode == worker.ModeBinary {
+		pattern = filePath
+	} else {
+		dir = filePath
+	}
 
-	return goVulncheckCmd.Output()
+	govulncheckCmd := exec.Command("/binaries/govulncheck", "-json", pattern)
+	govulncheckCmd.Dir = dir
+	govulncheckCmd.Env = append(govulncheckCmd.Environ(), "GOVULNDB=file://"+vulnDBDir)
+
+	return govulncheckCmd.Output()
 }
 
-func runVulncheck(ctx context.Context, filePath, mode, vulnDBDir string) (*vulncheck.Result, error) {
+func runImportsAnalysis(ctx context.Context, moduleDir, vulnDBDir string) (*vulncheck.Result, error) {
 	dbClient, err := NewLocalLMTClient(vulnDBDir)
 	if err != nil {
 		return nil, fmt.Errorf("NewLocalLMTClient: %v", err)
 	}
 	vcfg := &vulncheck.Config{
 		Client:      dbClient,
-		ImportsOnly: mode == worker.ModeImports,
+		ImportsOnly: true,
 	}
 
-	if mode == worker.ModeBinary {
-		binaryFilePath := filePath
-		binaryFile, err := os.Open(binaryFilePath)
-		if err != nil {
-			return nil, err
-		}
-		defer binaryFile.Close()
-		return vulncheck.Binary(ctx, binaryFile, vcfg)
-	}
-	moduleDir := filePath
 	// Load all the packages in moduleDir.
 	cfg := load.DefaultConfig()
 	cfg.Dir = moduleDir
@@ -125,5 +123,4 @@ func runVulncheck(ctx context.Context, filePath, mode, vulnDBDir string) (*vulnc
 		return nil, err
 	}
 	return res, nil
-
 }
