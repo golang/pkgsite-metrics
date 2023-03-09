@@ -425,7 +425,7 @@ func (s *scanner) runBinaryScanSandbox(ctx context.Context, modulePath, version,
 	}
 	// Copy the binary from GCS to the local disk, because vulncheck.Binary
 	// requires a ReaderAt and GCS doesn't provide that.
-	gcsPathname := fmt.Sprintf("%s/%s@%s/%s", binaryDir, modulePath, version, binDir)
+	gcsPathname := fmt.Sprintf("%s/%s@%s/%s", gcsBinaryDir, modulePath, version, binDir)
 	const destDir = "/bundle/rootfs/binaries"
 	log.Debug(ctx, "copying",
 		"from", gcsPathname,
@@ -496,7 +496,7 @@ func (s *scanner) runBinaryScanInsecure(ctx context.Context, modulePath, version
 	}
 	// Copy the binary from GCS to the local disk, because vulncheck.Binary
 	// requires a ReaderAt and GCS doesn't provide that.
-	gcsPathname := fmt.Sprintf("%s/%s@%s/%s", binaryDir, modulePath, version, binDir)
+	gcsPathname := fmt.Sprintf("%s/%s@%s/%s", gcsBinaryDir, modulePath, version, binDir)
 	log.Debug(ctx, "copying to temp dir",
 		"from", gcsPathname, "module", modulePath, "version", version, "dir", binDir)
 	localPathname := filepath.Join(tempDir, "binary")

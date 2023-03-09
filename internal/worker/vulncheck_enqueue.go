@@ -110,8 +110,8 @@ func vulncheckMode(mode string) (string, error) {
 	return mode, nil
 }
 
-// binaryDir is the directory in the GCS bucket that contains binaries that should be scanned.
-const binaryDir = "binaries"
+// gcsBinaryDir is the directory in the GCS bucket that contains binaries that should be scanned.
+const gcsBinaryDir = "binaries"
 
 func readBinaries(ctx context.Context, bucketName string) (reqs []*ivulncheck.Request, err error) {
 	defer derrors.Wrap(&err, "readBinaries(%q)", bucketName)
@@ -123,7 +123,7 @@ func readBinaries(ctx context.Context, bucketName string) (reqs []*ivulncheck.Re
 	if err != nil {
 		return nil, err
 	}
-	iter := c.Bucket(bucketName).Objects(ctx, &storage.Query{Prefix: binaryDir})
+	iter := c.Bucket(bucketName).Objects(ctx, &storage.Query{Prefix: gcsBinaryDir})
 	for {
 		attrs, err := iter.Next()
 		if err == iterator.Done {
@@ -132,7 +132,7 @@ func readBinaries(ctx context.Context, bucketName string) (reqs []*ivulncheck.Re
 		if err != nil {
 			return nil, err
 		}
-		mp, err := scan.ParseModuleURLPath(strings.TrimPrefix(attrs.Name, binaryDir+"/"))
+		mp, err := scan.ParseModuleURLPath(strings.TrimPrefix(attrs.Name, gcsBinaryDir+"/"))
 		if err != nil {
 			return nil, err
 		}
