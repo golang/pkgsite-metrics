@@ -85,7 +85,7 @@ func TestRunScanModule(t *testing.T) {
 	}
 	t.Run("source", func(t *testing.T) {
 		s := &scanner{proxyClient: proxyClient, dbClient: dbClient, insecure: true}
-		stats := &vulncheckStats{}
+		stats := &scanStats{}
 		vulns, err := s.runScanModule(ctx,
 			"golang.org/x/exp/event", "v0.0.0-20220929112958-4a82f8963a65",
 			"", ModeGovulncheck, stats)
@@ -110,7 +110,7 @@ func TestRunScanModule(t *testing.T) {
 	t.Run("memoryLimit", func(t *testing.T) {
 		s := &scanner{proxyClient: proxyClient, dbClient: dbClient, insecure: true, goMemLimit: 2000}
 		_, err := s.runScanModule(ctx, "golang.org/x/mod", "v0.5.1",
-			"", ModeGovulncheck, &vulncheckStats{})
+			"", ModeGovulncheck, &scanStats{})
 		if !errors.Is(err, derrors.ScanModuleMemoryLimitExceeded) {
 			t.Errorf("got %v, want MemoryLimitExceeded", err)
 		}
@@ -125,7 +125,7 @@ func TestRunScanModule(t *testing.T) {
 			t.Fatal(err)
 		}
 		s.gcsBucket = gcsClient.Bucket("go-ecosystem")
-		stats := &vulncheckStats{}
+		stats := &scanStats{}
 		vulns, err := s.runScanModule(ctx, "golang.org/x/pkgsite", "v0.0.0-20221004150836-873fb37c2479", "cmd/worker", ModeBinary, stats)
 		if err != nil {
 			t.Fatal(err)
@@ -136,7 +136,7 @@ func TestRunScanModule(t *testing.T) {
 	})
 	t.Run("govulncheck", func(t *testing.T) {
 		s := &scanner{proxyClient: proxyClient, dbClient: dbClient, insecure: true}
-		stats := &vulncheckStats{}
+		stats := &scanStats{}
 		vulns, err := s.runScanModule(ctx,
 			"golang.org/x/exp/event", "v0.0.0-20220929112958-4a82f8963a65",
 			"", ModeGovulncheck, stats)
@@ -156,6 +156,9 @@ func TestRunScanModule(t *testing.T) {
 		}
 		if got := stats.scanSeconds; got <= 0 {
 			t.Errorf("scan time not collected or negative: %v", got)
+		}
+		if got := stats.scanMemory; got <= 0 {
+			t.Errorf("scan memory not collected or negative: %v", got)
 		}
 	})
 }

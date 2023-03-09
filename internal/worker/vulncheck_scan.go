@@ -197,7 +197,7 @@ func (s *scanner) ScanModule(ctx context.Context, w http.ResponseWriter, sreq *i
 	row.ScanMode = sreq.Mode
 
 	log.Infof(ctx, "running scanner.runScanModule: %s@%s", sreq.Path(), sreq.Version)
-	stats := &vulncheckStats{}
+	stats := &scanStats{}
 	vulns, err := s.runScanModule(ctx, sreq.Module, info.Version, sreq.Suffix, sreq.Mode, stats)
 	row.ScanSeconds = stats.scanSeconds
 	row.ScanMemory = int64(stats.scanMemory)
@@ -281,7 +281,7 @@ func vulnsForMode(vulns []*ivulncheck.Vuln, mode string) []*ivulncheck.Vuln {
 	return vs
 }
 
-type vulncheckStats struct {
+type scanStats struct {
 	scanSeconds float64
 	scanMemory  uint64
 }
@@ -299,7 +299,7 @@ const (
 
 // runScanModule fetches the module version from the proxy, and analyzes it for
 // vulnerabilities.
-func (s *scanner) runScanModule(ctx context.Context, modulePath, version, binaryDir, mode string, stats *vulncheckStats) (bvulns []*ivulncheck.Vuln, err error) {
+func (s *scanner) runScanModule(ctx context.Context, modulePath, version, binaryDir, mode string, stats *scanStats) (bvulns []*ivulncheck.Vuln, err error) {
 	err = doScan(ctx, modulePath, version, s.insecure, func() error {
 		var vulns []*govulncheckapi.Vuln
 		if s.insecure {
@@ -318,7 +318,7 @@ func (s *scanner) runScanModule(ctx context.Context, modulePath, version, binary
 	return bvulns, err
 }
 
-func (s *scanner) runGovulncheckScanSandbox(ctx context.Context, modulePath, version, binaryDir, mode string, stats *vulncheckStats) (_ []*govulncheckapi.Vuln, err error) {
+func (s *scanner) runGovulncheckScanSandbox(ctx context.Context, modulePath, version, binaryDir, mode string, stats *scanStats) (_ []*govulncheckapi.Vuln, err error) {
 	if mode == ModeBinary {
 		return s.runBinaryScanSandbox(ctx, modulePath, version, binaryDir, stats)
 	}
@@ -338,14 +338,17 @@ func (s *scanner) runGovulncheckScanSandbox(ctx context.Context, modulePath, ver
 	if err != nil {
 		return nil, errors.New(derrors.IncludeStderr(err))
 	}
-	res, err := govulncheck.UnmarshalGovulncheckResult(stdout)
+	response, err := govulncheck.UnmarshalGovulncheckSandboxResponse(stdout)
 	if err != nil {
 		return nil, err
 	}
-	return res.Vulns, nil
+	stats.scanMemory = response.Stats.ScanMemory
+	stats.scanSeconds = response.Stats.ScanSeconds
+	log.Debugf(ctx, "govulncheck stats: %dkb | Seconds: %vs", stats.scanMemory, stats.scanSeconds)
+	return response.Res.Vulns, nil
 }
 
-func (s *scanner) runBinaryScanSandbox(ctx context.Context, modulePath, version, binDir string, stats *vulncheckStats) ([]*govulncheckapi.Vuln, error) {
+func (s *scanner) runBinaryScanSandbox(ctx context.Context, modulePath, version, binDir string, stats *scanStats) ([]*govulncheckapi.Vuln, error) {
 	if s.gcsBucket == nil {
 		return nil, errors.New("binary bucket not configured; set GO_ECOSYSTEM_BINARY_BUCKET")
 	}
@@ -386,7 +389,7 @@ func (s *scanner) runBinaryScanSandbox(ctx context.Context, modulePath, version,
 	return res.Vulns, nil
 }
 
-func (s *scanner) runGovulncheckScanInsecure(ctx context.Context, modulePath, version, binaryDir, mode string, stats *vulncheckStats) (_ []*govulncheckapi.Vuln, err error) {
+func (s *scanner) runGovulncheckScanInsecure(ctx context.Context, modulePath, version, binaryDir, mode string, stats *scanStats) (_ []*govulncheckapi.Vuln, err error) {
 	if mode == ModeBinary {
 		return s.runBinaryScanInsecure(ctx, modulePath, version, binaryDir, os.TempDir(), stats)
 	}
@@ -405,7 +408,7 @@ func (s *scanner) runGovulncheckScanInsecure(ctx context.Context, modulePath, ve
 	return vulns, nil
 }
 
-func (s *scanner) runBinaryScanInsecure(ctx context.Context, modulePath, version, binDir, tempDir string, stats *vulncheckStats) ([]*govulncheckapi.Vuln, error) {
+func (s *scanner) runBinaryScanInsecure(ctx context.Context, modulePath, version, binDir, tempDir string, stats *scanStats) ([]*govulncheckapi.Vuln, error) {
 	if s.gcsBucket == nil {
 		return nil, errors.New("binary bucket not configured; set GO_ECOSYSTEM_BINARY_BUCKET")
 	}
@@ -428,7 +431,7 @@ func (s *scanner) runBinaryScanInsecure(ctx context.Context, modulePath, version
 	return vulns, nil
 }
 
-func runGovulncheckCmd(ctx context.Context, pattern, tempDir string, stats *vulncheckStats) ([]*govulncheckapi.Vuln, error) {
+func runGovulncheckCmd(ctx context.Context, pattern, tempDir string, stats *scanStats) ([]*govulncheckapi.Vuln, error) {
 	govulncheckName := "/bundle/rootfs/binaries/govulncheck"
 	if !fileExists(govulncheckName) {
 		govulncheckName = "govulncheck"
@@ -436,7 +439,7 @@ func runGovulncheckCmd(ctx context.Context, pattern, tempDir string, stats *vuln
 	govulncheckCmd := exec.Command(govulncheckName, "-json", pattern)
 	govulncheckCmd.Dir = tempDir
 	output, err := govulncheckCmd.Output()
-	if err != nil {
+	if e := (&exec.ExitError{}); !errors.As(err, &e) && e.ProcessState.ExitCode() != 3 {
 		return nil, err
 	}
 	res, err := govulncheck.UnmarshalGovulncheckResult(output)
