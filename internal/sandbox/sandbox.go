@@ -60,6 +60,10 @@ type Cmd struct {
 	// runsc provides by default.
 	Env []string
 
+	// If AppendToEnv is true, the contents of Env are appended
+	// to the sandbox's existing environment, instead of replacing it.
+	AppendToEnv bool
+
 	// Dir specifies the working directory of the command.
 	// If Dir is the empty string, Run runs the command in the
 	// root of the sandbox filesystem.

@@ -25,33 +25,44 @@ func Test(t *testing.T) {
 	sb := New("testdata/bundle")
 	sb.Runsc = "/usr/local/bin/runsc" // must match path in Makefile
 
-	t.Run("printargs", func(t *testing.T) {
-		out, err := sb.Command("printargs", "a", "b").Output()
+	check := func(t *testing.T, cmd *Cmd, want string) {
+		t.Helper()
+		out, err := cmd.Output()
 		if err != nil {
 			t.Fatal(derrors.IncludeStderr(err))
 		}
-
-		want := `args:
-0: "a"
-1: "b"`
 		got := string(out)
 		if got != want {
 			t.Fatalf("got\n%q\nwant\n%q", got, want)
 		}
+	}
+
+	t.Run("printargs", func(t *testing.T) {
+		check(t, sb.Command("printargs", "a", "b"), `args:
+0: "a"
+1: "b"`)
 	})
 
 	t.Run("space in arg", func(t *testing.T) {
-		out, err := sb.Command("printargs", "a", "b c\td").Output()
-		if err != nil {
-			t.Fatal(derrors.IncludeStderr(err))
-		}
-		want := `args:
+		check(t, sb.Command("printargs", "a", "b c\td"), `args:
 0: "a"
-1: "b c\td"`
-		got := string(out)
-		if got != want {
-			t.Fatalf("got\n%q\nwant\n%q", got, want)
-		}
+1: "b c\td"`)
+	})
+
+	t.Run("replace env", func(t *testing.T) {
+		cmd := sb.Command("printargs", "$HOME", "$FOO")
+		cmd.Env = []string{"FOO=17"}
+		check(t, cmd, `args:
+0: ""
+1: "17"`)
+	})
+	t.Run("append to env", func(t *testing.T) {
+		cmd := sb.Command("printargs", "$HOME", "$FOO")
+		cmd.Env = []string{"FOO=17"}
+		cmd.AppendToEnv = true
+		check(t, cmd, `args:
+0: "/"
+1: "17"`)
 	})
 	t.Run("no program", func(t *testing.T) {
 		_, err := sb.Command("foo").Output()

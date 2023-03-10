@@ -5,8 +5,9 @@
 //go:build ignore
 
 // This program prints its arguments and exits.
+// If an argument begins with a "$", it prints
+// the value of the environment variable instead.
 // It is used for testing the sandbox package.
-
 package main
 
 import (
@@ -17,6 +18,10 @@ import (
 func main() {
 	fmt.Printf("args:\n")
 	for i, arg := range os.Args[1:] {
-		fmt.Printf("%d: %q\n", i, arg)
+		val := arg
+		if len(arg) > 0 && arg[0] == '$' {
+			val = os.Getenv(arg[1:])
+		}
+		fmt.Printf("%d: %q\n", i, val)
 	}
 }

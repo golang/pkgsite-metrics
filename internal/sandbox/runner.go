@@ -31,9 +31,15 @@ func main() {
 		log.Fatal(err)
 	}
 	log.Printf("read %q", in)
-	var cmd exec.Cmd
+	var cmd struct {
+		exec.Cmd
+		AppendToEnv bool
+	}
 	if err := json.Unmarshal(in, &cmd); err != nil {
 		log.Fatal(err)
+	}
+	if cmd.AppendToEnv {
+		cmd.Env = append(os.Environ(), cmd.Env...)
 	}
 	log.Printf("cmd: %+v", cmd)
 	out, err := cmd.Output()
