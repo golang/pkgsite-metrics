@@ -285,13 +285,7 @@ func (s *scanner) runImportsScanInsecure(ctx context.Context, modulePath, versio
 	if err != nil {
 		return nil, err
 	}
-
-	defer func() {
-		err1 := os.RemoveAll(tempDir)
-		if err == nil {
-			err = err1
-		}
-	}()
+	defer removeDir(&err, tempDir)
 
 	log.Debugf(ctx, "fetching module zip: %s@%s", modulePath, version)
 	if err = modules.Download(ctx, modulePath, version, tempDir, s.proxyClient, true); err != nil {
@@ -347,15 +341,18 @@ func (s *scanner) runImportsScanInsecure(ctx context.Context, modulePath, versio
 	return res.Vulns, nil
 }
 
-func (s *scanner) runImportsScanSandbox(ctx context.Context, modulePath, version string, stats *vulncheckStats) ([]*vulncheck.Vuln, error) {
-	sandboxDir, cleanup, err := downloadModuleSandbox(ctx, modulePath, version, s.proxyClient)
-	if err != nil {
+func (s *scanner) runImportsScanSandbox(ctx context.Context, modulePath, version string, stats *vulncheckStats) (_ []*vulncheck.Vuln, err error) {
+	const insecure = false
+	mdir := moduleDir(modulePath, version, insecure)
+	defer removeDir(&err, mdir)
+	if err := prepareModule(ctx, modulePath, version, mdir, s.proxyClient, insecure); err != nil {
 		return nil, err
 	}
-	defer cleanup()
 
 	log.Infof(ctx, "running imports analysis in sandbox: %s@%s", modulePath, version)
-	stdout, err := s.sbox.Command("/binaries/vulncheck_sandbox", ModeImports, sandboxDir).Output()
+
+	smdir := strings.TrimPrefix(mdir, sandboxRoot)
+	stdout, err := s.sbox.Command("/binaries/vulncheck_sandbox", ModeImports, smdir).Output()
 	log.Infof(ctx, "done with imports analysis in sandbox: %s@%s err=%v", modulePath, version, err)
 
 	if err != nil {
@@ -368,19 +365,21 @@ func (s *scanner) runImportsScanSandbox(ctx context.Context, modulePath, version
 	return res.Vulns, nil
 }
 
-func (s *scanner) runGovulncheckScanSandbox(ctx context.Context, modulePath, version, binaryDir, mode string, stats *vulncheckStats) ([]*govulncheck.Vuln, error) {
+func (s *scanner) runGovulncheckScanSandbox(ctx context.Context, modulePath, version, binaryDir, mode string, stats *vulncheckStats) (_ []*govulncheck.Vuln, err error) {
 	if mode == ModeBinary {
 		return s.runBinaryScanSandbox(ctx, modulePath, version, binaryDir, stats)
 	}
 
-	sandboxDir, cleanup, err := downloadModuleSandbox(ctx, modulePath, version, s.proxyClient)
-	if err != nil {
+	const insecure = false
+	mdir := moduleDir(modulePath, version, insecure)
+	defer removeDir(&err, mdir)
+	if err := prepareModule(ctx, modulePath, version, mdir, s.proxyClient, insecure); err != nil {
 		return nil, err
 	}
-	defer cleanup()
 
 	log.Infof(ctx, "running govulncheck in sandbox: %s@%s", modulePath, version)
-	stdout, err := s.sbox.Command("/binaries/vulncheck_sandbox", ModeGovulncheck, sandboxDir).Output()
+	smdir := strings.TrimPrefix(mdir, sandboxRoot)
+	stdout, err := s.sbox.Command("/binaries/vulncheck_sandbox", ModeGovulncheck, smdir).Output()
 	log.Infof(ctx, "done with govulncheck in sandbox: %s@%s err=%v", modulePath, version, err)
 
 	if err != nil {
@@ -391,32 +390,6 @@ func (s *scanner) runGovulncheckScanSandbox(ctx context.Context, modulePath, ver
 		return nil, err
 	}
 	return res.Vulns, nil
-}
-
-func downloadModuleSandbox(ctx context.Context, modulePath, version string, proxyClient *proxy.Client) (string, func(), error) {
-	sandboxDir := "/modules/" + modulePath + "@" + version
-	imageDir := "/bundle/rootfs" + sandboxDir
-
-	log.Debugf(ctx, "downloading %s@%s to %s", modulePath, version, imageDir)
-	if err := modules.Download(ctx, modulePath, version, imageDir, proxyClient, true); err != nil {
-		log.Debugf(ctx, "download error: %v (%[1]T)", err)
-		return "", nil, err
-	}
-	// Download all dependencies outside of the sandbox, but use the Go build
-	// cache ("/bundle/rootfs/" + sandboxGoCache) inside the bundle.
-	log.Debugf(ctx, "running go mod download")
-	cmd := exec.Command("go", "mod", "download")
-	cmd.Dir = imageDir
-	cmd.Env = append(cmd.Environ(),
-		"GOPROXY=https://proxy.golang.org",
-		"GOMODCACHE=/bundle/rootfs/"+sandboxGoModCache)
-	_, err := cmd.Output()
-	if err != nil {
-		return "", nil, fmt.Errorf("%w: 'go mod download' for %s@%s returned %s",
-			derrors.BadModule, modulePath, version, derrors.IncludeStderr(err))
-	}
-	log.Debugf(ctx, "go mod download succeeded")
-	return sandboxDir, func() { os.RemoveAll(imageDir) }, nil
 }
 
 func (s *scanner) runBinaryScanSandbox(ctx context.Context, modulePath, version, binDir string, stats *vulncheckStats) ([]*govulncheck.Vuln, error) {
@@ -461,28 +434,17 @@ func (s *scanner) runBinaryScanSandbox(ctx context.Context, modulePath, version,
 }
 
 func (s *scanner) runGovulncheckScanInsecure(ctx context.Context, modulePath, version, binaryDir, mode string, stats *vulncheckStats) (_ []*govulncheck.Vuln, err error) {
-	tempDir, err := os.MkdirTemp("", "runGovulncheckScan")
-	if err != nil {
-		return nil, err
-	}
-
-	defer func() {
-		err1 := os.RemoveAll(tempDir)
-		if err == nil {
-			err = err1
-		}
-	}()
-
 	if mode == ModeBinary {
-		return s.runBinaryScanInsecure(ctx, modulePath, version, binaryDir, tempDir, stats)
+		return s.runBinaryScanInsecure(ctx, modulePath, version, binaryDir, os.TempDir(), stats)
 	}
 
-	log.Debugf(ctx, "fetching module zip: %s@%s", modulePath, version)
-	if err := modules.Download(ctx, modulePath, version, tempDir, s.proxyClient, true); err != nil {
+	mdir := moduleDir(modulePath, version, true)
+	defer removeDir(&err, mdir)
+	if err := prepareModule(ctx, modulePath, version, mdir, s.proxyClient, true); err != nil {
 		return nil, err
 	}
 	start := time.Now()
-	vulns, err := runGovulncheckCmd(ctx, "./...", tempDir, stats)
+	vulns, err := runGovulncheckCmd(ctx, "./...", mdir, stats)
 	if err != nil {
 		return nil, err
 	}

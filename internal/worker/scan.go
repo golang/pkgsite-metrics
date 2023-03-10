@@ -13,6 +13,7 @@ import (
 	"net/http"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"runtime/debug"
 	"strconv"
 	"strings"
@@ -23,12 +24,16 @@ import (
 	"golang.org/x/pkgsite-metrics/internal/config"
 	"golang.org/x/pkgsite-metrics/internal/derrors"
 	"golang.org/x/pkgsite-metrics/internal/log"
+	"golang.org/x/pkgsite-metrics/internal/modules"
+	"golang.org/x/pkgsite-metrics/internal/proxy"
 )
+
+const sandboxRoot = "/bundle/rootfs"
 
 var activeScans atomic.Int32
 
 func doScan(ctx context.Context, modulePath, version string, insecure bool, f func() error) (err error) {
-	defer derrors.Wrap(&err, "scan(%q, %q)", modulePath, version)
+	defer derrors.Wrap(&err, "doScan(%q, %q)", modulePath, version)
 
 	defer func() {
 		if e := recover(); e != nil {
@@ -196,5 +201,55 @@ func copyAndClose(wc io.WriteCloser, r io.Reader) error {
 func gcsOpenFileFunc(ctx context.Context, bucket *storage.BucketHandle) openFileFunc {
 	return func(name string) (io.ReadCloser, error) {
 		return bucket.Object(name).NewReader(ctx)
+	}
+}
+
+// prepareModule prepares a module for scanning.
+// It downloads the module to the given directory and
+// takes other actions that increase the chance that
+// packages.Load will succeed.
+func prepareModule(ctx context.Context, modulePath, version, dir string, proxyClient *proxy.Client, insecure bool) error {
+	log.Debugf(ctx, "%s@%s: downloading to %s", modulePath, version, dir)
+	if err := modules.Download(ctx, modulePath, version, dir, proxyClient, true); err != nil {
+		log.Debugf(ctx, "download error: %v (%[1]T)", err)
+		return err
+	}
+	if !insecure {
+		// Download all dependencies outside of the sandbox, but use the Go build
+		// cache ("/bundle/rootfs/" + sandboxGoCache) inside the bundle.
+		log.Debugf(ctx, "%s@%s: running go mod download", modulePath, version)
+		cmd := exec.Command("go", "mod", "download")
+		cmd.Dir = dir
+		cmd.Env = append(cmd.Environ(),
+			"GOPROXY=https://proxy.golang.org",
+			"GOMODCACHE=/bundle/rootfs/"+sandboxGoModCache)
+		_, err := cmd.Output()
+		if err != nil {
+			return fmt.Errorf("%w: 'go mod download' for %s@%s returned %s",
+				derrors.BadModule, modulePath, version, derrors.IncludeStderr(err))
+		}
+		log.Debugf(ctx, "go mod download succeeded")
+	}
+	return nil
+}
+
+// moduleDir returns a the path of a directory where the module can be downloaded.
+func moduleDir(modulePath, version string, insecure bool) string {
+	dir := sandboxRoot
+	if insecure {
+		dir = os.TempDir()
+	}
+	return filepath.Join(dir, "modules", modulePath+"@"+version)
+}
+
+// removeDir calls os.RemoveAll(dir) and combines the error with errp.
+// It is meant to be deferred.
+func removeDir(errp *error, dir string) {
+	if err := os.RemoveAll(dir); err != nil {
+		if *errp == nil {
+			*errp = err
+		} else {
+			*errp = fmt.Errorf("RemoveAll(%q): %v, and also %w", dir, err, *errp)
+		}
 	}
 }

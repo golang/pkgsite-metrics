@@ -21,8 +21,6 @@ import (
 
 	"golang.org/x/pkgsite-metrics/internal/analysis"
 	"golang.org/x/pkgsite-metrics/internal/derrors"
-	"golang.org/x/pkgsite-metrics/internal/log"
-	"golang.org/x/pkgsite-metrics/internal/modules"
 	"golang.org/x/pkgsite-metrics/internal/queue"
 	"golang.org/x/pkgsite-metrics/internal/sandbox"
 	"golang.org/x/pkgsite-metrics/internal/scan"
@@ -54,8 +52,6 @@ func (s *analysisServer) handleScan(w http.ResponseWriter, r *http.Request) (err
 	row := s.scan(ctx, req)
 	return writeResult(ctx, req.Serve, w, s.bqClient, analysis.TableName, row)
 }
-
-const sandboxRoot = "/bundle/rootfs"
 
 func (s *analysisServer) scan(ctx context.Context, req *analysis.ScanRequest) *analysis.Result {
 	row := &analysis.Result{
@@ -98,12 +94,7 @@ func (s *analysisServer) scanInternal(ctx context.Context, req *analysis.ScanReq
 		if err != nil {
 			return nil, nil, err
 		}
-		defer func() {
-			err1 := os.RemoveAll(tempDir)
-			if err == nil {
-				err = err1
-			}
-		}()
+		defer removeDir(&err, tempDir)
 	}
 
 	var destPath string
@@ -124,29 +115,18 @@ func (s *analysisServer) scanInternal(ctx context.Context, req *analysis.ScanReq
 		return nil, nil, err
 	}
 
-	if !req.Insecure {
-		sandboxDir, cleanup, err := downloadModuleSandbox(ctx, req.Module, req.Version, s.proxyClient)
-		if err != nil {
-			return nil, nil, err
-		}
-		defer cleanup()
-		log.Infof(ctx, "running %s on %s@%s in sandbox", req.Binary, req.Module, req.Version)
-		sbox := sandbox.New("/bundle")
-		sbox.Runsc = "/usr/local/bin/runsc"
-		tree, err := runAnalysisBinary(sbox, strings.TrimPrefix(destPath, sandboxRoot), req.Args, sandboxDir)
-		if err != nil {
-			return nil, nil, err
-		}
-		return tree, binaryHash, nil
-	}
-	// Insecure mode.
-	// Download the module.
-	log.Debugf(ctx, "fetching module zip: %s@%s", req.Module, req.Version)
-	const stripModulePrefix = true
-	if err := modules.Download(ctx, req.Module, req.Version, tempDir, s.proxyClient, stripModulePrefix); err != nil {
+	mdir := moduleDir(req.Module, req.Version, req.Insecure)
+	defer removeDir(&err, mdir)
+	if err := prepareModule(ctx, req.Module, req.Version, mdir, s.proxyClient, req.Insecure); err != nil {
 		return nil, nil, err
 	}
-	tree, err := runAnalysisBinary(nil, destPath, req.Args, tempDir)
+	var sbox *sandbox.Sandbox
+	if !req.Insecure {
+		sbox = sandbox.New("/bundle")
+		sbox.Runsc = "/usr/local/bin/runsc"
+		destPath = strings.TrimPrefix(destPath, sandboxRoot)
+	}
+	tree, err := runAnalysisBinary(sbox, destPath, req.Args, mdir)
 	if err != nil {
 		return nil, nil, err
 	}
