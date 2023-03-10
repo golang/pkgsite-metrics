@@ -177,12 +177,13 @@ func G() {}
 		got.Error = got.Error[i+2:]
 	}
 	want = &analysis.Result{
-		ModulePath:  modulePath,
-		Version:     version,
-		SortVersion: "1,2,3~",
-		BinaryName:  "bad",
-		WorkVersion: analysis.WorkVersion{BinaryArgs: "-name G"},
-		Error:       "bad name",
+		ModulePath:    modulePath,
+		Version:       version,
+		SortVersion:   "1,2,3~",
+		BinaryName:    "bad",
+		WorkVersion:   analysis.WorkVersion{BinaryArgs: "-name G"},
+		ErrorCategory: "MISC",
+		Error:         "bad name",
 	}
 	diff(want, got)
 }

@@ -200,7 +200,7 @@ func CategorizeError(err error) string {
 	case errors.Is(err, BigQueryError):
 		return "BIGQUERY"
 	}
-	return ""
+	return "MISC"
 }
 
 func IsGoVersionMismatchError(msg string) bool {
