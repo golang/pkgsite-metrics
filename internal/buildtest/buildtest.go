@@ -3,7 +3,7 @@
 // license that can be found in the LICENSE file.
 
 // Package buildtest provides support for running "go build"
-// in tests.
+// and similar build/installation commands in tests.
 package buildtest
 
 import (
@@ -94,4 +94,21 @@ func lookupEnv(name string, env []string, defaultValue string) string {
 		}
 	}
 	return defaultValue
+}
+
+// InstallGovulncheck installs the latest version of govulncheck in
+// tmpDir. If the installation is successful, returns the full path
+// to the binary. Otherwise, returns the error. It uses the Go caches
+// as defined by go env.
+//
+// TODO: can we redirect caches to tmpDir as well? Currently, deletion
+// of tmpDir will cause "unlinkat: ... permission denied" error.
+func InstallGovulncheck(tmpDir string) (string, error) {
+	cmd := exec.Command("go", "install", "golang.org/x/vuln/cmd/govulncheck@latest")
+	cmd.Env = append(cmd.Environ(), "GOBIN="+tmpDir)
+	_, err := cmd.CombinedOutput()
+	if err != nil {
+		return "", err
+	}
+	return filepath.Join(tmpDir, "govulncheck"), nil
 }

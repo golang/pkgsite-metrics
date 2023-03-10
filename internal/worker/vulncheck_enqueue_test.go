@@ -80,12 +80,10 @@ func TestCreateQueueTasks(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	wantTasks = nil
 	// cfg.BinaryBucket is empty, so no binary-mode tasks are created.
-	for _, mode := range []string{ModeGovulncheck, ModeImports} {
-		wantTasks = append(wantTasks,
-			vreq("github.com/pkg/errors", "v0.9.1", mode, 10),
-			vreq("golang.org/x/net", "v0.4.0", mode, 20))
+	wantTasks = []queue.Task{
+		vreq("github.com/pkg/errors", "v0.9.1", ModeGovulncheck, 10),
+		vreq("golang.org/x/net", "v0.4.0", ModeGovulncheck, 20),
 	}
 
 	if diff := cmp.Diff(wantTasks, gotTasks, cmp.AllowUnexported(ivulncheck.Request{})); diff != "" {
@@ -100,9 +98,8 @@ func TestListModes(t *testing.T) {
 		want    []string
 		wantErr bool
 	}{
-		{"", true, []string{ModeBinary, ModeGovulncheck, ModeImports}, false},
+		{"", true, []string{ModeBinary, ModeGovulncheck}, false},
 		{"", false, []string{ModeGovulncheck}, false},
-		{"imports", false, []string{ModeImports}, false},
 		{"imports", true, nil, true},
 	} {
 		t.Run(fmt.Sprintf("%q,%t", test.param, test.all), func(t *testing.T) {

@@ -6,19 +6,20 @@ package worker
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"flag"
+	"fmt"
 	"io"
+	"strings"
 	"testing"
 
 	"cloud.google.com/go/storage"
-	"github.com/google/go-cmp/cmp"
+	"golang.org/x/pkgsite-metrics/internal/bigquery"
 	"golang.org/x/pkgsite-metrics/internal/config"
 	"golang.org/x/pkgsite-metrics/internal/derrors"
 	"golang.org/x/pkgsite-metrics/internal/proxy"
+	ivulncheck "golang.org/x/pkgsite-metrics/internal/vulncheck"
 	vulnc "golang.org/x/vuln/client"
-	"golang.org/x/vuln/vulncheck"
 )
 
 var integration = flag.Bool("integration", false, "test against actual service")
@@ -31,6 +32,39 @@ func TestAsScanError(t *testing.T) {
 	}
 	check(io.EOF, false)
 	check(scanError{io.EOF}, true)
+}
+
+func TestVulnsForMode(t *testing.T) {
+	vulns := []*ivulncheck.Vuln{
+		&ivulncheck.Vuln{Symbol: "A", CallSink: bigquery.NullInt(0)},
+		&ivulncheck.Vuln{Symbol: "B"},
+		&ivulncheck.Vuln{Symbol: "C", CallSink: bigquery.NullInt(9)},
+	}
+
+	vulnsStr := func(vulns []*ivulncheck.Vuln) string {
+		var vs []string
+		for _, v := range vulns {
+			vs = append(vs, fmt.Sprintf("%s:%d", v.Symbol, v.CallSink.Int64))
+		}
+		return strings.Join(vs, ", ")
+	}
+
+	for _, tc := range []struct {
+		mode string
+		want string
+	}{
+		{modeImports, "A:0, B:0, C:0"},
+		{ModeGovulncheck, "C:9"},
+		{ModeBinary, "A:0, B:0, C:9"},
+	} {
+		tc := tc
+		t.Run(tc.mode, func(t *testing.T) {
+			modeVulns := vulnsForMode(vulns, tc.mode)
+			if got := vulnsStr(modeVulns); got != tc.want {
+				t.Errorf("got %s; want %s", got, tc.want)
+			}
+		})
+	}
 }
 
 func TestRunScanModule(t *testing.T) {
@@ -71,9 +105,6 @@ func TestRunScanModule(t *testing.T) {
 		}
 		if got := stats.scanMemory; got <= 0 {
 			t.Errorf("scan memory not collected or negative: %v", got)
-		}
-		if got := stats.pkgsMemory; got <= 0 {
-			t.Errorf("pkgs memory not collected or negative: %v", got)
 		}
 	})
 	t.Run("memoryLimit", func(t *testing.T) {
@@ -145,26 +176,5 @@ func TestParseGoMemLimit(t *testing.T) {
 		if got != test.want {
 			t.Errorf("%q: got %d, want %d", test.in, got, test.want)
 		}
-	}
-}
-
-func TestUnmarshalVulncheckOutput(t *testing.T) {
-	_, err := unmarshalVulncheckOutput([]byte(`{"Error": "bad"}`))
-	if got, want := err.Error(), "bad"; got != want {
-		t.Errorf("got %q, want %q", got, want)
-	}
-	want := &vulncheck.Result{
-		Modules: []*vulncheck.Module{{Path: "m", Version: "v1.2.3"}},
-	}
-	in, err := json.Marshal(want)
-	if err != nil {
-		t.Fatal(err)
-	}
-	got, err := unmarshalVulncheckOutput(in)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if !cmp.Equal(got, want) {
-		t.Errorf("got %+v, want %+v", got, want)
 	}
 }

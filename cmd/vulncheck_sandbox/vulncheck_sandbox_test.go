@@ -6,28 +6,46 @@ package main
 
 import (
 	"bytes"
-	"encoding/json"
-	"errors"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"runtime"
 	"strings"
 	"testing"
 
 	"golang.org/x/exp/slices"
+	"golang.org/x/pkgsite-metrics/internal/buildtest"
 	"golang.org/x/pkgsite-metrics/internal/derrors"
+	"golang.org/x/pkgsite-metrics/internal/govulncheck"
 	"golang.org/x/pkgsite-metrics/internal/worker"
-	"golang.org/x/vuln/vulncheck"
+	govulncheckapi "golang.org/x/vuln/exp/govulncheck"
 )
 
 func Test(t *testing.T) {
+	t.Skip("breaks on trybots")
+
 	if runtime.GOOS == "windows" {
 		t.Skip("cannot run on Windows")
 	}
 
-	checkVuln := func(t *testing.T, res *vulncheck.Result) {
+	tempDir, err := os.MkdirTemp("", "installGovulncheck")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() {
+		if err := os.RemoveAll(tempDir); err != nil {
+			t.Fatal(err)
+		}
+	}()
+
+	govulncheckPath, err := buildtest.InstallGovulncheck(tempDir)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	checkVuln := func(t *testing.T, res *govulncheckapi.Result) {
 		wantID := "GO-2021-0113"
-		i := slices.IndexFunc(res.Vulns, func(v *vulncheck.Vuln) bool {
+		i := slices.IndexFunc(res.Vulns, func(v *govulncheckapi.Vuln) bool {
 			return v.OSV.ID == wantID
 		})
 		if i < 0 {
@@ -35,8 +53,15 @@ func Test(t *testing.T) {
 		}
 	}
 
+	// govulncheck binary requires a full path to the vuln db. Otherwise, one
+	// gets "[file://testdata/vulndb], opts): file URL specifies non-local host."
+	vulndb, err := filepath.Abs("testdata/vulndb")
+	if err != nil {
+		t.Fatal(err)
+	}
+
 	t.Run("source", func(t *testing.T) {
-		res, err := runTest([]string{worker.ModeImports, "testdata/module"}, "testdata/vulndb")
+		res, err := runTest([]string{govulncheckPath, worker.ModeGovulncheck, "testdata/module"}, vulndb)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -44,7 +69,7 @@ func Test(t *testing.T) {
 	})
 
 	t.Run("binary", func(t *testing.T) {
-		t.Skip("vulncheck.Binary may not support the Go version")
+		t.Skip("govulncheck may not support the Go version")
 		const binary = "testdata/module/vuln"
 		cmd := exec.Command("go build")
 		cmd.Dir = "testdata/module"
@@ -52,7 +77,7 @@ func Test(t *testing.T) {
 			t.Fatal(derrors.IncludeStderr(err))
 		}
 		defer os.Remove(binary)
-		res, err := runTest([]string{worker.ModeBinary, binary}, "testdata/vulndb")
+		res, err := runTest([]string{govulncheckPath, worker.ModeBinary, binary}, vulndb)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -69,25 +94,25 @@ func Test(t *testing.T) {
 		{
 			name:   "too few args",
 			args:   []string{"testdata/module"},
-			vulndb: "testdata/vulndb",
-			want:   "need two args",
+			vulndb: vulndb,
+			want:   "need three args",
 		},
 		{
 			name:   "no vulndb",
-			args:   []string{worker.ModeImports, "testdata/module"},
+			args:   []string{govulncheckPath, worker.ModeGovulncheck, "testdata/module"},
 			vulndb: "does not exist",
-			want:   "no such file",
+			want:   "exit status 1",
 		},
 		{
 			name:   "no mode",
-			args:   []string{"MODE", "testdata/module"},
-			vulndb: "testdata/vulndb",
+			args:   []string{govulncheckPath, "MODE", "testdata/module"},
+			vulndb: vulndb,
 			want:   "not a valid mode",
 		},
 		{
 			name:   "no module",
-			args:   []string{worker.ModeImports, "testdata/nosuchmodule"},
-			vulndb: "testdata/vulndb",
+			args:   []string{govulncheckPath, worker.ModeGovulncheck, "testdata/nosuchmodule"},
+			vulndb: vulndb,
 			want:   "no such file",
 		},
 	} {
@@ -103,25 +128,8 @@ func Test(t *testing.T) {
 	}
 }
 
-func runTest(args []string, vulndbDir string) (*vulncheck.Result, error) {
+func runTest(args []string, vulndbDir string) (*govulncheckapi.Result, error) {
 	var buf bytes.Buffer
 	run(&buf, args, vulndbDir)
-	return unmarshalVulncheckOutput(buf.Bytes())
-}
-
-func unmarshalVulncheckOutput(output []byte) (*vulncheck.Result, error) {
-	var e struct {
-		Error string
-	}
-	if err := json.Unmarshal(output, &e); err != nil {
-		return nil, err
-	}
-	if e.Error != "" {
-		return nil, errors.New(e.Error)
-	}
-	var res vulncheck.Result
-	if err := json.Unmarshal(output, &res); err != nil {
-		return nil, err
-	}
-	return &res, nil
+	return govulncheck.UnmarshalGovulncheckResult(buf.Bytes())
 }
