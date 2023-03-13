@@ -96,16 +96,12 @@ func lookupEnv(name string, env []string, defaultValue string) string {
 	return defaultValue
 }
 
-// InstallGovulncheck installs the latest version of govulncheck in
-// tmpDir. If the installation is successful, returns the full path
-// to the binary. Otherwise, returns the error. It uses the Go caches
-// as defined by go env.
-//
-// TODO: can we redirect caches to tmpDir as well? Currently, deletion
-// of tmpDir will cause "unlinkat: ... permission denied" error.
-func InstallGovulncheck(tmpDir string) (string, error) {
-	cmd := exec.Command("go", "install", "golang.org/x/vuln/cmd/govulncheck@latest")
-	cmd.Env = append(cmd.Environ(), "GOBIN="+tmpDir)
+// BuildGovulncheck builds the version of govulncheck specified in
+// the go.mod file of this repo into the tmpDir. If the installation
+// is successful, returns the full path to the binary. Otherwise,
+// returns the error. It uses the Go caches as defined by go env.
+func BuildGovulncheck(tmpDir string) (string, error) {
+	cmd := exec.Command("go", "build", "-o", tmpDir, "golang.org/x/vuln/cmd/govulncheck")
 	_, err := cmd.CombinedOutput()
 	if err != nil {
 		return "", err

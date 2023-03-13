@@ -9,9 +9,8 @@ import (
 	"testing"
 )
 
-func TestInstallGovulncheck(t *testing.T) {
-	t.Skip("breaks on trybots")
-	tempDir, err := os.MkdirTemp("", "testInstallGovulncheck")
+func TestBuildGovulncheck(t *testing.T) {
+	tempDir, err := os.MkdirTemp("", "testBuildGovulncheck")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -21,7 +20,7 @@ func TestInstallGovulncheck(t *testing.T) {
 		}
 	}()
 
-	if _, err := InstallGovulncheck(tempDir); err != nil {
+	if _, err := BuildGovulncheck(tempDir); err != nil {
 		t.Fatal(err)
 	}
 }

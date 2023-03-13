@@ -22,8 +22,6 @@ import (
 )
 
 func Test(t *testing.T) {
-	t.Skip("breaks on trybots")
-
 	if runtime.GOOS == "windows" {
 		t.Skip("cannot run on Windows")
 	}
@@ -38,7 +36,7 @@ func Test(t *testing.T) {
 		}
 	}()
 
-	govulncheckPath, err := buildtest.InstallGovulncheck(tempDir)
+	govulncheckPath, err := buildtest.BuildGovulncheck(tempDir)
 	if err != nil {
 		t.Fatal(err)
 	}
