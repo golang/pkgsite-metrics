@@ -72,7 +72,7 @@ func cleanGoCaches(ctx context.Context, insecure bool) {
 
 	logDiskUsage := func(msg string) {
 		log.Debugf(ctx, "sandbox disk usage %s clean:\n%s",
-			msg, diskUsage("/bundle/rootfs/root", "/bundle/rootfs/modules"))
+			msg, diskUsage(filepath.Join(sandboxRoot, "root"), modulesDir))
 	}
 
 	if insecure {
