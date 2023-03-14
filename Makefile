@@ -53,7 +53,7 @@ DOCKER_ID_FILE := /tmp/ecosystem-docker-container-id
 # This target is a local file that marks the time of the last
 # docker build. We use a file because make uses only local file timestamps to determine
 # whether a target needs to be regenerated.
-docker-build: go-image.tar.gz go-vulndb cmd/worker/*.go internal/**/*.go cmd/vulncheck_sandbox/* config.json cmd/worker/Dockerfile
+docker-build: go-image.tar.gz go-vulndb cmd/worker/*.go internal/**/*.go cmd/govulncheck_sandbox/* config.json cmd/worker/Dockerfile
 	docker build -f cmd/worker/Dockerfile -t $(IMAGE) . \
           --build-arg DOCKER_IMAGE=$(IMAGE) \
           --build-arg BQ_DATASET=disable
@@ -111,6 +111,6 @@ clean:
 	rm -f go-image.tar.gz
 	rm -rf go-vulndb
 	rm -f config.json
-	rm -f vulncheck_sandbox
+	rm -f govulncheck_sandbox
 
 .PHONY: docker-run docker-run-bg test vulncheck-test analysis-test clean

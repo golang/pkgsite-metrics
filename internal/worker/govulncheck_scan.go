@@ -331,7 +331,7 @@ func (s *scanner) runGovulncheckScanSandbox(ctx context.Context, modulePath, ver
 
 	log.Infof(ctx, "running govulncheck in sandbox: %s@%s", modulePath, version)
 	smdir := strings.TrimPrefix(mdir, sandboxRoot)
-	stdout, err := s.sbox.Command(binaryDir+"/vulncheck_sandbox", govulncheckPath, ModeGovulncheck, smdir).Output()
+	stdout, err := s.sbox.Command(binaryDir+"/govulncheck_sandbox", govulncheckPath, ModeGovulncheck, smdir).Output()
 	log.Infof(ctx, "done with govulncheck in sandbox: %s@%s err=%v", modulePath, version, err)
 
 	if err != nil {
@@ -375,7 +375,7 @@ func (s *scanner) runBinaryScanSandbox(ctx context.Context, modulePath, version,
 	}
 
 	log.Infof(ctx, "running vulncheck in sandbox on %s: %s@%s/%s", modulePath, version, binDir, destf.Name())
-	stdout, err := s.sbox.Command(binaryDir+"/vulncheck_sandbox", govulncheckPath, ModeBinary, destf.Name()).Output()
+	stdout, err := s.sbox.Command(binaryDir+"/govulncheck_sandbox", govulncheckPath, ModeBinary, destf.Name()).Output()
 	log.Infof(ctx, "done with vulncheck in sandbox on %s: %s@%s/%s err=%v", modulePath, version, binDir, destf.Name(), err)
 
 	if err != nil {
