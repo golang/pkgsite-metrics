@@ -91,9 +91,16 @@
                 "ro"
             ]
         },
+        # Bind mounts. These let us map directories inside the sandbox
+        # (the destination) to directories outside (the source).
+        # If the source doesn't exist, you'll get the (obscure) error
+        # "cannot read client sync file".
+        # If the destination already exists, that's not an error, but the
+        # files in that directory will be hidden to code running inside the
+        # sandbox.
         {
             # Mount /tmp/binaries inside the sandbox to
-	    # the same directory outside.
+            # the same directory outside.
             "destination": "/tmp/binaries",
             "type": "none",
             "source": "/tmp/binaries",
@@ -101,7 +108,7 @@
         },
         {
             # Mount /tmp/modules inside the sandbox to
-	    # the same directory outside.
+            # the same directory outside.
             "destination": "/tmp/modules",
             "type": "none",
             "source": "/tmp/modules",
