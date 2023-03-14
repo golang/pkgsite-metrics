@@ -85,7 +85,7 @@ func runGovulncheck(ctx context.Context, govulncheckPath, mode, filePath, vulnDB
 	if err != nil {
 		// Temporary check because govulncheck currently exits code 3 if any vulns
 		// are found but no other errors occurred.
-		if e := (&exec.ExitError{}); !errors.As(err, &e) && e.ProcessState.ExitCode() != 3 {
+		if e := (&exec.ExitError{}); !errors.As(err, &e) || e.ProcessState.ExitCode() != 3 {
 			return nil, err
 		}
 	}

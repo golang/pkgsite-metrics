@@ -59,11 +59,19 @@ func Test(t *testing.T) {
 	}
 
 	t.Run("source", func(t *testing.T) {
-		res, err := runTest([]string{govulncheckPath, worker.ModeGovulncheck, "testdata/module"}, vulndb)
+		resp, err := runTest([]string{govulncheckPath, worker.ModeGovulncheck, "testdata/module"}, vulndb)
 		if err != nil {
 			t.Fatal(err)
 		}
-		checkVuln(t, res)
+
+		checkVuln(t, &resp.Res)
+		if resp.Stats.ScanSeconds == 0 {
+			t.Errorf("want >0 scan seconds; got 0")
+		}
+		if resp.Stats.ScanMemory == 0 {
+			t.Errorf("want >0 scan memory; got 0")
+		}
+
 	})
 
 	t.Run("binary", func(t *testing.T) {
@@ -75,11 +83,11 @@ func Test(t *testing.T) {
 			t.Fatal(derrors.IncludeStderr(err))
 		}
 		defer os.Remove(binary)
-		res, err := runTest([]string{govulncheckPath, worker.ModeBinary, binary}, vulndb)
+		resp, err := runTest([]string{govulncheckPath, worker.ModeBinary, binary}, vulndb)
 		if err != nil {
 			t.Fatal(err)
 		}
-		checkVuln(t, res)
+		checkVuln(t, &resp.Res)
 	})
 
 	// Errors
@@ -126,8 +134,8 @@ func Test(t *testing.T) {
 	}
 }
 
-func runTest(args []string, vulndbDir string) (*govulncheckapi.Result, error) {
+func runTest(args []string, vulndbDir string) (*govulncheck.GovulncheckResponse, error) {
 	var buf bytes.Buffer
 	run(&buf, args, vulndbDir)
-	return govulncheck.UnmarshalGovulncheckResult(buf.Bytes())
+	return govulncheck.UnmarshalGovulncheckSandboxResponse(buf.Bytes())
 }
