@@ -65,11 +65,11 @@ func Test(t *testing.T) {
 		}
 
 		checkVuln(t, &resp.Res)
-		if resp.Stats.ScanSeconds == 0 {
-			t.Errorf("want >0 scan seconds; got 0")
+		if resp.Stats.ScanSeconds <= 0 {
+			t.Errorf("got %f; want >0 scan seconds", resp.Stats.ScanSeconds)
 		}
-		if resp.Stats.ScanMemory == 0 {
-			t.Errorf("want >0 scan memory; got 0")
+		if resp.Stats.ScanMemory <= 0 {
+			t.Errorf("got %d; want >0 scan memory", resp.Stats.ScanMemory)
 		}
 
 	})
