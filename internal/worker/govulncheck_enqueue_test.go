@@ -12,9 +12,9 @@ import (
 
 	"github.com/google/go-cmp/cmp"
 	"golang.org/x/pkgsite-metrics/internal/config"
+	"golang.org/x/pkgsite-metrics/internal/govulncheck"
 	"golang.org/x/pkgsite-metrics/internal/queue"
 	"golang.org/x/pkgsite-metrics/internal/scan"
-	ivulncheck "golang.org/x/pkgsite-metrics/internal/vulncheck"
 )
 
 var binaryBucket = flag.String("binary-bucket", "", "bucket for scannable binaries")
@@ -27,13 +27,13 @@ func TestReadBinaries(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	want := &ivulncheck.Request{
+	want := &govulncheck.Request{
 		ModuleURLPath: scan.ModuleURLPath{
 			Module:  "golang.org/x/pkgsite",
 			Version: "v0.0.0-20221004150836-873fb37c2479",
 			Suffix:  "cmd/worker",
 		},
-		QueryParams: ivulncheck.QueryParams{Mode: ModeBinary},
+		QueryParams: govulncheck.QueryParams{Mode: ModeBinary},
 	}
 	found := false
 	for _, sr := range sreqs {
@@ -51,14 +51,14 @@ func TestReadBinaries(t *testing.T) {
 }
 
 func TestCreateQueueTasks(t *testing.T) {
-	vreq := func(path, version, mode string, importedBy int) *ivulncheck.Request {
-		return &ivulncheck.Request{
+	vreq := func(path, version, mode string, importedBy int) *govulncheck.Request {
+		return &govulncheck.Request{
 			ModuleURLPath: scan.ModuleURLPath{Module: path, Version: version},
-			QueryParams:   ivulncheck.QueryParams{Mode: mode, ImportedBy: importedBy},
+			QueryParams:   govulncheck.QueryParams{Mode: mode, ImportedBy: importedBy},
 		}
 	}
 
-	params := &ivulncheck.EnqueueQueryParams{Min: 8, File: "testdata/modules.txt"}
+	params := &govulncheck.EnqueueQueryParams{Min: 8, File: "testdata/modules.txt"}
 	gotTasks, err := createVulncheckQueueTasks(context.Background(), &config.Config{}, params, []string{ModeGovulncheck})
 	if err != nil {
 		t.Fatal(err)
@@ -68,7 +68,7 @@ func TestCreateQueueTasks(t *testing.T) {
 		vreq("github.com/pkg/errors", "v0.9.1", ModeGovulncheck, 10),
 		vreq("golang.org/x/net", "v0.4.0", ModeGovulncheck, 20),
 	}
-	if diff := cmp.Diff(wantTasks, gotTasks, cmp.AllowUnexported(ivulncheck.Request{})); diff != "" {
+	if diff := cmp.Diff(wantTasks, gotTasks, cmp.AllowUnexported(govulncheck.Request{})); diff != "" {
 		t.Errorf("mismatch (-want, +got):\n%s", diff)
 	}
 
@@ -86,7 +86,7 @@ func TestCreateQueueTasks(t *testing.T) {
 		vreq("golang.org/x/net", "v0.4.0", ModeGovulncheck, 20),
 	}
 
-	if diff := cmp.Diff(wantTasks, gotTasks, cmp.AllowUnexported(ivulncheck.Request{})); diff != "" {
+	if diff := cmp.Diff(wantTasks, gotTasks, cmp.AllowUnexported(govulncheck.Request{})); diff != "" {
 		t.Errorf("mismatch (-want, +got):\n%s", diff)
 	}
 }

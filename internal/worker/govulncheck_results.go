@@ -12,9 +12,9 @@ import (
 	"cloud.google.com/go/civil"
 	"golang.org/x/exp/event"
 	"golang.org/x/pkgsite-metrics/internal/derrors"
+	"golang.org/x/pkgsite-metrics/internal/govulncheck"
 	"golang.org/x/pkgsite-metrics/internal/log"
 	"golang.org/x/pkgsite-metrics/internal/scan"
-	ivulncheck "golang.org/x/pkgsite-metrics/internal/vulncheck"
 )
 
 var insertResultsCounter = event.NewCounter("insert-results", &event.MetricOptions{Namespace: metricNamespace})
@@ -44,12 +44,12 @@ func (h *VulncheckServer) handleInsertResults(w http.ResponseWriter, r *http.Req
 	}
 	ctx := r.Context()
 	log.Infof(ctx, "reading results")
-	results, err := ivulncheck.FetchResults(ctx, h.bqClient)
+	results, err := govulncheck.FetchResults(ctx, h.bqClient)
 	if err != nil {
 		return err
 	}
 	log.Infof(ctx, "inserting %d results for %s", len(results), date)
-	if err := ivulncheck.InsertResults(ctx, h.bqClient, results, date, allowDuplicates); err != nil {
+	if err := govulncheck.InsertResults(ctx, h.bqClient, results, date, allowDuplicates); err != nil {
 		return err
 	}
 	fmt.Fprintf(w, "%d results for %s inserted successfully.\n", len(results), date)

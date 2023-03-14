@@ -11,23 +11,23 @@ import (
 	"runtime/debug"
 
 	"golang.org/x/pkgsite-metrics/internal/derrors"
+	"golang.org/x/pkgsite-metrics/internal/govulncheck"
 	"golang.org/x/pkgsite-metrics/internal/log"
-	ivulncheck "golang.org/x/pkgsite-metrics/internal/vulncheck"
 )
 
 type VulncheckServer struct {
 	*Server
-	storedWorkVersions map[[2]string]*ivulncheck.WorkVersion
-	workVersion        *ivulncheck.WorkVersion
+	storedWorkVersions map[[2]string]*govulncheck.WorkVersion
+	workVersion        *govulncheck.WorkVersion
 }
 
 func newVulncheckServer(ctx context.Context, s *Server) (*VulncheckServer, error) {
 	var (
-		swv map[[2]string]*ivulncheck.WorkVersion
+		swv map[[2]string]*govulncheck.WorkVersion
 		err error
 	)
 	if s.bqClient != nil {
-		swv, err = ivulncheck.ReadWorkVersions(ctx, s.bqClient)
+		swv, err = govulncheck.ReadWorkVersions(ctx, s.bqClient)
 		if err != nil {
 			return nil, err
 		}
@@ -39,7 +39,7 @@ func newVulncheckServer(ctx context.Context, s *Server) (*VulncheckServer, error
 	}, nil
 }
 
-func (h *VulncheckServer) getWorkVersion(ctx context.Context) (_ *ivulncheck.WorkVersion, err error) {
+func (h *VulncheckServer) getWorkVersion(ctx context.Context) (_ *govulncheck.WorkVersion, err error) {
 	defer derrors.Wrap(&err, "VulncheckServer.getWorkVersion")
 	h.mu.Lock()
 	defer h.mu.Unlock()
@@ -53,10 +53,10 @@ func (h *VulncheckServer) getWorkVersion(ctx context.Context) (_ *ivulncheck.Wor
 		if err != nil {
 			return nil, err
 		}
-		h.workVersion = &ivulncheck.WorkVersion{
+		h.workVersion = &govulncheck.WorkVersion{
 			VulnDBLastModified: lmt,
 			WorkerVersion:      h.cfg.VersionID,
-			SchemaVersion:      ivulncheck.SchemaVersion,
+			SchemaVersion:      govulncheck.SchemaVersion,
 			VulnVersion:        vulnVersion,
 		}
 		log.Infof(ctx, "vulncheck work version: %+v", h.workVersion)

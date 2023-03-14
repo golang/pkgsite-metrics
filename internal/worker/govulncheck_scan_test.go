@@ -17,8 +17,8 @@ import (
 	"golang.org/x/pkgsite-metrics/internal/bigquery"
 	"golang.org/x/pkgsite-metrics/internal/config"
 	"golang.org/x/pkgsite-metrics/internal/derrors"
+	"golang.org/x/pkgsite-metrics/internal/govulncheck"
 	"golang.org/x/pkgsite-metrics/internal/proxy"
-	ivulncheck "golang.org/x/pkgsite-metrics/internal/vulncheck"
 	vulnc "golang.org/x/vuln/client"
 )
 
@@ -35,13 +35,13 @@ func TestAsScanError(t *testing.T) {
 }
 
 func TestVulnsForMode(t *testing.T) {
-	vulns := []*ivulncheck.Vuln{
-		&ivulncheck.Vuln{Symbol: "A", CallSink: bigquery.NullInt(0)},
-		&ivulncheck.Vuln{Symbol: "B"},
-		&ivulncheck.Vuln{Symbol: "C", CallSink: bigquery.NullInt(9)},
+	vulns := []*govulncheck.Vuln{
+		&govulncheck.Vuln{Symbol: "A", CallSink: bigquery.NullInt(0)},
+		&govulncheck.Vuln{Symbol: "B"},
+		&govulncheck.Vuln{Symbol: "C", CallSink: bigquery.NullInt(9)},
 	}
 
-	vulnsStr := func(vulns []*ivulncheck.Vuln) string {
+	vulnsStr := func(vulns []*govulncheck.Vuln) string {
 		var vs []string
 		for _, v := range vulns {
 			vs = append(vs, fmt.Sprintf("%s:%d", v.Symbol, v.CallSink.Int64))

@@ -16,10 +16,10 @@ import (
 	"golang.org/x/exp/maps"
 	"golang.org/x/pkgsite-metrics/internal/config"
 	"golang.org/x/pkgsite-metrics/internal/derrors"
+	"golang.org/x/pkgsite-metrics/internal/govulncheck"
 	"golang.org/x/pkgsite-metrics/internal/log"
 	"golang.org/x/pkgsite-metrics/internal/queue"
 	"golang.org/x/pkgsite-metrics/internal/scan"
-	ivulncheck "golang.org/x/pkgsite-metrics/internal/vulncheck"
 	"google.golang.org/api/iterator"
 )
 
@@ -35,7 +35,7 @@ func (h *VulncheckServer) handleEnqueueAll(w http.ResponseWriter, r *http.Reques
 
 func (h *VulncheckServer) enqueue(r *http.Request, allModes bool) error {
 	ctx := r.Context()
-	params := &ivulncheck.EnqueueQueryParams{Min: defaultMinImportedByCount}
+	params := &govulncheck.EnqueueQueryParams{Min: defaultMinImportedByCount}
 	if err := scan.ParseParams(r, params); err != nil {
 		return fmt.Errorf("%w: %v", derrors.InvalidArgument, err)
 	}
@@ -67,14 +67,14 @@ func listModes(modeParam string, allModes bool) ([]string, error) {
 	return []string{mode}, nil
 }
 
-func createVulncheckQueueTasks(ctx context.Context, cfg *config.Config, params *ivulncheck.EnqueueQueryParams, modes []string) (_ []queue.Task, err error) {
+func createVulncheckQueueTasks(ctx context.Context, cfg *config.Config, params *govulncheck.EnqueueQueryParams, modes []string) (_ []queue.Task, err error) {
 	defer derrors.Wrap(&err, "createVulncheckQueueTasks(%v)", modes)
 	var (
 		tasks    []queue.Task
 		modspecs []scan.ModuleSpec
 	)
 	for _, mode := range modes {
-		var reqs []*ivulncheck.Request
+		var reqs []*govulncheck.Request
 		if mode == ModeBinary {
 			reqs, err = readBinaries(ctx, cfg.BinaryBucket)
 			if err != nil {
@@ -113,7 +113,7 @@ func vulncheckMode(mode string) (string, error) {
 // gcsBinaryDir is the directory in the GCS bucket that contains binaries that should be scanned.
 const gcsBinaryDir = "binaries"
 
-func readBinaries(ctx context.Context, bucketName string) (reqs []*ivulncheck.Request, err error) {
+func readBinaries(ctx context.Context, bucketName string) (reqs []*govulncheck.Request, err error) {
 	defer derrors.Wrap(&err, "readBinaries(%q)", bucketName)
 	if bucketName == "" {
 		log.Infof(ctx, "binary bucket not configured; not enqueuing binaries")
@@ -136,9 +136,9 @@ func readBinaries(ctx context.Context, bucketName string) (reqs []*ivulncheck.Re
 		if err != nil {
 			return nil, err
 		}
-		reqs = append(reqs, &ivulncheck.Request{
+		reqs = append(reqs, &govulncheck.Request{
 			ModuleURLPath: mp,
-			QueryParams:   ivulncheck.QueryParams{Mode: ModeBinary},
+			QueryParams:   govulncheck.QueryParams{Mode: ModeBinary},
 		})
 	}
 	return reqs, nil

@@ -27,7 +27,6 @@ import (
 	"golang.org/x/pkgsite-metrics/internal/proxy"
 	"golang.org/x/pkgsite-metrics/internal/sandbox"
 	"golang.org/x/pkgsite-metrics/internal/version"
-	ivulncheck "golang.org/x/pkgsite-metrics/internal/vulncheck"
 	vulnclient "golang.org/x/vuln/client"
 	govulncheckapi "golang.org/x/vuln/exp/govulncheck"
 )
@@ -76,7 +75,7 @@ func (h *VulncheckServer) handleScan(w http.ResponseWriter, r *http.Request) (er
 	}()
 
 	ctx := r.Context()
-	sreq, err := ivulncheck.ParseRequest(r, "/vulncheck/scan")
+	sreq, err := govulncheck.ParseRequest(r, "/vulncheck/scan")
 	if err != nil {
 		return fmt.Errorf("%w: %v", derrors.InvalidArgument, err)
 	}
@@ -117,7 +116,7 @@ func (h *VulncheckServer) readVulncheckWorkVersions(ctx context.Context) error {
 		return nil
 	}
 	var err error
-	h.storedWorkVersions, err = ivulncheck.ReadWorkVersions(ctx, h.bqClient)
+	h.storedWorkVersions, err = govulncheck.ReadWorkVersions(ctx, h.bqClient)
 	return err
 }
 
@@ -126,7 +125,7 @@ type scanner struct {
 	proxyClient *proxy.Client
 	dbClient    vulnclient.Client
 	bqClient    *bigquery.Client
-	workVersion *ivulncheck.WorkVersion
+	workVersion *govulncheck.WorkVersion
 	goMemLimit  uint64
 	gcsBucket   *storage.BucketHandle
 	insecure    bool
@@ -172,11 +171,11 @@ func (s scanError) Unwrap() error {
 	return s.err
 }
 
-func (s *scanner) ScanModule(ctx context.Context, w http.ResponseWriter, sreq *ivulncheck.Request) error {
+func (s *scanner) ScanModule(ctx context.Context, w http.ResponseWriter, sreq *govulncheck.Request) error {
 	if sreq.Module == "std" {
 		return nil // ignore the standard library
 	}
-	row := &ivulncheck.Result{
+	row := &govulncheck.Result{
 		ModulePath:  sreq.Module,
 		Suffix:      sreq.Suffix,
 		WorkVersion: *s.workVersion,
@@ -227,7 +226,7 @@ func (s *scanner) ScanModule(ctx context.Context, w http.ResponseWriter, sreq *i
 	}
 	log.Infof(ctx, "scanner.runScanModule returned %d vulns for %s: row.Vulns=%d err=%v", len(vulns), sreq.Path(), len(row.Vulns), err)
 
-	if err := writeResult(ctx, sreq.Serve, w, s.bqClient, ivulncheck.TableName, row); err != nil {
+	if err := writeResult(ctx, sreq.Serve, w, s.bqClient, govulncheck.TableName, row); err != nil {
 		return err
 	}
 
@@ -245,7 +244,7 @@ func (s *scanner) ScanModule(ctx context.Context, w http.ResponseWriter, sreq *i
 	impRow.ScanMemory = 0
 	impRow.Vulns = vulnsForMode(vulns, modeImports)
 	log.Infof(ctx, "scanner.runScanModule also storing imports vulns for %s: row.Vulns=%d", sreq.Path(), len(impRow.Vulns))
-	return writeResult(ctx, sreq.Serve, w, s.bqClient, ivulncheck.TableName, &impRow)
+	return writeResult(ctx, sreq.Serve, w, s.bqClient, govulncheck.TableName, &impRow)
 }
 
 // vulnsForMode returns vulns that make sense to report for
@@ -256,12 +255,12 @@ func (s *scanner) ScanModule(ctx context.Context, w http.ResponseWriter, sreq *i
 // modified to have CallSink=0. For ModeBinary, these are
 // exactly the input vulns since binary analysis does not
 // distinguish between called and imported vulnerabilities.
-func vulnsForMode(vulns []*ivulncheck.Vuln, mode string) []*ivulncheck.Vuln {
+func vulnsForMode(vulns []*govulncheck.Vuln, mode string) []*govulncheck.Vuln {
 	if mode == ModeBinary {
 		return vulns
 	}
 
-	var vs []*ivulncheck.Vuln
+	var vs []*govulncheck.Vuln
 	for _, v := range vulns {
 		if mode == ModeGovulncheck {
 			// Return only the called vulns for ModeGovulncheck.
@@ -298,7 +297,7 @@ const (
 
 // runScanModule fetches the module version from the proxy, and analyzes it for
 // vulnerabilities.
-func (s *scanner) runScanModule(ctx context.Context, modulePath, version, binaryDir, mode string, stats *scanStats) (bvulns []*ivulncheck.Vuln, err error) {
+func (s *scanner) runScanModule(ctx context.Context, modulePath, version, binaryDir, mode string, stats *scanStats) (bvulns []*govulncheck.Vuln, err error) {
 	err = doScan(ctx, modulePath, version, s.insecure, func() error {
 		var vulns []*govulncheckapi.Vuln
 		if s.insecure {
@@ -310,7 +309,7 @@ func (s *scanner) runScanModule(ctx context.Context, modulePath, version, binary
 			return err
 		}
 		for _, v := range vulns {
-			bvulns = append(bvulns, ivulncheck.ConvertGovulncheckOutput(v)...)
+			bvulns = append(bvulns, govulncheck.ConvertGovulncheckOutput(v)...)
 		}
 		return nil
 	})
