@@ -23,17 +23,17 @@ import (
 	"google.golang.org/api/iterator"
 )
 
-// handleEnqueue enqueues multiple modules for a single vulncheck mode.
-func (h *VulncheckServer) handleEnqueue(w http.ResponseWriter, r *http.Request) error {
+// handleEnqueue enqueues multiple modules for a single govulncheck mode.
+func (h *GovulncheckServer) handleEnqueue(w http.ResponseWriter, r *http.Request) error {
 	return h.enqueue(r, false)
 }
 
-// handleEnqueueAll enqueues multiple modules for all vulncheck modes.
-func (h *VulncheckServer) handleEnqueueAll(w http.ResponseWriter, r *http.Request) error {
+// handleEnqueueAll enqueues multiple modules for all govulncheck modes.
+func (h *GovulncheckServer) handleEnqueueAll(w http.ResponseWriter, r *http.Request) error {
 	return h.enqueue(r, true)
 }
 
-func (h *VulncheckServer) enqueue(r *http.Request, allModes bool) error {
+func (h *GovulncheckServer) enqueue(r *http.Request, allModes bool) error {
 	ctx := r.Context()
 	params := &govulncheck.EnqueueQueryParams{Min: defaultMinImportedByCount}
 	if err := scan.ParseParams(r, params); err != nil {
@@ -43,7 +43,7 @@ func (h *VulncheckServer) enqueue(r *http.Request, allModes bool) error {
 	if err != nil {
 		return fmt.Errorf("%w: %v", derrors.InvalidArgument, err)
 	}
-	tasks, err := createVulncheckQueueTasks(ctx, h.cfg, params, modes)
+	tasks, err := createGovulncheckQueueTasks(ctx, h.cfg, params, modes)
 	if err != nil {
 		return err
 	}
@@ -60,14 +60,14 @@ func listModes(modeParam string, allModes bool) ([]string, error) {
 		sort.Strings(ms) // make deterministic for testing
 		return ms, nil
 	}
-	mode, err := vulncheckMode(modeParam)
+	mode, err := govulncheckMode(modeParam)
 	if err != nil {
 		return nil, err
 	}
 	return []string{mode}, nil
 }
 
-func createVulncheckQueueTasks(ctx context.Context, cfg *config.Config, params *govulncheck.EnqueueQueryParams, modes []string) (_ []queue.Task, err error) {
+func createGovulncheckQueueTasks(ctx context.Context, cfg *config.Config, params *govulncheck.EnqueueQueryParams, modes []string) (_ []queue.Task, err error) {
 	defer derrors.Wrap(&err, "createVulncheckQueueTasks(%v)", modes)
 	var (
 		tasks    []queue.Task
@@ -115,7 +115,7 @@ func moduleSpecsToGovulncheckScanRequests(modspecs []scan.ModuleSpec, mode strin
 	return sreqs
 }
 
-func vulncheckMode(mode string) (string, error) {
+func govulncheckMode(mode string) (string, error) {
 	if mode == "" {
 		// ModeGovulncheck is the default mode.
 		return ModeGovulncheck, nil

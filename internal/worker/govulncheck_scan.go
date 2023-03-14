@@ -55,7 +55,7 @@ var modes = map[string]bool{
 	ModeGovulncheck: true,
 }
 
-func IsValidVulncheckMode(mode string) bool {
+func IsValidGovulncheckMode(mode string) bool {
 	return modes[mode]
 }
 
@@ -66,8 +66,8 @@ var shouldSkip = map[string]bool{}
 var scanCounter = event.NewCounter("scans", &event.MetricOptions{Namespace: metricNamespace})
 
 // path: /vulncheck/scan/MODULE_VERSION_SUFFIX?params
-// See internal/vulncheck.ParseRequest for allowed path forms and query params.
-func (h *VulncheckServer) handleScan(w http.ResponseWriter, r *http.Request) (err error) {
+// See internal/govulncheck.ParseRequest for allowed path forms and query params.
+func (h *GovulncheckServer) handleScan(w http.ResponseWriter, r *http.Request) (err error) {
 	defer derrors.Wrap(&err, "handleScan")
 
 	defer func() {
@@ -86,7 +86,7 @@ func (h *VulncheckServer) handleScan(w http.ResponseWriter, r *http.Request) (er
 		log.Infof(ctx, "skipping (module in shouldSkip list): %s", sreq.Path())
 		return nil
 	}
-	if err := h.readVulncheckWorkVersions(ctx); err != nil {
+	if err := h.readGovulncheckWorkVersions(ctx); err != nil {
 		return err
 	}
 	scanner, err := newScanner(ctx, h)
@@ -106,7 +106,7 @@ func (h *VulncheckServer) handleScan(w http.ResponseWriter, r *http.Request) (er
 	return scanner.ScanModule(ctx, w, sreq)
 }
 
-func (h *VulncheckServer) readVulncheckWorkVersions(ctx context.Context) error {
+func (h *GovulncheckServer) readGovulncheckWorkVersions(ctx context.Context) error {
 	h.mu.Lock()
 	defer h.mu.Unlock()
 	if h.storedWorkVersions != nil {
@@ -132,7 +132,7 @@ type scanner struct {
 	sbox        *sandbox.Sandbox
 }
 
-func newScanner(ctx context.Context, h *VulncheckServer) (*scanner, error) {
+func newScanner(ctx context.Context, h *GovulncheckServer) (*scanner, error) {
 	workVersion, err := h.getWorkVersion(ctx)
 	if err != nil {
 		return nil, err
@@ -216,9 +216,9 @@ func (s *scanner) ScanModule(ctx context.Context, w http.ResponseWriter, sreq *g
 		case errors.Is(err, derrors.LoadPackagesError):
 			// general load packages error
 		case isVulnDBConnection(err):
-			err = fmt.Errorf("%v: %w", err, derrors.ScanModuleVulncheckDBConnectionError)
+			err = fmt.Errorf("%v: %w", err, derrors.ScanModuleGovulncheckDBConnectionError)
 		default:
-			err = fmt.Errorf("%v: %w", err, derrors.ScanModuleVulncheckError)
+			err = fmt.Errorf("%v: %w", err, derrors.ScanModuleGovulncheckError)
 		}
 		row.AddError(err)
 	} else {
@@ -351,7 +351,7 @@ func (s *scanner) runBinaryScanSandbox(ctx context.Context, modulePath, version,
 		return nil, errors.New("binary bucket not configured; set GO_ECOSYSTEM_BINARY_BUCKET")
 	}
 	// Copy the binary from GCS to the local disk, because vulncheck.Binary
-	// requires a ReaderAt and GCS doesn't provide that.
+	// ultimately requires a ReaderAt and GCS doesn't provide that.
 	gcsPathname := fmt.Sprintf("%s/%s@%s/%s", gcsBinaryDir, modulePath, version, binDir)
 	const destDir = binaryDir
 	log.Debug(ctx, "copying",
@@ -359,7 +359,7 @@ func (s *scanner) runBinaryScanSandbox(ctx context.Context, modulePath, version,
 		"to", destDir,
 		"module", modulePath, "version", version,
 		"dir", binDir)
-	destf, err := os.CreateTemp(destDir, "vulncheck-binary-")
+	destf, err := os.CreateTemp(destDir, "govulncheck-binary-")
 	if err != nil {
 		return nil, err
 	}
@@ -373,9 +373,9 @@ func (s *scanner) runBinaryScanSandbox(ctx context.Context, modulePath, version,
 		return nil, err
 	}
 
-	log.Infof(ctx, "running vulncheck in sandbox on %s: %s@%s/%s", modulePath, version, binDir, destf.Name())
+	log.Infof(ctx, "running govulncheck in sandbox on %s: %s@%s/%s", modulePath, version, binDir, destf.Name())
 	stdout, err := s.sbox.Command(binaryDir+"/govulncheck_sandbox", govulncheckPath, ModeBinary, destf.Name()).Output()
-	log.Infof(ctx, "done with vulncheck in sandbox on %s: %s@%s/%s err=%v", modulePath, version, binDir, destf.Name(), err)
+	log.Infof(ctx, "done with govulncheck in sandbox on %s: %s@%s/%s err=%v", modulePath, version, binDir, destf.Name(), err)
 
 	if err != nil {
 		return nil, errors.New(derrors.IncludeStderr(err))
@@ -410,8 +410,8 @@ func (s *scanner) runBinaryScanInsecure(ctx context.Context, modulePath, version
 	if s.gcsBucket == nil {
 		return nil, errors.New("binary bucket not configured; set GO_ECOSYSTEM_BINARY_BUCKET")
 	}
-	// Copy the binary from GCS to the local disk, because vulncheck.Binary
-	// requires a ReaderAt and GCS doesn't provide that.
+	// Copy the binary from GCS to the local disk, because govulncheck
+	// ultimately requires a ReaderAt and GCS doesn't provide that.
 	gcsPathname := fmt.Sprintf("%s/%s@%s/%s", gcsBinaryDir, modulePath, version, binDir)
 	log.Debug(ctx, "copying to temp dir",
 		"from", gcsPathname, "module", modulePath, "version", version, "dir", binDir)

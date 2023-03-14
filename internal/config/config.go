@@ -80,7 +80,7 @@ type Config struct {
 	// associated load balancer.
 	VulnDBBucketProjectID string
 
-	// BinaryBucket holds binaries for vulncheck scanning.
+	// BinaryBucket holds binaries for govulncheck scanning.
 	BinaryBucket string
 
 	// The host, port and user of the pkgsite database used to find

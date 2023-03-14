@@ -15,13 +15,13 @@ import (
 	"golang.org/x/pkgsite-metrics/internal/log"
 )
 
-type VulncheckServer struct {
+type GovulncheckServer struct {
 	*Server
 	storedWorkVersions map[[2]string]*govulncheck.WorkVersion
 	workVersion        *govulncheck.WorkVersion
 }
 
-func newVulncheckServer(ctx context.Context, s *Server) (*VulncheckServer, error) {
+func newGovulncheckServer(ctx context.Context, s *Server) (*GovulncheckServer, error) {
 	var (
 		swv map[[2]string]*govulncheck.WorkVersion
 		err error
@@ -33,14 +33,14 @@ func newVulncheckServer(ctx context.Context, s *Server) (*VulncheckServer, error
 		}
 		log.Infof(ctx, "read %d work versions", len(swv))
 	}
-	return &VulncheckServer{
+	return &GovulncheckServer{
 		Server:             s,
 		storedWorkVersions: swv,
 	}, nil
 }
 
-func (h *VulncheckServer) getWorkVersion(ctx context.Context) (_ *govulncheck.WorkVersion, err error) {
-	defer derrors.Wrap(&err, "VulncheckServer.getWorkVersion")
+func (h *GovulncheckServer) getWorkVersion(ctx context.Context) (_ *govulncheck.WorkVersion, err error) {
+	defer derrors.Wrap(&err, "GovulncheckServer.getWorkVersion")
 	h.mu.Lock()
 	defer h.mu.Unlock()
 
@@ -59,7 +59,7 @@ func (h *VulncheckServer) getWorkVersion(ctx context.Context) (_ *govulncheck.Wo
 			SchemaVersion:      govulncheck.SchemaVersion,
 			VulnVersion:        vulnVersion,
 		}
-		log.Infof(ctx, "vulncheck work version: %+v", h.workVersion)
+		log.Infof(ctx, "govulncheck work version: %+v", h.workVersion)
 	}
 	return h.workVersion, nil
 }

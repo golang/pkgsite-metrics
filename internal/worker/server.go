@@ -119,7 +119,7 @@ func NewServer(ctx context.Context, cfg *config.Config) (_ *Server, err error) {
 		derrors.SetReportingClient(reportingClient)
 	}
 
-	if err := s.registerVulncheckHandlers(ctx); err != nil {
+	if err := s.registerGovulncheckHandlers(ctx); err != nil {
 		return nil, err
 	}
 	if err := s.registerAnalysisHandlers(ctx); err != nil {
@@ -165,8 +165,8 @@ func (s *Server) handle(pattern string, handler handlerFunc) {
 	http.Handle(pattern, s.observer.Observe(h))
 }
 
-func (s *Server) registerVulncheckHandlers(ctx context.Context) error {
-	h, err := newVulncheckServer(ctx, s)
+func (s *Server) registerGovulncheckHandlers(ctx context.Context) error {
+	h, err := newGovulncheckServer(ctx, s)
 	if err != nil {
 		return err
 	}

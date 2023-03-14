@@ -59,7 +59,7 @@ func TestCreateQueueTasks(t *testing.T) {
 	}
 
 	params := &govulncheck.EnqueueQueryParams{Min: 8, File: "testdata/modules.txt"}
-	gotTasks, err := createVulncheckQueueTasks(context.Background(), &config.Config{}, params, []string{ModeGovulncheck})
+	gotTasks, err := createGovulncheckQueueTasks(context.Background(), &config.Config{}, params, []string{ModeGovulncheck})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -76,7 +76,7 @@ func TestCreateQueueTasks(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	gotTasks, err = createVulncheckQueueTasks(context.Background(), &config.Config{}, params, allModes)
+	gotTasks, err = createGovulncheckQueueTasks(context.Background(), &config.Config{}, params, allModes)
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -19,7 +19,7 @@ import (
 	"golang.org/x/pkgsite-metrics/internal/derrors"
 	"golang.org/x/pkgsite-metrics/internal/govulncheck"
 	"golang.org/x/pkgsite-metrics/internal/proxy"
-	vulnc "golang.org/x/vuln/client"
+	vulnclient "golang.org/x/vuln/client"
 )
 
 var integration = flag.Bool("integration", false, "test against actual service")
@@ -75,7 +75,7 @@ func TestRunScanModule(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	dbClient, err := vulnc.NewClient([]string{cfg.VulnDBURL}, vulnc.Options{})
+	dbClient, err := vulnclient.NewClient([]string{cfg.VulnDBURL}, vulnclient.Options{})
 	if err != nil {
 		t.Fatal(err)
 	}

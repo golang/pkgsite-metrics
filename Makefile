@@ -75,20 +75,20 @@ docker-run-bg: docker-build
 	docker run --detach $(DOCKER_RUN_ARGS) $(IMAGE) > $(DOCKER_ID_FILE)
 	while ! curl -s --head http://localhost:8080 > /dev/null; do sleep 1; done
 
-test: docker-run-bg vulncheck-test analysis-test
+test: docker-run-bg govulncheck-test analysis-test
 	docker container stop `cat $(DOCKER_ID_FILE)`
 
-VULNCHECK_TEST_FILE := /tmp/vtest.out
+GOVULNCHECK_TEST_FILE := /tmp/vtest.out
 
 # Test by scanning a small module.
-vulncheck-test:
-	curl -s 'http://localhost:8080/vulncheck/scan/github.com/fossas/fossa-cli@v1.1.10?importedby=1&serve=true' > $(VULNCHECK_TEST_FILE)
-	@if [[ `grep -c GO-2020-0016 $(VULNCHECK_TEST_FILE)` -ge 4 ]]; then \
+govulncheck-test:
+	curl -s 'http://localhost:8080/vulncheck/scan/github.com/fossas/fossa-cli@v1.1.10?importedby=1&serve=true' > $(GOVULNCHECK_TEST_FILE)
+	@if [[ `grep -c GO-2020-0016 $(GOVULNCHECK_TEST_FILE)` -ge 4 ]]; then \
 	    echo PASS; \
-	    rm $(VULNCHECK_TEST_FILE); \
+	    rm $(GOVULNCHECK_TEST_FILE); \
 	else \
 	    echo FAIL; \
-	    echo "output in $(VULNCHECK_TEST_FILE)"; \
+	    echo "output in $(GOVULNCHECK_TEST_FILE)"; \
 	    docker container stop `cat $(DOCKER_ID_FILE)`; \
 	    exit 1; \
 	fi
@@ -113,4 +113,4 @@ clean:
 	rm -f config.json
 	rm -f govulncheck_sandbox
 
-.PHONY: docker-run docker-run-bg test vulncheck-test analysis-test clean
+.PHONY: docker-run docker-run-bg test govulncheck-test analysis-test clean

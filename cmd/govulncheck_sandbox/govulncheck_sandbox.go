@@ -2,12 +2,12 @@
 // Use of this source code is governed by a BSD-style
 // license that can be found in the LICENSE file.
 
-// This program runs vulncheck.Source or vulncheck.Binary on a module, then
+// This program runs govulncheck on a module or a binary and then
 // writes the result as JSON. It is intended to be run in a sandbox.
 //
 // Unless it panics, this program always terminates with exit code 0.
 // If there is an error, it writes a JSON object with field "Error".
-// Otherwise, it writes a vulncheck.Result as JSON.
+// Otherwise, it writes a internal/govulncheck.SandboxResponse as JSON.
 package main
 
 import (
@@ -47,7 +47,7 @@ func run(w io.Writer, args []string, vulnDBDir string) {
 		return
 	}
 	mode := args[1]
-	if !worker.IsValidVulncheckMode(mode) {
+	if !worker.IsValidGovulncheckMode(mode) {
 		fail(fmt.Errorf("%q is not a valid mode", mode))
 		return
 	}

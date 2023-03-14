@@ -25,7 +25,7 @@ import (
 	"google.golang.org/api/iterator"
 )
 
-// EnqueueQueryParams for vulncheck/enqueue
+// EnqueueQueryParams for govulncheck/enqueue
 type EnqueueQueryParams struct {
 	Suffix string // appended to task queue IDs to generate unique tasks
 	Mode   string // type of analysis to run
@@ -40,10 +40,10 @@ type Request struct {
 	QueryParams
 }
 
-// QueryParams has query parameters for a vulncheck scan request.
+// QueryParams has query parameters for a govulncheck scan request.
 type QueryParams struct {
 	ImportedBy int    // imported-by count
-	Mode       string // vulncheck mode (VTA, etc)
+	Mode       string // govulncheck mode
 	Insecure   bool   // if true, run outside sandbox
 	Serve      bool   // serve results back to client instead of writing them to BigQuery
 }
@@ -139,8 +139,7 @@ const TableName = "vulncheck"
 //   - changing a column from required to nullable.
 // See https://cloud.google.com/bigquery/docs/managing-table-schemas for details.
 
-// Result is a row in the BigQuery vulncheck table. It corresponds to a
-// result from the output for vulncheck.Source.
+// Result is a row in the BigQuery govulncheck table.
 type Result struct {
 	CreatedAt     time.Time `bigquery:"created_at"`
 	ModulePath    string    `bigquery:"module_path"`
@@ -199,8 +198,7 @@ func (vr *Result) AddError(err error) {
 	vr.ErrorCategory = derrors.CategorizeError(err)
 }
 
-// Vuln is a record in Result and corresponds to an item in
-// vulncheck.Result.Vulns.
+// Vuln is a record in Result.
 type Vuln struct {
 	ID          string       `bigquery:"id"`
 	Symbol      string       `bigquery:"symbol"`
@@ -211,7 +209,7 @@ type Vuln struct {
 	RequireSink bq.NullInt64 `bigquery:"require_sink"`
 }
 
-// SchemaVersion changes whenever the vulncheck schema changes.
+// SchemaVersion changes whenever the govulncheck schema changes.
 var SchemaVersion string
 
 func init() {
@@ -223,7 +221,7 @@ func init() {
 	bigquery.AddTable(TableName, s)
 }
 
-// ReadWorkVersions reads the most recent WorkVersions in the vulncheck table.
+// ReadWorkVersions reads the most recent WorkVersions in the govulncheck table.
 func ReadWorkVersions(ctx context.Context, c *bigquery.Client) (_ map[[2]string]*WorkVersion, err error) {
 	defer derrors.Wrap(&err, "ReadWorkVersions")
 	m := map[[2]string]*WorkVersion{}
@@ -355,7 +353,7 @@ func insertResults(ctx context.Context, c *bigquery.Client, reportTableName stri
 }
 
 // ScanStats represent monitoring information about a given
-// run of govulncheck or vulncheck
+// run of govulncheck.
 type ScanStats struct {
 	// ScanSeconds is the amount of time a scan took to run, in seconds.
 	ScanSeconds float64

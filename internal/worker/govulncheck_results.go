@@ -19,7 +19,7 @@ import (
 
 var insertResultsCounter = event.NewCounter("insert-results", &event.MetricOptions{Namespace: metricNamespace})
 
-func (h *VulncheckServer) handleInsertResults(w http.ResponseWriter, r *http.Request) (err error) {
+func (h *GovulncheckServer) handleInsertResults(w http.ResponseWriter, r *http.Request) (err error) {
 	defer func() {
 		insertResultsCounter.Record(r.Context(), 1, event.Bool("success", err == nil))
 	}()

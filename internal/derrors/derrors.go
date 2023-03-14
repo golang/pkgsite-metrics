@@ -48,12 +48,12 @@ var (
 	ScanModulePanicError = errors.New("scan module panic")
 
 	// ScanModuleOSError is used to capture issues with writing the module zip
-	// to disk during the scan setup process. This is not an error with vulncheck.
+	// to disk during the scan setup process. This is not an error with govulncheck.
 	ScanModuleOSError = errors.New("scan module OS error")
 
 	// LoadPackagesError is used to capture general unclassified issues with
 	// load packages during the scan setup process. This is not an error with
-	// vulncheck. There are specific load packages errors that are categorized
+	// govulncheck. There are specific load packages errors that are categorized
 	// separately, e.g., LoadPackagesNoGoModError.
 	LoadPackagesError = errors.New("scan module load packages error")
 
@@ -64,33 +64,33 @@ var (
 
 	// LoadPackagesNoGoModError is used to capture a specific issue with
 	// loading packages during the scan setup process where a go.mod file
-	// is missing. This is not an error with vulncheck.
+	// is missing. This is not an error with govulncheck.
 	LoadPackagesNoGoModError = errors.New("scan module load packages error: does not have go.mod")
 
 	// LoadPackagesNoGoSumError is used to capture a specific issue with
 	// loading packages during the scan setup process where a go.sum file
-	// is missing. This is not an error with vulncheck.
+	// is missing. This is not an error with govulncheck.
 	LoadPackagesNoGoSumError = errors.New("scan module load packages error: does not have go.sum")
 
 	// LoadPackagesNoRequiredModuleError is used to capture a specific
 	// issue with loading packages during the scan setup process where a package
 	// is imported but no required module is provided. This is not an error with
-	// vulncheck and is likely happening due to outdated go.sum file.
+	// govulncheck and is likely happening due to outdated go.sum file.
 	LoadPackagesNoRequiredModuleError = errors.New("scan module load packages error: no required module provided")
 
 	// LoadPackagesMissingGoSumEntryError is used to capture a specific
 	// issue with loading packages during the scan setup process where a package
 	// is imported but some of its go.sum entries are missing. This is not an error
-	// with vulncheck and is likely happening due to outdated go.sum file.
+	// with govulncheck and is likely happening due to outdated go.sum file.
 	LoadPackagesMissingGoSumEntryError = errors.New("scan module load packages error: missing go.sum entry")
 
-	// ScanModuleVulncheckDBConnectionError is used to capture a specific
-	// vulncheck scan error where a connection to vuln db failed.
-	ScanModuleVulncheckDBConnectionError = errors.New("scan module vulncheck error: communication with vuln db failed")
+	// ScanModuleGovulncheckDBConnectionError is used to capture a specific
+	// govulncheck scan error where a connection to vuln db failed.
+	ScanModuleGovulncheckDBConnectionError = errors.New("scan module govulncheck error: communication with vuln db failed")
 
-	// ScanModuleVulncheckError is used to capture general issues where
-	// vulncheck.Source fails due to an uncategorized error.
-	ScanModuleVulncheckError = errors.New("scan module vulncheck error")
+	// ScanModuleGovulncheckError is used to capture general issues where
+	// govulncheck fails due to an uncategorized error.
+	ScanModuleGovulncheckError = errors.New("scan module govulncheck error")
 
 	// ScanModuleMemoryLimitExceeded occurs when scanning uses too much memory.
 	ScanModuleMemoryLimitExceeded = errors.New("scan module memory limit exceeded")
@@ -173,9 +173,9 @@ func Report(err error) {
 // CategorizeError returns the category for a given error.
 func CategorizeError(err error) string {
 	switch {
-	case errors.Is(err, ScanModuleVulncheckError):
+	case errors.Is(err, ScanModuleGovulncheckError):
 		return "VULNCHECK - MISC"
-	case errors.Is(err, ScanModuleVulncheckDBConnectionError):
+	case errors.Is(err, ScanModuleGovulncheckDBConnectionError):
 		return "VULNCHECK - DB CONNECTION"
 	case errors.Is(err, LoadPackagesError):
 		return "LOAD"
