@@ -98,6 +98,14 @@
             "type": "none",
             "source": "/tmp/binaries",
             "options": ["bind"]
+        },
+        {
+            # Mount /tmp/modules inside the sandbox to
+	    # the same directory outside.
+            "destination": "/tmp/modules",
+            "type": "none",
+            "source": "/tmp/modules",
+            "options": ["bind"]
         }
     ],
     "linux": {

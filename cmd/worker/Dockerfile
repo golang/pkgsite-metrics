@@ -24,10 +24,11 @@ RUN mkdir app
 # The sandbox mounts this directory.
 RUN mkdir module
 
-# Where binaries live.
+# Where binaries and modules live.
 # The sandbox config.json file maps these to the same paths
 # inside the sandbox.
 RUN mkdir /tmp/binaries
+RUN mkdir /tmp/modules
 
 
 #### Sandbox setup

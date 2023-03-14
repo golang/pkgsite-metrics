@@ -32,10 +32,11 @@ const (
 	// The root of the sandbox, relative to the docker container.
 	sandboxRoot = "/bundle/rootfs"
 
-	// The directory where binaries live. The sandbox mounts this
-	// directory to the same path internally, so this path works
-	// for both secure and insecure modes.
-	binaryDir = "/tmp/binaries"
+	// The directories where binaries and modules live.
+	// The sandbox mounts this directory to the same path internally, so this
+	// path works for both secure and insecure modes.
+	binaryDir  = "/tmp/binaries"
+	modulesDir = "/tmp/modules"
 )
 
 var activeScans atomic.Int32
@@ -242,12 +243,8 @@ func prepareModule(ctx context.Context, modulePath, version, dir string, proxyCl
 }
 
 // moduleDir returns a the path of a directory where the module can be downloaded.
-func moduleDir(modulePath, version string, insecure bool) string {
-	dir := sandboxRoot
-	if insecure {
-		dir = os.TempDir()
-	}
-	return filepath.Join(dir, "modules", modulePath+"@"+version)
+func moduleDir(modulePath, version string) string {
+	return filepath.Join(modulesDir, modulePath+"@"+version)
 }
 
 // removeDir calls os.RemoveAll(dir) and combines the error with errp.

@@ -115,7 +115,7 @@ func (s *analysisServer) scanInternal(ctx context.Context, req *analysis.ScanReq
 		return nil, nil, err
 	}
 
-	mdir := moduleDir(req.Module, req.Version, req.Insecure)
+	mdir := moduleDir(req.Module, req.Version)
 	defer removeDir(&err, mdir)
 	if err := prepareModule(ctx, req.Module, req.Version, mdir, s.proxyClient, req.Insecure); err != nil {
 		return nil, nil, err
