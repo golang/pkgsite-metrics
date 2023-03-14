@@ -31,6 +31,8 @@ import (
 const (
 	// The root of the sandbox, relative to the docker container.
 	sandboxRoot = "/bundle/rootfs"
+	// The Go module cache resides in its default location, $HOME/go/pkg/mod.
+	sandboxGoModCache = "root/go/pkg/mod"
 
 	// The directories where binaries and modules live.
 	// The sandbox mounts this directory to the same path internally, so this
@@ -218,27 +220,27 @@ func gcsOpenFileFunc(ctx context.Context, bucket *storage.BucketHandle) openFile
 // takes other actions that increase the chance that
 // packages.Load will succeed.
 func prepareModule(ctx context.Context, modulePath, version, dir string, proxyClient *proxy.Client, insecure bool) error {
-	log.Debugf(ctx, "%s@%s: downloading to %s", modulePath, version, dir)
+	log.Debugf(ctx, "downloading %s@%s to %s", modulePath, version, dir)
 	if err := modules.Download(ctx, modulePath, version, dir, proxyClient, true); err != nil {
 		log.Debugf(ctx, "download error: %v (%[1]T)", err)
 		return err
 	}
+
+	// Download all dependencies, using the given directory for the Go module cache
+	// if it is non-empty.
+	log.Debugf(ctx, "running go mod download on %s@%s", modulePath, version)
+	cmd := exec.Command("go", "mod", "download")
+	cmd.Dir = dir
+	cmd.Env = append(cmd.Environ(), "GOPROXY=https://proxy.golang.org")
 	if !insecure {
-		// Download all dependencies outside of the sandbox, but use the Go build
-		// cache ("/bundle/rootfs/" + sandboxGoCache) inside the bundle.
-		log.Debugf(ctx, "%s@%s: running go mod download", modulePath, version)
-		cmd := exec.Command("go", "mod", "download")
-		cmd.Dir = dir
-		cmd.Env = append(cmd.Environ(),
-			"GOPROXY=https://proxy.golang.org",
-			"GOMODCACHE=/bundle/rootfs/"+sandboxGoModCache)
-		_, err := cmd.Output()
-		if err != nil {
-			return fmt.Errorf("%w: 'go mod download' for %s@%s returned %s",
-				derrors.BadModule, modulePath, version, derrors.IncludeStderr(err))
-		}
-		log.Debugf(ctx, "go mod download succeeded")
+		// Use sandbox mod cache.
+		cmd.Env = append(cmd.Env, "GOMODCACHE="+filepath.Join(sandboxRoot, sandboxGoModCache))
 	}
+	if _, err := cmd.Output(); err != nil {
+		return fmt.Errorf("%w: 'go mod download' for %s@%s returned %s",
+			derrors.BadModule, modulePath, version, derrors.IncludeStderr(err))
+	}
+	log.Debugf(ctx, "go mod download succeeded")
 	return nil
 }
 

@@ -287,8 +287,6 @@ type scanStats struct {
 
 // Inside the sandbox, the user is root and their $HOME directory is /root.
 const (
-	// The Go module cache resides in its default location, $HOME/go/pkg/mod.
-	sandboxGoModCache = "root/go/pkg/mod"
 	// The Go cache resides in its default location, $HOME/.cache/go-build.
 	sandboxGoCache = "root/.cache/go-build"
 	// Where the govulncheck binary lives.
