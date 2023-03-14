@@ -357,20 +357,21 @@ func insertResults(ctx context.Context, c *bigquery.Client, reportTableName stri
 // ScanStats represent monitoring information about a given
 // run of govulncheck or vulncheck
 type ScanStats struct {
-	// The amount of time a scan took to run, in seconds
+	// ScanSeconds is the amount of time a scan took to run, in seconds.
 	ScanSeconds float64
-	// The peak (heap) memory used by govulncheck, in kb
+	// ScanMemory is the peak (heap) memory used by govulncheck, in kb.
 	ScanMemory uint64
 }
 
-// GovulncheckResponse passes both the raw govulncheck result as well as
-// statistics about memory usage and run time
-type GovulncheckResponse struct {
+// SandboxResponse contains the raw govulncheck result
+// and statistics about memory usage and run time. Used
+// for capturing result of govulncheck run in a sandbox.
+type SandboxResponse struct {
 	Res   govulncheck.Result
 	Stats ScanStats
 }
 
-func UnmarshalGovulncheckSandboxResponse(output []byte) (*GovulncheckResponse, error) {
+func UnmarshalSandboxResponse(output []byte) (*SandboxResponse, error) {
 	var e struct{ Error string }
 	if err := json.Unmarshal(output, &e); err != nil {
 		return nil, err
@@ -378,7 +379,7 @@ func UnmarshalGovulncheckSandboxResponse(output []byte) (*GovulncheckResponse, e
 	if e.Error != "" {
 		return nil, errors.New(e.Error)
 	}
-	var res GovulncheckResponse
+	var res SandboxResponse
 	if err := json.Unmarshal(output, &res); err != nil {
 		return nil, err
 	}

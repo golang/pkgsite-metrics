@@ -22,7 +22,7 @@ import (
 	"syscall"
 	"time"
 
-	igovulncheck "golang.org/x/pkgsite-metrics/internal/govulncheck"
+	"golang.org/x/pkgsite-metrics/internal/govulncheck"
 	"golang.org/x/pkgsite-metrics/internal/worker"
 )
 
@@ -67,7 +67,7 @@ func run(w io.Writer, args []string, vulnDBDir string) {
 	fmt.Println()
 }
 
-func runGovulncheck(ctx context.Context, govulncheckPath, mode, filePath, vulnDBDir string) (*igovulncheck.GovulncheckResponse, error) {
+func runGovulncheck(ctx context.Context, govulncheckPath, mode, filePath, vulnDBDir string) (*govulncheck.SandboxResponse, error) {
 	pattern := "./..."
 	dir := ""
 
@@ -89,9 +89,9 @@ func runGovulncheck(ctx context.Context, govulncheckPath, mode, filePath, vulnDB
 			return nil, err
 		}
 	}
-	response := igovulncheck.GovulncheckResponse{}
+	response := govulncheck.SandboxResponse{}
 	response.Stats.ScanSeconds = time.Since(start).Seconds()
-	result, err := igovulncheck.UnmarshalGovulncheckResult(output)
+	result, err := govulncheck.UnmarshalGovulncheckResult(output)
 	if err != nil {
 		return nil, err
 	}

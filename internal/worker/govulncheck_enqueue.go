@@ -87,7 +87,7 @@ func createVulncheckQueueTasks(ctx context.Context, cfg *config.Config, params *
 					return nil, err
 				}
 			}
-			reqs = moduleSpecsToScanRequests(modspecs, mode)
+			reqs = moduleSpecsToGovulncheckScanRequests(modspecs, mode)
 		}
 		for _, req := range reqs {
 			if req.Module != "std" { // ignore the standard library
@@ -96,6 +96,23 @@ func createVulncheckQueueTasks(ctx context.Context, cfg *config.Config, params *
 		}
 	}
 	return tasks, nil
+}
+
+func moduleSpecsToGovulncheckScanRequests(modspecs []scan.ModuleSpec, mode string) []*govulncheck.Request {
+	var sreqs []*govulncheck.Request
+	for _, ms := range modspecs {
+		sreqs = append(sreqs, &govulncheck.Request{
+			ModuleURLPath: scan.ModuleURLPath{
+				Module:  ms.Path,
+				Version: ms.Version,
+			},
+			QueryParams: govulncheck.QueryParams{
+				ImportedBy: ms.ImportedBy,
+				Mode:       mode,
+			},
+		})
+	}
+	return sreqs
 }
 
 func vulncheckMode(mode string) (string, error) {

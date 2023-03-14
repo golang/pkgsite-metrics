@@ -10,7 +10,6 @@ import (
 
 	"golang.org/x/pkgsite-metrics/internal/config"
 	"golang.org/x/pkgsite-metrics/internal/derrors"
-	"golang.org/x/pkgsite-metrics/internal/govulncheck"
 	"golang.org/x/pkgsite-metrics/internal/log"
 	"golang.org/x/pkgsite-metrics/internal/pkgsitedb"
 	"golang.org/x/pkgsite-metrics/internal/queue"
@@ -71,21 +70,4 @@ func enqueueTasks(ctx context.Context, tasks []queue.Task, q queue.Queue, opts *
 	}
 	log.Infof(ctx, "Successfully scheduled modules to be fetched: %d modules enqueued, %d errors", nEnqueued, nErrors)
 	return nil
-}
-
-func moduleSpecsToScanRequests(modspecs []scan.ModuleSpec, mode string) []*govulncheck.Request {
-	var sreqs []*govulncheck.Request
-	for _, ms := range modspecs {
-		sreqs = append(sreqs, &govulncheck.Request{
-			ModuleURLPath: scan.ModuleURLPath{
-				Module:  ms.Path,
-				Version: ms.Version,
-			},
-			QueryParams: govulncheck.QueryParams{
-				ImportedBy: ms.ImportedBy,
-				Mode:       mode,
-			},
-		})
-	}
-	return sreqs
 }

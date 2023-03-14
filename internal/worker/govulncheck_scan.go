@@ -336,7 +336,7 @@ func (s *scanner) runGovulncheckScanSandbox(ctx context.Context, modulePath, ver
 	if err != nil {
 		return nil, errors.New(derrors.IncludeStderr(err))
 	}
-	response, err := govulncheck.UnmarshalGovulncheckSandboxResponse(stdout)
+	response, err := govulncheck.UnmarshalSandboxResponse(stdout)
 	if err != nil {
 		return nil, err
 	}

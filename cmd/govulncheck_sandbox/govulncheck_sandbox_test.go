@@ -134,8 +134,8 @@ func Test(t *testing.T) {
 	}
 }
 
-func runTest(args []string, vulndbDir string) (*govulncheck.GovulncheckResponse, error) {
+func runTest(args []string, vulndbDir string) (*govulncheck.SandboxResponse, error) {
 	var buf bytes.Buffer
 	run(&buf, args, vulndbDir)
-	return govulncheck.UnmarshalGovulncheckSandboxResponse(buf.Bytes())
+	return govulncheck.UnmarshalSandboxResponse(buf.Bytes())
 }
