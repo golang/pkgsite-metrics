@@ -292,9 +292,8 @@ const (
 	sandboxGoModCache = "root/go/pkg/mod"
 	// The Go cache resides in its default location, $HOME/.cache/go-build.
 	sandboxGoCache = "root/.cache/go-build"
-
-	// Within the sandbox, govulncheck will be located at /binaries/govulncheck path.
-	sandboxGovulncheck = "/binaries/govulncheck"
+	// Where the govulncheck binary lives.
+	govulncheckPath = binaryDir + "/govulncheck"
 )
 
 // runScanModule fetches the module version from the proxy, and analyzes it for
@@ -318,9 +317,9 @@ func (s *scanner) runScanModule(ctx context.Context, modulePath, version, binary
 	return bvulns, err
 }
 
-func (s *scanner) runGovulncheckScanSandbox(ctx context.Context, modulePath, version, binaryDir, mode string, stats *scanStats) (_ []*govulncheckapi.Vuln, err error) {
+func (s *scanner) runGovulncheckScanSandbox(ctx context.Context, modulePath, version, binDir, mode string, stats *scanStats) (_ []*govulncheckapi.Vuln, err error) {
 	if mode == ModeBinary {
-		return s.runBinaryScanSandbox(ctx, modulePath, version, binaryDir, stats)
+		return s.runBinaryScanSandbox(ctx, modulePath, version, binDir, stats)
 	}
 
 	const insecure = false
@@ -332,7 +331,7 @@ func (s *scanner) runGovulncheckScanSandbox(ctx context.Context, modulePath, ver
 
 	log.Infof(ctx, "running govulncheck in sandbox: %s@%s", modulePath, version)
 	smdir := strings.TrimPrefix(mdir, sandboxRoot)
-	stdout, err := s.sbox.Command("/binaries/vulncheck_sandbox", sandboxGovulncheck, ModeGovulncheck, smdir).Output()
+	stdout, err := s.sbox.Command(binaryDir+"/vulncheck_sandbox", govulncheckPath, ModeGovulncheck, smdir).Output()
 	log.Infof(ctx, "done with govulncheck in sandbox: %s@%s err=%v", modulePath, version, err)
 
 	if err != nil {
@@ -355,7 +354,7 @@ func (s *scanner) runBinaryScanSandbox(ctx context.Context, modulePath, version,
 	// Copy the binary from GCS to the local disk, because vulncheck.Binary
 	// requires a ReaderAt and GCS doesn't provide that.
 	gcsPathname := fmt.Sprintf("%s/%s@%s/%s", gcsBinaryDir, modulePath, version, binDir)
-	const destDir = "/bundle/rootfs/binaries"
+	const destDir = binaryDir
 	log.Debug(ctx, "copying",
 		"from", gcsPathname,
 		"to", destDir,
@@ -376,7 +375,7 @@ func (s *scanner) runBinaryScanSandbox(ctx context.Context, modulePath, version,
 	}
 
 	log.Infof(ctx, "running vulncheck in sandbox on %s: %s@%s/%s", modulePath, version, binDir, destf.Name())
-	stdout, err := s.sbox.Command("/binaries/vulncheck_sandbox", sandboxGovulncheck, ModeBinary, destf.Name()).Output()
+	stdout, err := s.sbox.Command(binaryDir+"/vulncheck_sandbox", govulncheckPath, ModeBinary, destf.Name()).Output()
 	log.Infof(ctx, "done with vulncheck in sandbox on %s: %s@%s/%s err=%v", modulePath, version, binDir, destf.Name(), err)
 
 	if err != nil {
@@ -432,7 +431,7 @@ func (s *scanner) runBinaryScanInsecure(ctx context.Context, modulePath, version
 }
 
 func runGovulncheckCmd(ctx context.Context, pattern, tempDir string, stats *scanStats) ([]*govulncheckapi.Vuln, error) {
-	govulncheckName := "/bundle/rootfs/binaries/govulncheck"
+	govulncheckName := govulncheckPath
 	if !fileExists(govulncheckName) {
 		govulncheckName = "govulncheck"
 	}

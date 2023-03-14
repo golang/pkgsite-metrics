@@ -101,7 +101,7 @@ func (s *analysisServer) scanInternal(ctx context.Context, req *analysis.ScanReq
 	if req.Insecure {
 		destPath = filepath.Join(tempDir, "binary")
 	} else {
-		destPath = path.Join(sandboxRoot, "binaries", path.Base(req.Binary))
+		destPath = path.Join(binaryDir, path.Base(req.Binary))
 	}
 	if s.cfg.BinaryBucket == "" {
 		return nil, nil, errors.New("missing binary bucket (define GO_ECOSYSTEM_BINARY_BUCKET)")

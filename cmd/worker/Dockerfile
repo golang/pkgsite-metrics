@@ -17,13 +17,18 @@ LABEL maintainer="Go Ecosystem Team <go-ecosystem-team@google.com>"
 WORKDIR /
 
 # Create some directories.
-# Binaries run inside the sandbox live here.
-RUN mkdir -p /bundle/rootfs/binaries
+
 # The worker binary and related files live here.
 RUN mkdir app
 # The module being analyzed is unzipped here.
 # The sandbox mounts this directory.
 RUN mkdir module
+
+# Where binaries live.
+# The sandbox config.json file maps these to the same paths
+# inside the sandbox.
+RUN mkdir /tmp/binaries
+
 
 #### Sandbox setup
 
@@ -37,7 +42,9 @@ RUN chmod a+rx /usr/local/bin/runsc
 
 # Create the runsc bundle.
 WORKDIR /bundle
-COPY config.json .
+
+# The root of the bundle filesystem.
+RUN mkdir rootfs
 
 # go-image.tar.gz is a complete Docker image of a Go installation in tar format.
 # Use it for the bundle's OS filesystem.
@@ -46,6 +53,8 @@ RUN tar --same-owner -pxzf go-image.tar.gz -C rootfs
 
 # Copy the downloaded copy of the vuln DB into the bundle root.
 COPY go-vulndb rootfs/go-vulndb
+
+COPY config.json .
 
 #### Building binaries
 
@@ -68,15 +77,16 @@ RUN go mod download
 # Build the worker binary and put it in /app.
 RUN go build -mod=readonly -o /app/worker ./cmd/worker
 
+# Install the latest version of govulncheck in the binaries directory.
+RUN GOBIN=/tmp/binaries go install golang.org/x/vuln/cmd/govulncheck@latest
+
 # Build the program that runs vulncheck inside the sandbox and install it in the sandbox's
 # binaries directory.
-RUN go build -mod=readonly -o /bundle/rootfs/binaries/vulncheck_sandbox ./cmd/vulncheck_sandbox
-
-# Install the latest version of govulncheck in the sandbox's binaries directory
-RUN GOBIN=/bundle/rootfs/binaries go install golang.org/x/vuln/cmd/govulncheck@latest
+RUN go build -mod=readonly -o /tmp/binaries/vulncheck_sandbox ./cmd/vulncheck_sandbox
 
 # Build the sandbox runner program and put it in the bundle root.
 RUN go build -mod=readonly -o /bundle/rootfs/runner ./internal/sandbox/runner.go
+
 
 #### Worker setup
 

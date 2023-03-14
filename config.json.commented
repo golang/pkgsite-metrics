@@ -90,6 +90,14 @@
                 "nodev",
                 "ro"
             ]
+        },
+        {
+            # Mount /tmp/binaries inside the sandbox to
+	    # the same directory outside.
+            "destination": "/tmp/binaries",
+            "type": "none",
+            "source": "/tmp/binaries",
+            "options": ["bind"]
         }
     ],
     "linux": {

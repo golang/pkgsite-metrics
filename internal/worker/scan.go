@@ -28,7 +28,15 @@ import (
 	"golang.org/x/pkgsite-metrics/internal/proxy"
 )
 
-const sandboxRoot = "/bundle/rootfs"
+const (
+	// The root of the sandbox, relative to the docker container.
+	sandboxRoot = "/bundle/rootfs"
+
+	// The directory where binaries live. The sandbox mounts this
+	// directory to the same path internally, so this path works
+	// for both secure and insecure modes.
+	binaryDir = "/tmp/binaries"
+)
 
 var activeScans atomic.Int32
 
