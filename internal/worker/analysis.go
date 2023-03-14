@@ -16,7 +16,6 @@ import (
 	"os"
 	"os/exec"
 	"path"
-	"path/filepath"
 	"strings"
 
 	"golang.org/x/pkgsite-metrics/internal/analysis"
@@ -88,35 +87,23 @@ func (s *analysisServer) scan(ctx context.Context, req *analysis.ScanRequest) *a
 }
 
 func (s *analysisServer) scanInternal(ctx context.Context, req *analysis.ScanRequest) (jt analysis.JSONTree, binaryHash []byte, err error) {
-	var tempDir string
-	if req.Insecure {
-		tempDir, err = os.MkdirTemp("", "analysis")
-		if err != nil {
-			return nil, nil, err
-		}
-		defer removeDir(&err, tempDir)
-	}
-
-	var destPath string
-	if req.Insecure {
-		destPath = filepath.Join(tempDir, "binary")
-	} else {
-		destPath = path.Join(binaryDir, path.Base(req.Binary))
-	}
 	if s.cfg.BinaryBucket == "" {
 		return nil, nil, errors.New("missing binary bucket (define GO_ECOSYSTEM_BINARY_BUCKET)")
 	}
+	destPath := path.Join(binaryDir, path.Base(req.Binary))
 	srcPath := path.Join(analysisBinariesBucketDir, req.Binary)
 	if err := copyToLocalFile(destPath, true, srcPath, s.openFile); err != nil {
 		return nil, nil, err
 	}
+	defer cleanup(&err, func() error { return os.Remove(destPath) })
+
 	binaryHash, err = hashFile(destPath)
 	if err != nil {
 		return nil, nil, err
 	}
 
 	mdir := moduleDir(req.Module, req.Version)
-	defer removeDir(&err, mdir)
+	defer cleanup(&err, func() error { return os.RemoveAll(mdir) })
 	if err := prepareModule(ctx, req.Module, req.Version, mdir, s.proxyClient, req.Insecure); err != nil {
 		return nil, nil, err
 	}

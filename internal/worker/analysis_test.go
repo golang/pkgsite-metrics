@@ -24,11 +24,12 @@ import (
 )
 
 func TestRunAnalysisBinary(t *testing.T) {
+	mustMakeBinaryDir(t)
 	const binary = "./analyzer"
-	binaryPath, cleanup := buildtest.GoBuild(t, "testdata/analyzer", "")
+	binPath, cleanup := buildtest.GoBuild(t, "testdata/analyzer", "")
 	defer cleanup()
 
-	got, err := runAnalysisBinary(nil, binaryPath, "-name Fact", "testdata/module")
+	got, err := runAnalysisBinary(nil, binPath, "-name Fact", "testdata/module")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -100,6 +101,7 @@ func TestAnalysisScan(t *testing.T) {
 		modulePath = "a.com/m"
 		version    = "v1.2.3"
 	)
+	mustMakeBinaryDir(t)
 	binaryPath, cleanup := buildtest.GoBuild(t, "testdata/analyzer", "")
 	defer cleanup()
 	proxyClient, cleanup2 := proxytest.SetupTestClient(t, []*proxytest.Module{
@@ -186,4 +188,10 @@ func G() {}
 		Error:         "bad name",
 	}
 	diff(want, got)
+}
+
+func mustMakeBinaryDir(t *testing.T) {
+	if err := os.Mkdir(binaryDir, 0777); err != nil && !os.IsExist(err) {
+		t.Fatal(err)
+	}
 }

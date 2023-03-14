@@ -247,14 +247,14 @@ func moduleDir(modulePath, version string) string {
 	return filepath.Join(modulesDir, modulePath+"@"+version)
 }
 
-// removeDir calls os.RemoveAll(dir) and combines the error with errp.
+// cleanup calls f and combines the error with errp.
 // It is meant to be deferred.
-func removeDir(errp *error, dir string) {
-	if err := os.RemoveAll(dir); err != nil {
+func cleanup(errp *error, f func() error) {
+	if err := f(); err != nil {
 		if *errp == nil {
 			*errp = err
 		} else {
-			*errp = fmt.Errorf("RemoveAll(%q): %v, and also %w", dir, err, *errp)
+			*errp = fmt.Errorf("cleanup: %v, and also %w", err, *errp)
 		}
 	}
 }

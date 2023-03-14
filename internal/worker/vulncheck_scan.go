@@ -323,7 +323,7 @@ func (s *scanner) runGovulncheckScanSandbox(ctx context.Context, modulePath, ver
 	}
 
 	mdir := moduleDir(modulePath, version)
-	defer removeDir(&err, mdir)
+	defer cleanup(&err, func() error { return os.RemoveAll(mdir) })
 	const insecure = false
 	if err := prepareModule(ctx, modulePath, version, mdir, s.proxyClient, insecure); err != nil {
 		return nil, err
@@ -394,7 +394,7 @@ func (s *scanner) runGovulncheckScanInsecure(ctx context.Context, modulePath, ve
 	}
 
 	mdir := moduleDir(modulePath, version)
-	defer removeDir(&err, mdir)
+	defer cleanup(&err, func() error { return os.RemoveAll(mdir) })
 	if err := prepareModule(ctx, modulePath, version, mdir, s.proxyClient, true); err != nil {
 		return nil, err
 	}
