@@ -8,12 +8,23 @@ default:
 	@echo "usage: make TARGET"
 
 # Copy a gzipped tar of a Go docker image from a bucket.
+# This is the image that is used by the sandbox.
 # The file must live in the repo directory so that cmd/worker/Dockerfile
 # can access it.
-# We assume that the file exists in the bucket. It can be created with
-#   docker export $(shell docker create golang:1.19.4) | gzip
+# We assume that the file exists in the bucket. 
+# See the rule below for how to create the image.
 go-image.tar.gz:
 	gsutil cp gs://go-ecosystem/$@ $@
+
+# Use this rule to build a go image for a specific Go version.
+# E.g.
+#	make go-image-1.19.4.tar.gz
+# To change the sandbox image permanently, copy it to GCP:
+#
+#	gsutil cp go-image.1.19.4.tar.gz gs://go-ecosystem/go-image.tar.gz
+# Then delete the local copy.
+go-image-%.tar.gz:
+	docker create golang:$* | gzip > go-image-$*.tar.gz
 
 # Download the Go vulnerability DB to a local directory, so vulndb can access it
 # from the sandbox, which has no network connectivity.
@@ -113,4 +124,5 @@ clean:
 	rm -f config.json
 	rm -f govulncheck_sandbox
 
-.PHONY: docker-run docker-run-bg test govulncheck-test analysis-test clean
+.PHONY: docker-run docker-run-bg test govulncheck-test analysis-test \
+	clean build-go-image
