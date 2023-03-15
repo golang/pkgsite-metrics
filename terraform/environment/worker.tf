@@ -258,7 +258,7 @@ resource "google_cloud_scheduler_job" "enqueueall" {
 
   http_target {
     http_method = "GET"
-    uri         = "${local.worker_url}/vulncheck/enqueueall?min=15"
+    uri         = "${local.worker_url}/govulncheck/enqueueall?min=15"
     oidc_token {
       service_account_email = local.worker_service_account
       audience              = local.worker_url
@@ -276,7 +276,7 @@ resource "google_cloud_scheduler_job" "results" {
 
   http_target {
     http_method = "GET"
-    uri         = "${local.worker_url}/vulncheck/insert-results"
+    uri         = "${local.worker_url}/govulncheck/insert-results"
     oidc_token {
       service_account_email = local.worker_service_account
       audience              = local.worker_url

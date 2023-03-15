@@ -93,7 +93,7 @@ GOVULNCHECK_TEST_FILE := /tmp/vtest.out
 
 # Test by scanning a small module.
 govulncheck-test:
-	curl -s 'http://localhost:8080/vulncheck/scan/github.com/fossas/fossa-cli@v1.1.10?importedby=1&serve=true' > $(GOVULNCHECK_TEST_FILE)
+	curl -s 'http://localhost:8080/govulncheck/scan/github.com/fossas/fossa-cli@v1.1.10?importedby=1&serve=true' > $(GOVULNCHECK_TEST_FILE)
 	@if [[ `grep -c GO-2020-0016 $(GOVULNCHECK_TEST_FILE)` -ge 4 ]]; then \
 	    echo PASS; \
 	    rm $(GOVULNCHECK_TEST_FILE); \

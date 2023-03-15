@@ -171,10 +171,10 @@ func (s *Server) registerGovulncheckHandlers(ctx context.Context) error {
 		return err
 	}
 
-	s.handle("/vulncheck/enqueueall", h.handleEnqueueAll)
-	s.handle("/vulncheck/enqueue", h.handleEnqueue)
-	s.handle("/vulncheck/scan/", h.handleScan)
-	s.handle("/vulncheck/insert-results", h.handleInsertResults)
+	s.handle("/govulncheck/enqueueall", h.handleEnqueueAll)
+	s.handle("/govulncheck/enqueue", h.handleEnqueue)
+	s.handle("/govulncheck/scan/", h.handleScan)
+	s.handle("/govulncheck/insert-results", h.handleInsertResults)
 	return nil
 }
 

@@ -75,7 +75,7 @@ func (h *GovulncheckServer) handleScan(w http.ResponseWriter, r *http.Request) (
 	}()
 
 	ctx := r.Context()
-	sreq, err := govulncheck.ParseRequest(r, "/vulncheck/scan")
+	sreq, err := govulncheck.ParseRequest(r, "/govulncheck/scan")
 	if err != nil {
 		return fmt.Errorf("%w: %v", derrors.InvalidArgument, err)
 	}
