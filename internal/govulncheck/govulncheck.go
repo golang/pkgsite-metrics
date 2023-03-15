@@ -14,7 +14,6 @@ import (
 	"strings"
 	"time"
 
-	bq "cloud.google.com/go/bigquery"
 	"cloud.google.com/go/civil"
 	"golang.org/x/exp/maps"
 	"golang.org/x/pkgsite-metrics/internal/bigquery"
@@ -87,49 +86,23 @@ func ParseRequest(r *http.Request, prefix string) (*Request, error) {
 
 func ConvertGovulncheckOutput(v *govulncheck.Vuln) (vulns []*Vuln) {
 	for _, module := range v.Modules {
-		for pkgNum, pkg := range module.Packages {
-			addedSymbols := make(map[string]bool)
-			baseVuln := &Vuln{
+		for _, pkg := range module.Packages {
+			vuln := &Vuln{
 				ID:          v.OSV.ID,
 				ModulePath:  module.Path,
 				PackagePath: pkg.Path,
-				CallSink:    bigquery.NullInt(0),
-				ImportSink:  bigquery.NullInt(pkgNum + 1),
-				RequireSink: bigquery.NullInt(pkgNum + 1),
+				Version:     module.FoundVersion,
 			}
-
-			// For each called symbol, reconstruct sinks and create the corresponding bigquery vuln
-			for symbolNum, cs := range pkg.CallStacks {
-				addedSymbols[cs.Symbol] = true
-				toAdd := *baseVuln
-				toAdd.Symbol = cs.Symbol
-				toAdd.CallSink = bigquery.NullInt(symbolNum + 1)
-				vulns = append(vulns, &toAdd)
+			if len(pkg.CallStacks) > 0 {
+				vuln.Called = true
 			}
-
-			// Find the rest of the vulnerable imported symbols that haven't been called
-			// and create corresponding bigquery vulns
-			for _, affected := range v.OSV.Affected {
-				if affected.Package.Name == module.Path {
-					for _, imp := range affected.EcosystemSpecific.Imports {
-						if imp.Path == pkg.Path {
-							for _, symbol := range imp.Symbols {
-								if !addedSymbols[symbol] {
-									toAdd := *baseVuln
-									toAdd.Symbol = symbol
-									vulns = append(vulns, &toAdd)
-								}
-							}
-						}
-					}
-				}
-			}
+			vulns = append(vulns, vuln)
 		}
 	}
 	return vulns
 }
 
-const TableName = "vulncheck"
+const TableName = "govulncheck"
 
 // Note: before modifying Result or Vuln, make sure the change
 // is a valid schema modification.
@@ -152,21 +125,18 @@ type Result struct {
 	CommitTime    time.Time `bigquery:"commit_time"`
 	ScanSeconds   float64   `bigquery:"scan_seconds"`
 	ScanMemory    int64     `bigquery:"scan_memory"`
-	PkgsMemory    int64     `bigquery:"pkgs_memory"`
 	ScanMode      string    `bigquery:"scan_mode"`
-	// Workers is the concurrency limit under which a module is
-	// analyzed. Useful for interpreting memory measurements when
-	// there are multiple modules analyzed in the same process.
-	// 0 if no limit is specified, -1 for potential errors.
-	Workers     int     `bigquery:"workers"`
-	WorkVersion         // InferSchema flattens embedded fields
-	Vulns       []*Vuln `bigquery:"vulns"`
+	WorkVersion             // InferSchema flattens embedded fields
+	Vulns         []*Vuln   `bigquery:"vulns"`
 }
 
 // WorkVersion contains information that can be used to avoid duplicate work.
 // Given two WorkVersion values v1 and v2 for the same module path and version,
 // if v1.Equal(v2) then it is not necessary to scan the module.
 type WorkVersion struct {
+	// GoVersion used at path. Allows precise interpretation
+	// of detected stdlib vulnerabilities.
+	GoVersion string `bigquery:"go_version"`
 	// The version of the currently running code. This tracks changes in the
 	// logic of module scanning and processing.
 	WorkerVersion string `bigquery:"worker_version"`
@@ -182,7 +152,8 @@ func (v1 *WorkVersion) Equal(v2 *WorkVersion) bool {
 	if v1 == nil || v2 == nil {
 		return v1 == v2
 	}
-	return v1.WorkerVersion == v2.WorkerVersion &&
+	return v1.GoVersion == v2.GoVersion &&
+		v1.WorkerVersion == v2.WorkerVersion &&
 		v1.SchemaVersion == v2.SchemaVersion &&
 		v1.VulnVersion == v2.VulnVersion &&
 		v1.VulnDBLastModified.Equal(v2.VulnDBLastModified)
@@ -200,13 +171,16 @@ func (vr *Result) AddError(err error) {
 
 // Vuln is a record in Result.
 type Vuln struct {
-	ID          string       `bigquery:"id"`
-	Symbol      string       `bigquery:"symbol"`
-	PackagePath string       `bigquery:"package_path"`
-	ModulePath  string       `bigquery:"module_path"`
-	CallSink    bq.NullInt64 `bigquery:"call_sink"`
-	ImportSink  bq.NullInt64 `bigquery:"import_sink"`
-	RequireSink bq.NullInt64 `bigquery:"require_sink"`
+	ID          string `bigquery:"id"`
+	PackagePath string `bigquery:"package_path"`
+	ModulePath  string `bigquery:"module_path"`
+	Version     string `bigquery:"version"`
+	// Called is currently used to differentiate between
+	// called and imported vulnerabilities. We need it
+	// because we don't conduct an imports analysis yet
+	// use the full results of govulncheck source analysis.
+	// It is not part of the bigquery schema.
+	Called bool `bigquery:"-"`
 }
 
 // SchemaVersion changes whenever the govulncheck schema changes.

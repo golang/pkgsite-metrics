@@ -19,7 +19,6 @@ import (
 	"cloud.google.com/go/storage"
 	"golang.org/x/exp/event"
 	"golang.org/x/pkgsite-metrics/internal/bigquery"
-	"golang.org/x/pkgsite-metrics/internal/config"
 	"golang.org/x/pkgsite-metrics/internal/derrors"
 	"golang.org/x/pkgsite-metrics/internal/govulncheck"
 	"golang.org/x/pkgsite-metrics/internal/log"
@@ -208,7 +207,6 @@ func (s *scanner) ScanModule(ctx context.Context, w http.ResponseWriter, sreq *g
 	vulns, err := s.runScanModule(ctx, sreq.Module, info.Version, sreq.Suffix, sreq.Mode, stats)
 	row.ScanSeconds = stats.scanSeconds
 	row.ScanMemory = int64(stats.scanMemory)
-	row.Workers = config.GetEnvInt("CLOUD_RUN_CONCURRENCY", "0", -1)
 	if err != nil {
 		switch {
 		case errors.Is(err, derrors.LoadPackagesNoGoModError) ||
@@ -272,14 +270,14 @@ func vulnsForMode(vulns []*govulncheck.Vuln, mode string) []*govulncheck.Vuln {
 	for _, v := range vulns {
 		if mode == ModeGovulncheck {
 			// Return only the called vulns for ModeGovulncheck.
-			if v.CallSink.Valid && v.CallSink.Int64 != 0 {
+			if v.Called {
 				vs = append(vs, v)
 			}
 		} else if mode == modeImports {
 			// For imports mode, return the vulnerability as it
 			// is imported, but not called.
 			nv := *v
-			nv.CallSink = bigquery.NullInt(0)
+			nv.Called = false
 			vs = append(vs, &nv)
 		} else {
 			panic(fmt.Sprintf("vulnsForMode unsupported mode %s", mode))

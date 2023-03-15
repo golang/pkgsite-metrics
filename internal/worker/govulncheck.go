@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"runtime/debug"
 
+	"golang.org/x/pkgsite-metrics/internal"
 	"golang.org/x/pkgsite-metrics/internal/derrors"
 	"golang.org/x/pkgsite-metrics/internal/govulncheck"
 	"golang.org/x/pkgsite-metrics/internal/log"
@@ -53,7 +54,12 @@ func (h *GovulncheckServer) getWorkVersion(ctx context.Context) (_ *govulncheck.
 		if err != nil {
 			return nil, err
 		}
+		goEnv, err := internal.GoEnv()
+		if err != nil {
+			return nil, err
+		}
 		h.workVersion = &govulncheck.WorkVersion{
+			GoVersion:          goEnv["GOVERSION"],
 			VulnDBLastModified: lmt,
 			WorkerVersion:      h.cfg.VersionID,
 			SchemaVersion:      govulncheck.SchemaVersion,

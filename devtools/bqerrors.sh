@@ -34,7 +34,7 @@ main() {
     die "missing TF_VAR_prod_project"
   fi
 
-  bq_error_query $project.$dataset.vulncheck
+  bq_error_query $project.$dataset.govulncheck
 }
 
 

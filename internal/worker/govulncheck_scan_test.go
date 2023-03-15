@@ -15,7 +15,6 @@ import (
 	"testing"
 
 	"cloud.google.com/go/storage"
-	"golang.org/x/pkgsite-metrics/internal/bigquery"
 	"golang.org/x/pkgsite-metrics/internal/buildtest"
 	"golang.org/x/pkgsite-metrics/internal/govulncheck"
 )
@@ -34,15 +33,15 @@ func TestAsScanError(t *testing.T) {
 
 func TestVulnsForMode(t *testing.T) {
 	vulns := []*govulncheck.Vuln{
-		&govulncheck.Vuln{Symbol: "A", CallSink: bigquery.NullInt(0)},
-		&govulncheck.Vuln{Symbol: "B"},
-		&govulncheck.Vuln{Symbol: "C", CallSink: bigquery.NullInt(9)},
+		&govulncheck.Vuln{ID: "A"},
+		&govulncheck.Vuln{ID: "B", Called: false},
+		&govulncheck.Vuln{ID: "C", Called: true},
 	}
 
 	vulnsStr := func(vulns []*govulncheck.Vuln) string {
 		var vs []string
 		for _, v := range vulns {
-			vs = append(vs, fmt.Sprintf("%s:%d", v.Symbol, v.CallSink.Int64))
+			vs = append(vs, fmt.Sprintf("%s:%t", v.ID, v.Called))
 		}
 		return strings.Join(vs, ", ")
 	}
@@ -51,9 +50,9 @@ func TestVulnsForMode(t *testing.T) {
 		mode string
 		want string
 	}{
-		{modeImports, "A:0, B:0, C:0"},
-		{ModeGovulncheck, "C:9"},
-		{ModeBinary, "A:0, B:0, C:9"},
+		{modeImports, "A:false, B:false, C:false"},
+		{ModeGovulncheck, "C:true"},
+		{ModeBinary, "A:false, B:false, C:true"},
 	} {
 		tc := tc
 		t.Run(tc.mode, func(t *testing.T) {

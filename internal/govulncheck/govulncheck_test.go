@@ -52,7 +52,8 @@ func TestConvertGovulncheckOutput(t *testing.T) {
 			OSV: osvEntry,
 			Modules: []*govulncheck.Module{
 				{
-					Path: "example.com/repo/module",
+					FoundVersion: "v0.0.1",
+					Path:         "example.com/repo/module",
 					Packages: []*govulncheck.Package{
 						{
 							Path: "example.com/repo/module/package",
@@ -73,7 +74,8 @@ func TestConvertGovulncheckOutput(t *testing.T) {
 			OSV: osvEntry,
 			Modules: []*govulncheck.Module{
 				{
-					Path: "example.com/repo/module",
+					FoundVersion: "v1.0.0",
+					Path:         "example.com/repo/module",
 					Packages: []*govulncheck.Package{
 						{
 							Path: "example.com/repo/module/package",
@@ -89,57 +91,35 @@ func TestConvertGovulncheckOutput(t *testing.T) {
 		wantVulns []*Vuln
 	}{
 		{
-			name: "Call One Symbol",
+			name: "call one symbol but not all",
 			vuln: vuln1,
 			wantVulns: []*Vuln{
 				{
 					ID:          "GO-YYYY-1234",
-					Symbol:      "Symbol",
 					PackagePath: "example.com/repo/module/package",
 					ModulePath:  "example.com/repo/module",
-					CallSink:    bigquery.NullInt(1),
-					ImportSink:  bigquery.NullInt(1),
-					RequireSink: bigquery.NullInt(1),
-				},
-				{
-					ID:          "GO-YYYY-1234",
-					Symbol:      "Another",
-					PackagePath: "example.com/repo/module/package",
-					ModulePath:  "example.com/repo/module",
-					CallSink:    bigquery.NullInt(0),
-					ImportSink:  bigquery.NullInt(1),
-					RequireSink: bigquery.NullInt(1),
+					Version:     "v0.0.1",
+					Called:      true,
 				},
 			},
 		},
 		{
-			name: "Call no symbols",
+			name: "call no symbols",
 			vuln: vuln2,
 			wantVulns: []*Vuln{
 				{
 					ID:          "GO-YYYY-1234",
 					PackagePath: "example.com/repo/module/package",
 					ModulePath:  "example.com/repo/module",
-					Symbol:      "Symbol",
-					CallSink:    bigquery.NullInt(0),
-					ImportSink:  bigquery.NullInt(1),
-					RequireSink: bigquery.NullInt(1),
-				},
-				{
-					ID:          "GO-YYYY-1234",
-					PackagePath: "example.com/repo/module/package",
-					ModulePath:  "example.com/repo/module",
-					Symbol:      "Another",
-					CallSink:    bigquery.NullInt(0),
-					ImportSink:  bigquery.NullInt(1),
-					RequireSink: bigquery.NullInt(1),
+					Version:     "v1.0.0",
+					Called:      false,
 				},
 			},
 		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			if diff := cmp.Diff(ConvertGovulncheckOutput(tt.vuln), tt.wantVulns, cmpopts.EquateEmpty()); diff != "" {
+			if diff := cmp.Diff(ConvertGovulncheckOutput(tt.vuln), tt.wantVulns, cmpopts.EquateEmpty(), cmp.AllowUnexported(Vuln{})); diff != "" {
 				t.Errorf("mismatch (-got, +want): %s", diff)
 			}
 		})
@@ -208,6 +188,7 @@ func TestIntegration(t *testing.T) {
 		SortVersion: "sv",
 		ImportedBy:  10,
 		WorkVersion: WorkVersion{
+			GoVersion:          "go1.19.6",
 			WorkerVersion:      "1",
 			SchemaVersion:      "s",
 			VulnVersion:        "2",
