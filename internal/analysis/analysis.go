@@ -196,14 +196,22 @@ func init() {
 	bigquery.AddTable(TableName, s)
 }
 
+// WorkVersionKey is the key for a WorkVersion.
+// Always compare two WorkVersions with the same key.
+type WorkVersionKey struct {
+	Module  string
+	Version string
+	Binary  string
+}
+
 // ReadWorkVersions reads the most recent WorkVersions in the analysis table.
-func ReadWorkVersions(ctx context.Context, c *bigquery.Client) (_ map[[2]string]*WorkVersion, err error) {
+func ReadWorkVersions(ctx context.Context, c *bigquery.Client) (_ map[WorkVersionKey]WorkVersion, err error) {
 	defer derrors.Wrap(&err, "ReadWorkVersions")
-	m := map[[2]string]*WorkVersion{}
+	m := map[WorkVersionKey]WorkVersion{}
 	query := bigquery.PartitionQuery{
 		Table:       c.FullTableName(TableName),
-		Columns:     "module_path, version, binary_version, binary_args, worker_version, schema_version",
-		PartitionOn: "module_path, sort_version",
+		Columns:     "module_path, version, binary_name, binary_version, binary_args, worker_version, schema_version",
+		PartitionOn: "module_path, sort_version, binary_name",
 		OrderBy:     "created_at DESC",
 	}.String()
 	iter, err := c.Query(ctx, query)
@@ -211,7 +219,7 @@ func ReadWorkVersions(ctx context.Context, c *bigquery.Client) (_ map[[2]string]
 		return nil, err
 	}
 	err = bigquery.ForEachRow(iter, func(r *Result) bool {
-		m[[2]string{r.ModulePath, r.Version}] = &r.WorkVersion
+		m[WorkVersionKey{r.ModulePath, r.Version, r.BinaryName}] = r.WorkVersion
 		return true
 	})
 	if err != nil {

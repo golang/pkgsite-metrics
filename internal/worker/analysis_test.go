@@ -6,8 +6,6 @@ package worker
 
 import (
 	"context"
-	"errors"
-	"io"
 	"os"
 	"path/filepath"
 	"strings"
@@ -122,7 +120,6 @@ func G() {}
 	diff := func(want, got *analysis.Result) {
 		t.Helper()
 		d := cmp.Diff(want, got,
-			cmpopts.IgnoreFields(analysis.WorkVersion{}, "BinaryVersion", "SchemaVersion"),
 			cmpopts.IgnoreFields(analysis.Diagnostic{}, "Position"))
 		if d != "" {
 			t.Errorf("mismatch (-want, +got)\n%s", d)
@@ -136,12 +133,6 @@ func G() {}
 				BinaryBucket: "unused",
 			},
 		},
-		openFile: func(name string) (io.ReadCloser, error) {
-			if name == "analysis-binaries/analyzer" {
-				return os.Open(binaryPath)
-			}
-			return nil, errors.New("bad name")
-		},
 	}
 	req := &analysis.ScanRequest{
 		ModuleURLPath: scan.ModuleURLPath{Module: modulePath, Version: version},
@@ -151,14 +142,15 @@ func G() {}
 			Insecure: true,
 		},
 	}
-	got := s.scan(context.Background(), req)
+	wv := analysis.WorkVersion{BinaryArgs: "-name G", BinaryVersion: "bv", SchemaVersion: "sv"}
+	got := s.scan(context.Background(), req, binaryPath, wv)
 	want := &analysis.Result{
 		ModulePath:    modulePath,
 		Version:       version,
 		SortVersion:   "1,2,3~",
 		CommitTime:    proxytest.CommitTime,
 		BinaryName:    "analyzer",
-		WorkVersion:   analysis.WorkVersion{BinaryArgs: "-name G"},
+		WorkVersion:   wv,
 		Error:         "",
 		ErrorCategory: "",
 		Diagnostics: []*analysis.Diagnostic{
@@ -173,7 +165,7 @@ func G() {}
 
 	// Test that errors are put into the Result.
 	req.Binary = "bad"
-	got = s.scan(context.Background(), req)
+	got = s.scan(context.Background(), req, "yyy", wv)
 	// Trim varying part of error.
 	if i := strings.LastIndexByte(got.Error, ':'); i > 0 {
 		got.Error = got.Error[i+2:]
@@ -183,9 +175,9 @@ func G() {}
 		Version:       version,
 		SortVersion:   "1,2,3~",
 		BinaryName:    "bad",
-		WorkVersion:   analysis.WorkVersion{BinaryArgs: "-name G"},
+		WorkVersion:   wv,
 		ErrorCategory: "MISC",
-		Error:         "bad name",
+		Error:         "executable file not found in $PATH",
 	}
 	diff(want, got)
 }

@@ -16,7 +16,6 @@ import (
 	"time"
 
 	"cloud.google.com/go/errorreporting"
-	"cloud.google.com/go/storage"
 	"github.com/google/safehtml/template"
 	"golang.org/x/pkgsite-metrics/internal/bigquery"
 	"golang.org/x/pkgsite-metrics/internal/config"
@@ -179,18 +178,9 @@ func (s *Server) registerGovulncheckHandlers(ctx context.Context) error {
 }
 
 func (s *Server) registerAnalysisHandlers(ctx context.Context) error {
-	if s.cfg.BinaryBucket == "" {
-		return errors.New("missing binary bucket (define GO_ECOSYSTEM_BINARY_BUCKET)")
-	}
-	c, err := storage.NewClient(ctx)
+	h, err := newAnalysisServer(ctx, s)
 	if err != nil {
 		return err
-	}
-	bucket := c.Bucket(s.cfg.BinaryBucket)
-
-	h := &analysisServer{
-		Server:   s,
-		openFile: gcsOpenFileFunc(ctx, bucket),
 	}
 	s.handle("/analysis/scan/", h.handleScan)
 	s.handle("/analysis/enqueue", h.handleEnqueue)
