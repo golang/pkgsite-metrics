@@ -24,7 +24,7 @@ go-image.tar.gz:
 #	gsutil cp go-image.1.19.4.tar.gz gs://go-ecosystem/go-image.tar.gz
 # Then delete the local copy.
 go-image-%.tar.gz:
-	docker create golang:$* | gzip > go-image-$*.tar.gz
+	docker export $(shell docker create golang:$*) | gzip > go-image-$*.tar.gz
 
 # Download the Go vulnerability DB to a local directory, so vulndb can access it
 # from the sandbox, which has no network connectivity.
