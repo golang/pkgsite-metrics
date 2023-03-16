@@ -48,7 +48,7 @@ func (h *GovulncheckServer) enqueue(r *http.Request, allModes bool) error {
 		return err
 	}
 	return enqueueTasks(ctx, tasks, h.queue,
-		&queue.Options{Namespace: "vulncheck", TaskNameSuffix: params.Suffix})
+		&queue.Options{Namespace: "govulncheck", TaskNameSuffix: params.Suffix})
 }
 
 func listModes(modeParam string, allModes bool) ([]string, error) {
@@ -68,7 +68,7 @@ func listModes(modeParam string, allModes bool) ([]string, error) {
 }
 
 func createGovulncheckQueueTasks(ctx context.Context, cfg *config.Config, params *govulncheck.EnqueueQueryParams, modes []string) (_ []queue.Task, err error) {
-	defer derrors.Wrap(&err, "createVulncheckQueueTasks(%v)", modes)
+	defer derrors.Wrap(&err, "createGovulncheckQueueTasks(%v)", modes)
 	var (
 		tasks    []queue.Task
 		modspecs []scan.ModuleSpec

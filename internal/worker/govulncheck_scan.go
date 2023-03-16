@@ -65,7 +65,7 @@ var shouldSkip = map[string]bool{}
 
 var scanCounter = event.NewCounter("scans", &event.MetricOptions{Namespace: metricNamespace})
 
-// path: /vulncheck/scan/MODULE_VERSION_SUFFIX?params
+// path: /govulncheck/scan/MODULE_VERSION_SUFFIX?params
 // See internal/govulncheck.ParseRequest for allowed path forms and query params.
 func (h *GovulncheckServer) handleScan(w http.ResponseWriter, r *http.Request) (err error) {
 	defer derrors.Wrap(&err, "handleScan")
