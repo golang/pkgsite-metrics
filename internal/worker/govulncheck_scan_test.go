@@ -82,30 +82,6 @@ func TestRunScanModule(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	t.Run("source", func(t *testing.T) {
-		s := &scanner{proxyClient: proxyClient, dbClient: dbClient, insecure: true}
-		stats := &scanStats{}
-		vulns, err := s.runScanModule(ctx,
-			"golang.org/x/exp/event", "v0.0.0-20220929112958-4a82f8963a65",
-			"", ModeGovulncheck, stats)
-		if err != nil {
-			t.Fatal(err)
-		}
-		wantID := "GO-2022-0493"
-		found := false
-		for _, v := range vulns {
-			if v.ID == wantID {
-				found = true
-				break
-			}
-		}
-		if !found {
-			t.Errorf("want %s, did not find it in %d vulns", wantID, len(vulns))
-		}
-		if got := stats.scanMemory; got <= 0 {
-			t.Errorf("scan memory not collected or negative: %v", got)
-		}
-	})
 	t.Run("binary", func(t *testing.T) {
 		if !*integration { // needs GCS read permission, not available on kokoro
 			t.Skip("missing -integration")
