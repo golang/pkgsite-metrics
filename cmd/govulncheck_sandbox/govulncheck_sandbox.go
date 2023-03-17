@@ -11,7 +11,6 @@
 package main
 
 import (
-	"context"
 	"encoding/json"
 	"errors"
 	"flag"
@@ -52,7 +51,7 @@ func run(w io.Writer, args []string, vulnDBDir string) {
 		return
 	}
 
-	resp, err := runGovulncheck(context.Background(), args[0], mode, args[2], vulnDBDir)
+	resp, err := runGovulncheck(args[0], mode, args[2], vulnDBDir)
 	if err != nil {
 		fail(err)
 		return
@@ -67,7 +66,7 @@ func run(w io.Writer, args []string, vulnDBDir string) {
 	fmt.Println()
 }
 
-func runGovulncheck(ctx context.Context, govulncheckPath, mode, filePath, vulnDBDir string) (*govulncheck.SandboxResponse, error) {
+func runGovulncheck(govulncheckPath, mode, filePath, vulnDBDir string) (*govulncheck.SandboxResponse, error) {
 	pattern := "./..."
 	dir := ""
 

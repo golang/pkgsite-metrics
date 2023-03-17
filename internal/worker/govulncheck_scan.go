@@ -15,6 +15,7 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"syscall"
 	"time"
 
 	"cloud.google.com/go/storage"
@@ -378,11 +379,14 @@ func (s *scanner) runBinaryScanSandbox(ctx context.Context, modulePath, version,
 	if err != nil {
 		return nil, errors.New(derrors.IncludeStderr(err))
 	}
-	res, err := govulncheck.UnmarshalGovulncheckResult(stdout)
+	response, err := govulncheck.UnmarshalSandboxResponse(stdout)
 	if err != nil {
 		return nil, err
 	}
-	return res.Vulns, nil
+	stats.scanMemory = response.Stats.ScanMemory
+	stats.scanSeconds = response.Stats.ScanSeconds
+	log.Debugf(ctx, "govulncheck stats: %dkb | Seconds: %vs", stats.scanMemory, stats.scanSeconds)
+	return response.Res.Vulns, nil
 }
 
 func (s *scanner) runGovulncheckScanInsecure(ctx context.Context, modulePath, version, binaryDir, mode string, stats *scanStats) (_ []*govulncheckapi.Vuln, err error) {
@@ -395,12 +399,10 @@ func (s *scanner) runGovulncheckScanInsecure(ctx context.Context, modulePath, ve
 	if err := prepareModule(ctx, modulePath, version, mdir, s.proxyClient, true); err != nil {
 		return nil, err
 	}
-	start := time.Now()
-	vulns, err := runGovulncheckCmd(ctx, "./...", mdir, stats)
+	vulns, err := runGovulncheckCmd("./...", mdir, stats)
 	if err != nil {
 		return nil, err
 	}
-	stats.scanSeconds = time.Since(start).Seconds()
 	return vulns, nil
 }
 
@@ -418,26 +420,29 @@ func (s *scanner) runBinaryScanInsecure(ctx context.Context, modulePath, version
 		return nil, err
 	}
 
-	start := time.Now()
-	vulns, err := runGovulncheckCmd(ctx, localPathname, "", stats)
+	vulns, err := runGovulncheckCmd(localPathname, "", stats)
 	if err != nil {
 		return nil, err
 	}
-	stats.scanSeconds = time.Since(start).Seconds()
 	return vulns, nil
 }
 
-func runGovulncheckCmd(ctx context.Context, pattern, tempDir string, stats *scanStats) ([]*govulncheckapi.Vuln, error) {
+func runGovulncheckCmd(pattern, tempDir string, stats *scanStats) ([]*govulncheckapi.Vuln, error) {
 	govulncheckName := govulncheckPath
 	if !fileExists(govulncheckName) {
 		govulncheckName = "govulncheck"
 	}
+
+	start := time.Now()
 	govulncheckCmd := exec.Command(govulncheckName, "-json", pattern)
 	govulncheckCmd.Dir = tempDir
 	output, err := govulncheckCmd.Output()
 	if e := (&exec.ExitError{}); !errors.As(err, &e) && e.ProcessState.ExitCode() != 3 {
 		return nil, err
 	}
+	stats.scanSeconds = time.Since(start).Seconds()
+	stats.scanMemory = uint64(govulncheckCmd.ProcessState.SysUsage().(*syscall.Rusage).Maxrss)
+
 	res, err := govulncheck.UnmarshalGovulncheckResult(output)
 	if err != nil {
 		return nil, err
