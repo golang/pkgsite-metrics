@@ -38,8 +38,6 @@ type Server struct {
 	mu      sync.Mutex
 }
 
-var errBQDisabled = &serverError{http.StatusPreconditionRequired, errors.New("BigQuery disabled on this server")}
-
 func NewServer(ctx context.Context, cfg *config.Config) (_ *Server, err error) {
 	defer derrors.WrapAndReport(&err, "NewServer")
 

@@ -479,17 +479,3 @@ func isVulnDBConnection(err error) bool {
 	return strings.Contains(s, "https://vuln.go.dev") &&
 		strings.Contains(s, "connection")
 }
-
-// fileExists checks if file path exists. Returns true
-// if the file exists or it cannot prove that it does
-// not exist. Otherwise, returns false.
-func fileExists(file string) bool {
-	if _, err := os.Stat(file); err == nil {
-		return true
-	} else if errors.Is(err, os.ErrNotExist) {
-		return false
-	}
-	// Conservatively return true if os.Stat fails
-	// for some other reason.
-	return true
-}

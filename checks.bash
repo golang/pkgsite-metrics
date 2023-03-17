@@ -74,10 +74,8 @@ check_vet() {
 
 # check_staticcheck runs staticcheck on source files.
 check_staticcheck() {
-  if [[ $(go version) = *go1.17* ]]; then
     ensure_go_binary honnef.co/go/tools/cmd/staticcheck
     runcmd staticcheck ./...
-  fi
 }
 
 # check_misspell runs misspell on source files.
