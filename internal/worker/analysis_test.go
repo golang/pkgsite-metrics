@@ -23,7 +23,6 @@ import (
 
 func TestRunAnalysisBinary(t *testing.T) {
 	mustMakeBinaryDir(t)
-	const binary = "./analyzer"
 	binPath, cleanup := buildtest.GoBuild(t, "testdata/analyzer", "")
 	defer cleanup()
 
@@ -95,7 +94,6 @@ func TestCreateAnalysisQueueTasks(t *testing.T) {
 
 func TestAnalysisScan(t *testing.T) {
 	const (
-		binary     = "./analyzer"
 		modulePath = "a.com/m"
 		version    = "v1.2.3"
 	)

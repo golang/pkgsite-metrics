@@ -8,7 +8,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"io"
 	"net/http"
 	"os"
 	"os/exec"
@@ -448,15 +447,6 @@ func runGovulncheckCmd(pattern, tempDir string, stats *scanStats) ([]*govulnchec
 		return nil, err
 	}
 	return res.Vulns, nil
-}
-
-func copyFromGCSToWriter(ctx context.Context, w io.Writer, bucket *storage.BucketHandle, srcPath string) error {
-	gcsReader, err := bucket.Object(srcPath).NewReader(ctx)
-	if err != nil {
-		return err
-	}
-	_, err = io.Copy(w, gcsReader)
-	return err
 }
 
 func isNoRequiredModule(err error) bool {

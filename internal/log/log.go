@@ -8,10 +8,7 @@ package log
 import (
 	"context"
 	"fmt"
-	"log"
-	"strings"
 
-	"cloud.google.com/go/logging"
 	"golang.org/x/exp/slog"
 )
 
@@ -61,31 +58,4 @@ func Errorf(ctx context.Context, err error, format string, args ...any) {
 	if l.Enabled(ctx, level) {
 		l.Log(ctx, level, fmt.Sprintf(format, args...), slog.ErrorKey, err)
 	}
-}
-
-// toLevel returns the logging.Severity for a given string.
-// Possible input values are "", "debug", "info", "warning", "error", "fatal".
-// In case of invalid string input, it maps to DefaultLevel.
-func toLevel(v string) logging.Severity {
-	v = strings.ToLower(v)
-
-	switch v {
-	case "":
-		// default log level will print everything.
-		return logging.Default
-	case "debug":
-		return logging.Debug
-	case "info":
-		return logging.Info
-	case "warning":
-		return logging.Warning
-	case "error":
-		return logging.Error
-	case "fatal":
-		return logging.Critical
-	}
-
-	// Default log level in case of invalid input.
-	log.Printf("Error: %s is invalid LogLevel. Possible values are [debug, info, warning, error, fatal]", v)
-	return logging.Default
 }

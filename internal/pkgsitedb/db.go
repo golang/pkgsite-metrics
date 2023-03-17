@@ -17,10 +17,10 @@ import (
 	_ "github.com/lib/pq"
 
 	secretmanager "cloud.google.com/go/secretmanager/apiv1"
+	smpb "cloud.google.com/go/secretmanager/apiv1/secretmanagerpb"
 	"golang.org/x/pkgsite-metrics/internal/config"
 	"golang.org/x/pkgsite-metrics/internal/derrors"
 	"golang.org/x/pkgsite-metrics/internal/scan"
-	smpb "google.golang.org/genproto/googleapis/cloud/secretmanager/v1"
 )
 
 // Open creates a connection to the pkgsite database.

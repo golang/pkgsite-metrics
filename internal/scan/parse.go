@@ -117,9 +117,7 @@ func ParseModuleURLPath(requestPath string) (_ ModuleURLPath, err error) {
 	if modulePath == "" {
 		return ModuleURLPath{}, fmt.Errorf("invalid path %q: missing module", requestPath)
 	}
-	if strings.HasPrefix(versionAndSuffix, "v/") {
-		versionAndSuffix = versionAndSuffix[2:]
-	}
+	versionAndSuffix = strings.TrimPrefix(versionAndSuffix, "v/")
 	// Now versionAndSuffix begins with a version.
 	version, suffix, _ := strings.Cut(versionAndSuffix, "/")
 	if version == "" {

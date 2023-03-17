@@ -16,7 +16,6 @@ import (
 	"time"
 
 	"cloud.google.com/go/errorreporting"
-	"github.com/google/safehtml/template"
 	"golang.org/x/pkgsite-metrics/internal/bigquery"
 	"golang.org/x/pkgsite-metrics/internal/config"
 	"golang.org/x/pkgsite-metrics/internal/derrors"
@@ -35,9 +34,8 @@ type Server struct {
 	proxyClient  *proxy.Client
 	queue        queue.Queue
 
-	devMode   bool
-	mu        sync.Mutex
-	templates map[string]*template.Template
+	devMode bool
+	mu      sync.Mutex
 }
 
 var errBQDisabled = &serverError{http.StatusPreconditionRequired, errors.New("BigQuery disabled on this server")}

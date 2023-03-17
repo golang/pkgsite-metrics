@@ -7,7 +7,6 @@ require (
 	cloud.google.com/go/bigquery v1.43.0
 	cloud.google.com/go/cloudtasks v1.8.0
 	cloud.google.com/go/errorreporting v0.1.0
-	cloud.google.com/go/logging v1.6.1
 	cloud.google.com/go/secretmanager v1.9.0
 	cloud.google.com/go/storage v1.27.0
 	github.com/GoogleCloudPlatform/opentelemetry-operations-go v1.0.0
@@ -39,7 +38,6 @@ require (
 	cloud.google.com/go/compute v1.12.1 // indirect
 	cloud.google.com/go/compute/metadata v0.2.1 // indirect
 	cloud.google.com/go/iam v0.7.0 // indirect
-	cloud.google.com/go/longrunning v0.3.0 // indirect
 	cloud.google.com/go/monitoring v1.8.0 // indirect
 	cloud.google.com/go/trace v1.4.0 // indirect
 	github.com/BurntSushi/toml v0.3.1 // indirect

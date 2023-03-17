@@ -77,7 +77,7 @@ func Test(t *testing.T) {
 	t.Run("binary", func(t *testing.T) {
 		t.Skip("govulncheck may not support the Go version")
 		const binary = "testdata/module/vuln"
-		cmd := exec.Command("go build")
+		cmd := exec.Command("go", "build")
 		cmd.Dir = "testdata/module"
 		if _, err := cmd.Output(); err != nil {
 			t.Fatal(derrors.IncludeStderr(err))
