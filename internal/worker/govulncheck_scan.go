@@ -435,8 +435,10 @@ func (s *scanner) runGovulncheckCmd(pattern, tempDir string, stats *scanStats) (
 	govulncheckCmd := exec.Command(govulncheckPath, "-json", pattern)
 	govulncheckCmd.Dir = tempDir
 	output, err := govulncheckCmd.Output()
-	if e := (&exec.ExitError{}); !errors.As(err, &e) && e.ProcessState.ExitCode() != 3 {
-		return nil, err
+	if err != nil {
+		if e := (&exec.ExitError{}); !errors.As(err, &e) || e.ProcessState.ExitCode() != 3 {
+			return nil, err
+		}
 	}
 	stats.scanSeconds = time.Since(start).Seconds()
 	stats.scanMemory = uint64(govulncheckCmd.ProcessState.SysUsage().(*syscall.Rusage).Maxrss)
