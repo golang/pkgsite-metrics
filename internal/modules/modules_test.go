@@ -5,36 +5,60 @@
 package modules
 
 import (
-	"context"
+	"archive/zip"
+	"bytes"
 	"os"
+	"path/filepath"
 	"testing"
-
-	"golang.org/x/pkgsite-metrics/internal/proxy"
 )
 
-func TestDownload(t *testing.T) {
-	t.Skip()
-
-	tempDir, err := os.MkdirTemp("", "testModuleDownload")
+func TestWriteZip(t *testing.T) {
+	// Create an in-memory zipped test module.
+	buf := new(bytes.Buffer)
+	w := zip.NewWriter(buf)
+	var files = []struct {
+		Name, Body string
+	}{
+		{filepath.Join("golang.org@v0.0.0", "README"), "This is a readme."},
+		{filepath.Join("golang.org@v0.0.0", "main"), "package main"},
+	}
+	for _, file := range files {
+		f, err := w.Create(file.Name)
+		if err != nil {
+			t.Fatal(err)
+		}
+		_, err = f.Write([]byte(file.Body))
+		if err != nil {
+			t.Fatal(err)
+		}
+	}
+	err := w.Close()
 	if err != nil {
 		t.Fatal(err)
 	}
 
+	// Create a zip.Reader for the module.
+	br := bytes.NewReader(buf.Bytes())
+	r, err := zip.NewReader(br, int64(len(buf.Bytes())))
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Create space to unpack the module.
+	tempDir, err := os.MkdirTemp("", "testWriteZip")
+	if err != nil {
+		t.Fatal(err)
+	}
 	defer func() {
 		if err := os.RemoveAll(tempDir); err != nil {
 			t.Fatal(err)
 		}
 	}()
 
-	proxyClient, err := proxy.New("https://proxy.golang.org")
-	if err != nil {
-		t.Fatal(err)
+	if err := writeZip(r, tempDir, ""); err != nil {
+		t.Error(err)
 	}
-
-	// Use golang.org/x/net@v0.0.0-20221012135044-0b7e1fb9d458
-	module := "golang.org/x/net"
-	version := "v0.0.0-20221012135044-0b7e1fb9d458"
-	if err := Download(context.Background(), module, version, tempDir, proxyClient, true); err != nil {
-		t.Errorf("failed to download %v@%v: %v", module, version, err)
+	if err := writeZip(r, tempDir, "golang.org@v0.0.0"); err != nil {
+		t.Error(err)
 	}
 }
