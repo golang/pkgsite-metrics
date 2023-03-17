@@ -25,24 +25,26 @@ import (
 	"golang.org/x/pkgsite-metrics/internal/worker"
 )
 
-// vulnDBDir should contain a local copy of the vuln DB, with a LAST_MODIFIED
-// file containing a timestamp.
-var vulnDBDir = flag.String("vulndb", "/go-vulndb", "directory of local vuln DB")
-
+// main function for govulncheck sandbox that accepts four inputs
+// in the following order:
+//   - path to govulncheck
+//   - govulncheck mode
+//   - input module or binary to analyze
+//   - full path to the vulnerability database
 func main() {
 	flag.Parse()
-	run(os.Stdout, flag.Args(), *vulnDBDir)
+	run(os.Stdout, flag.Args())
 }
 
-func run(w io.Writer, args []string, vulnDBDir string) {
+func run(w io.Writer, args []string) {
 
 	fail := func(err error) {
 		fmt.Fprintf(w, `{"Error": %q}`, err)
 		fmt.Fprintln(w)
 	}
 
-	if len(args) != 3 {
-		fail(errors.New("need three args: govulncheck path, mode, and module dir or binary"))
+	if len(args) != 4 {
+		fail(errors.New("need four args: govulncheck path, mode, input module dir or binary, full path to vuln db"))
 		return
 	}
 	mode := args[1]
@@ -51,7 +53,7 @@ func run(w io.Writer, args []string, vulnDBDir string) {
 		return
 	}
 
-	resp, err := runGovulncheck(args[0], mode, args[2], vulnDBDir)
+	resp, err := runGovulncheck(args[0], mode, args[2], args[3])
 	if err != nil {
 		fail(err)
 		return

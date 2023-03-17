@@ -57,8 +57,10 @@ RUN mkdir rootfs
 COPY go-image.tar.gz .
 RUN tar --same-owner -pxzf go-image.tar.gz -C rootfs
 
-# Copy the downloaded copy of the vuln DB into the bundle root.
-COPY go-vulndb rootfs/go-vulndb
+# Copy the downloaded copy of the vuln DB
+# into the /app dir similar to binaries.
+ARG VULNDB_DIR=/app/go-vulndb
+COPY go-vulndb $VULNDB_DIR
 
 COPY config.json .
 
@@ -104,5 +106,7 @@ ARG BQ_DATASET
 ENV GO_ECOSYSTEM_BIGQUERY_DATASET=$BQ_DATASET
 
 ENV GO_ECOSYSTEM_BINARY_DIR=$BINARY_DIR
+
+ENV GO_ECOSYSTEM_VULNDB_DIR=$VULNDB_DIR
 
 CMD ["./worker"]

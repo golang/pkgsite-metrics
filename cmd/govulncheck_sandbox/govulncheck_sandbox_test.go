@@ -59,7 +59,7 @@ func Test(t *testing.T) {
 	}
 
 	t.Run("source", func(t *testing.T) {
-		resp, err := runTest([]string{govulncheckPath, worker.ModeGovulncheck, "testdata/module"}, vulndb)
+		resp, err := runTest([]string{govulncheckPath, worker.ModeGovulncheck, "testdata/module", vulndb})
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -82,7 +82,7 @@ func Test(t *testing.T) {
 			t.Fatal(derrors.IncludeStderr(err))
 		}
 		defer os.Remove(binary)
-		resp, err := runTest([]string{govulncheckPath, worker.ModeBinary, binary}, vulndb)
+		resp, err := runTest([]string{govulncheckPath, worker.ModeBinary, binary, vulndb})
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -91,38 +91,33 @@ func Test(t *testing.T) {
 
 	// Errors
 	for _, test := range []struct {
-		name   string
-		args   []string
-		vulndb string
-		want   string
+		name string
+		args []string
+		want string
 	}{
 		{
-			name:   "too few args",
-			args:   []string{"testdata/module"},
-			vulndb: vulndb,
-			want:   "need three args",
+			name: "too few args",
+			args: []string{"testdata/module", vulndb},
+			want: "need four args",
 		},
 		{
-			name:   "no vulndb",
-			args:   []string{govulncheckPath, worker.ModeGovulncheck, "testdata/module"},
-			vulndb: "does not exist",
-			want:   "does not exist",
+			name: "no vulndb",
+			args: []string{govulncheckPath, worker.ModeGovulncheck, "testdata/module", "does not exist"},
+			want: "does not exist",
 		},
 		{
-			name:   "no mode",
-			args:   []string{govulncheckPath, "MODE", "testdata/module"},
-			vulndb: vulndb,
-			want:   "not a valid mode",
+			name: "no mode",
+			args: []string{govulncheckPath, "MODE", "testdata/module", vulndb},
+			want: "not a valid mode",
 		},
 		{
-			name:   "no module",
-			args:   []string{govulncheckPath, worker.ModeGovulncheck, "testdata/nosuchmodule"},
-			vulndb: vulndb,
-			want:   "no such file",
+			name: "no module",
+			args: []string{govulncheckPath, worker.ModeGovulncheck, "testdata/nosuchmodule", vulndb},
+			want: "no such file",
 		},
 	} {
 		t.Run(test.name, func(t *testing.T) {
-			_, err := runTest(test.args, test.vulndb)
+			_, err := runTest(test.args)
 			if err == nil {
 				t.Fatal("got nil, want error")
 			}
@@ -133,8 +128,8 @@ func Test(t *testing.T) {
 	}
 }
 
-func runTest(args []string, vulndbDir string) (*govulncheck.SandboxResponse, error) {
+func runTest(args []string) (*govulncheck.SandboxResponse, error) {
 	var buf bytes.Buffer
-	run(&buf, args, vulndbDir)
+	run(&buf, args)
 	return govulncheck.UnmarshalSandboxResponse(buf.Bytes())
 }

@@ -107,6 +107,14 @@
             "options": ["bind"]
         },
         {
+            # Mount /app/go-vulndb inside the sandbox to
+            # the same directory outside.
+            "destination": "/app/go-vulndb",
+            "type": "none",
+            "source": "/app/go-vulndb",
+            "options": ["bind"]
+        },
+        {
             # Mount /tmp/modules inside the sandbox to
             # the same directory outside.
             "destination": "/tmp/modules",

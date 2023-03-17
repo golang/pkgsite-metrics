@@ -135,6 +135,7 @@ type scanner struct {
 	binaryDir   string
 
 	govulncheckPath string
+	vulnDBDir       string
 }
 
 func newScanner(ctx context.Context, h *GovulncheckServer) (*scanner, error) {
@@ -162,6 +163,7 @@ func newScanner(ctx context.Context, h *GovulncheckServer) (*scanner, error) {
 		sbox:            sbox,
 		binaryDir:       h.cfg.BinaryDir,
 		govulncheckPath: filepath.Join(h.cfg.BinaryDir, "govulncheck"),
+		vulnDBDir:       h.cfg.VulnDBDir,
 	}, nil
 }
 
@@ -382,7 +384,7 @@ func (s *scanner) runBinaryScanSandbox(ctx context.Context, modulePath, version,
 
 func (s *scanner) runGovulncheckSandbox(ctx context.Context, mode, arg string) (*govulncheck.SandboxResponse, error) {
 	log.Infof(ctx, "running govulncheck in sandbox: mode %s, arg %q", mode, arg)
-	cmd := s.sbox.Command(filepath.Join(s.binaryDir, "govulncheck_sandbox"), s.govulncheckPath, mode, arg)
+	cmd := s.sbox.Command(filepath.Join(s.binaryDir, "govulncheck_sandbox"), s.govulncheckPath, mode, arg, s.vulnDBDir)
 	stdout, err := cmd.Output()
 	log.Infof(ctx, "govulncheck in sandbox finished with err=%v", err)
 	if err != nil {
@@ -427,6 +429,7 @@ func (s *scanner) runBinaryScanInsecure(ctx context.Context, modulePath, version
 func (s *scanner) runGovulncheckCmd(pattern, tempDir string, stats *scanStats) ([]*govulncheckapi.Vuln, error) {
 	start := time.Now()
 	govulncheckCmd := exec.Command(s.govulncheckPath, "-json", pattern)
+	govulncheckCmd.Env = append(govulncheckCmd.Environ(), "GOVULNDB=file://"+s.vulnDBDir)
 	govulncheckCmd.Dir = tempDir
 	output, err := govulncheckCmd.Output()
 	if err != nil {
