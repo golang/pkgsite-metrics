@@ -294,17 +294,31 @@ const sandboxGoCache = "root/.cache/go-build"
 
 // runScanModule fetches the module version from the proxy, and analyzes it for
 // vulnerabilities.
-func (s *scanner) runScanModule(ctx context.Context, modulePath, version, binDir, mode string, stats *scanStats) (bvulns []*govulncheck.Vuln, err error) {
-	err = doScan(ctx, modulePath, version, s.insecure, func() error {
+func (s *scanner) runScanModule(ctx context.Context, modulePath, version, binaryDir, mode string, stats *scanStats) (bvulns []*govulncheck.Vuln, err error) {
+	err = doScan(ctx, modulePath, version, s.insecure, func() (err error) {
+		// In ModeBinary, path is a file path to the input binary.
+		// Otherwise, it is a path to the input module directory.
+		inputPath := binaryDir
+		if mode != ModeBinary {
+			// In source analysis modes, download the module first.
+			inputPath = moduleDir(modulePath, version)
+			defer cleanup(&err, func() error { return os.RemoveAll(inputPath) })
+			if err := prepareModule(ctx, modulePath, version, inputPath, s.proxyClient, s.insecure); err != nil {
+				return err
+			}
+		}
+
 		var vulns []*govulncheckapi.Vuln
 		if s.insecure {
-			vulns, err = s.runGovulncheckScanInsecure(ctx, modulePath, version, binDir, mode, stats)
+			vulns, err = s.runGovulncheckScanInsecure(ctx, modulePath, version, inputPath, mode, stats)
 		} else {
-			vulns, err = s.runGovulncheckScanSandbox(ctx, modulePath, version, binDir, mode, stats)
+			vulns, err = s.runGovulncheckScanSandbox(ctx, modulePath, version, inputPath, mode, stats)
 		}
 		if err != nil {
 			return err
 		}
+		log.Debugf(ctx, "govulncheck stats: %dkb | %vs", stats.scanMemory, stats.scanSeconds)
+
 		for _, v := range vulns {
 			bvulns = append(bvulns, govulncheck.ConvertGovulncheckOutput(v)...)
 		}
@@ -313,26 +327,14 @@ func (s *scanner) runScanModule(ctx context.Context, modulePath, version, binDir
 	return bvulns, err
 }
 
-func (s *scanner) runGovulncheckScanSandbox(ctx context.Context, modulePath, version, binDir, mode string, stats *scanStats) (_ []*govulncheckapi.Vuln, err error) {
-
+func (s *scanner) runGovulncheckScanSandbox(ctx context.Context, modulePath, version, inputPath, mode string, stats *scanStats) (_ []*govulncheckapi.Vuln, err error) {
 	if mode == ModeBinary {
-		return s.runBinaryScanSandbox(ctx, modulePath, version, binDir, stats)
+		return s.runBinaryScanSandbox(ctx, modulePath, version, inputPath, stats)
 	}
 
-	mdir := moduleDir(modulePath, version)
-	defer cleanup(&err, func() error { return os.RemoveAll(mdir) })
-	const insecure = false
-	if err := prepareModule(ctx, modulePath, version, mdir, s.proxyClient, insecure); err != nil {
-		return nil, err
-	}
-
-	log.Infof(ctx, "running govulncheck in sandbox: %s@%s", modulePath, version)
-	smdir := strings.TrimPrefix(mdir, sandboxRoot)
+	smdir := strings.TrimPrefix(inputPath, sandboxRoot)
 	err = s.sbox.Validate()
 	log.Debugf(ctx, "sandbox Validate returned %v", err)
-	if err != nil {
-		return nil, err
-	}
 
 	response, err := s.runGovulncheckSandbox(ctx, ModeGovulncheck, smdir)
 	if err != nil {
@@ -340,7 +342,6 @@ func (s *scanner) runGovulncheckScanSandbox(ctx context.Context, modulePath, ver
 	}
 	stats.scanMemory = response.Stats.ScanMemory
 	stats.scanSeconds = response.Stats.ScanSeconds
-	log.Debugf(ctx, "govulncheck stats: %dkb | Seconds: %vs", stats.scanMemory, stats.scanSeconds)
 	return response.Res.Vulns, nil
 }
 
@@ -377,7 +378,6 @@ func (s *scanner) runBinaryScanSandbox(ctx context.Context, modulePath, version,
 	}
 	stats.scanMemory = response.Stats.ScanMemory
 	stats.scanSeconds = response.Stats.ScanSeconds
-	log.Debugf(ctx, "govulncheck stats: %dkb | Seconds: %vs", stats.scanMemory, stats.scanSeconds)
 	return response.Res.Vulns, nil
 }
 
@@ -392,17 +392,12 @@ func (s *scanner) runGovulncheckSandbox(ctx context.Context, mode, arg string) (
 	return govulncheck.UnmarshalSandboxResponse(stdout)
 }
 
-func (s *scanner) runGovulncheckScanInsecure(ctx context.Context, modulePath, version, binaryDir, mode string, stats *scanStats) (_ []*govulncheckapi.Vuln, err error) {
+func (s *scanner) runGovulncheckScanInsecure(ctx context.Context, modulePath, version, inputPath, mode string, stats *scanStats) (_ []*govulncheckapi.Vuln, err error) {
 	if mode == ModeBinary {
-		return s.runBinaryScanInsecure(ctx, modulePath, version, binaryDir, os.TempDir(), stats)
+		return s.runBinaryScanInsecure(ctx, modulePath, version, inputPath, os.TempDir(), stats)
 	}
 
-	mdir := moduleDir(modulePath, version)
-	defer cleanup(&err, func() error { return os.RemoveAll(mdir) })
-	if err := prepareModule(ctx, modulePath, version, mdir, s.proxyClient, true); err != nil {
-		return nil, err
-	}
-	vulns, err := s.runGovulncheckCmd("./...", mdir, stats)
+	vulns, err := s.runGovulncheckCmd("./...", inputPath, stats)
 	if err != nil {
 		return nil, err
 	}
