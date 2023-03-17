@@ -46,6 +46,10 @@ const (
 	// ModeGovulncheck runs the govulncheck binary in
 	// default (source) mode.
 	ModeGovulncheck = "GOVULNCHECK"
+
+	// Inside the sandbox, the user is root and their $HOME directory is /root.
+	// The Go cache resides in its default location, $HOME/.cache/go-build.
+	sandboxGoCache = "root/.cache/go-build"
 )
 
 // modes is a set of supported vulncheck modes
@@ -129,6 +133,8 @@ type scanner struct {
 	insecure    bool
 	sbox        *sandbox.Sandbox
 	binaryDir   string
+
+	govulncheckPath string
 }
 
 func newScanner(ctx context.Context, h *GovulncheckServer) (*scanner, error) {
@@ -147,14 +153,15 @@ func newScanner(ctx context.Context, h *GovulncheckServer) (*scanner, error) {
 	sbox := sandbox.New("/bundle")
 	sbox.Runsc = "/usr/local/bin/runsc"
 	return &scanner{
-		proxyClient: h.proxyClient,
-		bqClient:    h.bqClient,
-		dbClient:    h.vulndbClient,
-		workVersion: workVersion,
-		gcsBucket:   bucket,
-		insecure:    h.cfg.Insecure,
-		sbox:        sbox,
-		binaryDir:   h.cfg.BinaryDir,
+		proxyClient:     h.proxyClient,
+		bqClient:        h.bqClient,
+		dbClient:        h.vulndbClient,
+		workVersion:     workVersion,
+		gcsBucket:       bucket,
+		insecure:        h.cfg.Insecure,
+		sbox:            sbox,
+		binaryDir:       h.cfg.BinaryDir,
+		govulncheckPath: filepath.Join(h.cfg.BinaryDir, "govulncheck"),
 	}, nil
 }
 
@@ -284,14 +291,6 @@ type scanStats struct {
 	scanMemory  uint64
 }
 
-// Inside the sandbox, the user is root and their $HOME directory is /root.
-
-// The Go cache resides in its default location, $HOME/.cache/go-build.
-const sandboxGoCache = "root/.cache/go-build"
-
-// Where the govulncheck binary lives.
-//	govulncheckPath = binaryDir + "/govulncheck"
-
 // runScanModule fetches the module version from the proxy, and analyzes it for
 // vulnerabilities.
 func (s *scanner) runScanModule(ctx context.Context, modulePath, version, binaryDir, mode string, stats *scanStats) (bvulns []*govulncheck.Vuln, err error) {
@@ -383,7 +382,7 @@ func (s *scanner) runBinaryScanSandbox(ctx context.Context, modulePath, version,
 
 func (s *scanner) runGovulncheckSandbox(ctx context.Context, mode, arg string) (*govulncheck.SandboxResponse, error) {
 	log.Infof(ctx, "running govulncheck in sandbox: mode %s, arg %q", mode, arg)
-	cmd := s.sbox.Command(filepath.Join(s.binaryDir, "govulncheck_sandbox"), filepath.Join(s.binaryDir, "govulncheck"), mode, arg)
+	cmd := s.sbox.Command(filepath.Join(s.binaryDir, "govulncheck_sandbox"), s.govulncheckPath, mode, arg)
 	stdout, err := cmd.Output()
 	log.Infof(ctx, "govulncheck in sandbox finished with err=%v", err)
 	if err != nil {
@@ -426,13 +425,8 @@ func (s *scanner) runBinaryScanInsecure(ctx context.Context, modulePath, version
 }
 
 func (s *scanner) runGovulncheckCmd(pattern, tempDir string, stats *scanStats) ([]*govulncheckapi.Vuln, error) {
-	govulncheckPath := filepath.Join(s.binaryDir, "govulncheck")
-	if !fileExists(govulncheckPath) {
-		govulncheckPath = "govulncheck"
-	}
-
 	start := time.Now()
-	govulncheckCmd := exec.Command(govulncheckPath, "-json", pattern)
+	govulncheckCmd := exec.Command(s.govulncheckPath, "-json", pattern)
 	govulncheckCmd.Dir = tempDir
 	output, err := govulncheckCmd.Output()
 	if err != nil {
