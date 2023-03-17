@@ -328,6 +328,12 @@ func (s *scanner) runGovulncheckScanSandbox(ctx context.Context, modulePath, ver
 
 	log.Infof(ctx, "running govulncheck in sandbox: %s@%s", modulePath, version)
 	smdir := strings.TrimPrefix(mdir, sandboxRoot)
+	err = s.sbox.Validate()
+	log.Debugf(ctx, "sandbox Validate returned %v", err)
+	if err != nil {
+		return nil, err
+	}
+
 	stdout, err := s.sbox.Command(binaryDir+"/govulncheck_sandbox", govulncheckPath, ModeGovulncheck, smdir).Output()
 	log.Infof(ctx, "done with govulncheck in sandbox: %s@%s err=%v", modulePath, version, err)
 

@@ -9,7 +9,9 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
+	"os"
 	"os/exec"
+	"path/filepath"
 
 	"golang.org/x/pkgsite-metrics/internal/derrors"
 )
@@ -83,6 +85,9 @@ func (s *Sandbox) Command(path string, arg ...string) *Cmd {
 // Output runs Cmd in the sandbox used to create it, and returns its standard output.
 func (c *Cmd) Output() (_ []byte, err error) {
 	defer derrors.Wrap(&err, "Cmd.Output %q", c.Args)
+	if err := c.sb.Validate(); err != nil {
+		return nil, err
+	}
 	// -ignore-cgroups is needed to avoid this error from runsc:
 	// cannot set up cgroup for root: configuring cgroup: write /sys/fs/cgroup/cgroup.subtree_control: device or resource busy
 	cmd := exec.Command(c.sb.Runsc, "-ignore-cgroups", "-network=none", "run", "sandbox")
@@ -109,4 +114,55 @@ func (c *Cmd) Output() (_ []byte, err error) {
 		return nil, fmt.Errorf("writing stdin: %w", err)
 	}
 	return bytes.TrimSpace(out), nil
+}
+
+// ociConfig is a subset of the OCI container configuration.
+// It is used by Validate to unmarshal the bundle's config.json.
+type ociConfig struct {
+	Version string  `json:"ociVersion"`
+	Mounts  []mount `json:"mounts"`
+}
+
+type mount struct {
+	Destination string   `json:"destination"`
+	Type        string   `json:"type"`
+	Source      string   `json:"source"`
+	Options     []string `json:"options"`
+}
+
+// Validate the sandbox configuration.
+func (s *Sandbox) Validate() (err error) {
+	defer derrors.Wrap(&err, "Sandbox(%s).Validate()", s.bundleDir)
+
+	f, err := os.Open(filepath.Join(s.bundleDir, "config.json"))
+	if err != nil {
+		return err
+	}
+	defer f.Close()
+	var config ociConfig
+	if err := json.NewDecoder(f).Decode(&config); err != nil {
+		return err
+	}
+	const wantVersion = "1.0.0"
+	if config.Version != wantVersion {
+		return fmt.Errorf("ociVersion: got %q, want %q", config.Version, wantVersion)
+	}
+	for _, m := range config.Mounts {
+		if isBindMount(m) {
+			_, err := os.Stat(m.Source)
+			if err != nil {
+				return fmt.Errorf("bind mount source: %w", err)
+			}
+		}
+	}
+	return nil
+}
+
+func isBindMount(m mount) bool {
+	for _, opt := range m.Options {
+		if opt == "bind" {
+			return true
+		}
+	}
+	return false
 }

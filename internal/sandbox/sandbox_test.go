@@ -24,6 +24,9 @@ func Test(t *testing.T) {
 	}
 	sb := New("testdata/bundle")
 	sb.Runsc = "/usr/local/bin/runsc" // must match path in Makefile
+	if err := sb.Validate(); err != nil {
+		t.Fatal(err)
+	}
 
 	check := func(t *testing.T, cmd *Cmd, want string) {
 		t.Helper()
@@ -77,4 +80,14 @@ func Test(t *testing.T) {
 			t.Fatalf("got\n%q\nwhich does not contain %q", g, w)
 		}
 	})
+}
+
+func TestValidate(t *testing.T) {
+	// Validate doesn't actually run the sandbox, so we can test it.
+	t.Skip("fails in gcloud build")
+	sb := New("testdata/bundle")
+	sb.Runsc = "/usr/local/bin/runsc"
+	if err := sb.Validate(); err != nil {
+		t.Fatal(err)
+	}
 }
