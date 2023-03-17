@@ -12,7 +12,6 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
-	"strconv"
 	"strings"
 	"syscall"
 	"time"
@@ -126,7 +125,6 @@ type scanner struct {
 	dbClient    vulnclient.Client
 	bqClient    *bigquery.Client
 	workVersion *govulncheck.WorkVersion
-	goMemLimit  uint64
 	gcsBucket   *storage.BucketHandle
 	insecure    bool
 	sbox        *sandbox.Sandbox
@@ -152,7 +150,6 @@ func newScanner(ctx context.Context, h *GovulncheckServer) (*scanner, error) {
 		bqClient:    h.bqClient,
 		dbClient:    h.vulndbClient,
 		workVersion: workVersion,
-		goMemLimit:  parseGoMemLimit(os.Getenv("GOMEMLIMIT")),
 		gcsBucket:   bucket,
 		insecure:    h.cfg.Insecure,
 		sbox:        sbox,
@@ -471,33 +468,6 @@ func isVulnDBConnection(err error) bool {
 	s := err.Error()
 	return strings.Contains(s, "https://vuln.go.dev") &&
 		strings.Contains(s, "connection")
-}
-
-// parseGoMemLimit parses the GOMEMLIMIT environment variable.
-// It returns 0 if the variable isn't set or its value is malformed.
-func parseGoMemLimit(s string) uint64 {
-	if len(s) < 2 {
-		return 0
-	}
-	m := uint64(1)
-	if s[len(s)-1] == 'i' {
-		switch s[len(s)-2] {
-		case 'K':
-			m = 1024
-		case 'M':
-			m = 1024 * 1024
-		case 'G':
-			m = 1024 * 1024 * 1024
-		default:
-			return 0
-		}
-		s = s[:len(s)-2]
-	}
-	v, err := strconv.ParseUint(s, 10, 64)
-	if err != nil {
-		return 0
-	}
-	return v * m
 }
 
 // fileExists checks if file path exists. Returns true

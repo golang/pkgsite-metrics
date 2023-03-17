@@ -16,7 +16,6 @@ import (
 	"cloud.google.com/go/storage"
 	"golang.org/x/pkgsite-metrics/internal/bigquery"
 	"golang.org/x/pkgsite-metrics/internal/config"
-	"golang.org/x/pkgsite-metrics/internal/derrors"
 	"golang.org/x/pkgsite-metrics/internal/govulncheck"
 	"golang.org/x/pkgsite-metrics/internal/proxy"
 	vulnclient "golang.org/x/vuln/client"
@@ -107,14 +106,6 @@ func TestRunScanModule(t *testing.T) {
 			t.Errorf("scan memory not collected or negative: %v", got)
 		}
 	})
-	t.Run("memoryLimit", func(t *testing.T) {
-		s := &scanner{proxyClient: proxyClient, dbClient: dbClient, insecure: true, goMemLimit: 2000}
-		_, err := s.runScanModule(ctx, "golang.org/x/mod", "v0.5.1",
-			"", ModeGovulncheck, &scanStats{})
-		if !errors.Is(err, derrors.ScanModuleMemoryLimitExceeded) {
-			t.Errorf("got %v, want MemoryLimitExceeded", err)
-		}
-	})
 	t.Run("binary", func(t *testing.T) {
 		if !*integration { // needs GCS read permission, not available on kokoro
 			t.Skip("missing -integration")
@@ -161,23 +152,4 @@ func TestRunScanModule(t *testing.T) {
 			t.Errorf("scan memory not collected or negative: %v", got)
 		}
 	})
-}
-
-func TestParseGoMemLimit(t *testing.T) {
-	for _, test := range []struct {
-		in   string
-		want uint64
-	}{
-		{"", 0},
-		{"foo", 0},
-		{"23", 23},
-		{"56Ki", 56 * 1024},
-		{"3Mi", 3 * 1024 * 1024},
-		{"8Gi", 8 * 1024 * 1024 * 1024},
-	} {
-		got := parseGoMemLimit(test.in)
-		if got != test.want {
-			t.Errorf("%q: got %d, want %d", test.in, got, test.want)
-		}
-	}
 }
