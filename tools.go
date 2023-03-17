@@ -18,5 +18,8 @@
 package main
 
 import (
+	_ "github.com/client9/misspell/cmd/misspell"
 	_ "golang.org/x/vuln/cmd/govulncheck"
+	_ "honnef.co/go/tools/cmd/staticcheck"
+	_ "mvdan.cc/unparam"
 )
