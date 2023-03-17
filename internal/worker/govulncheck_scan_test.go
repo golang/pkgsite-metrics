@@ -10,15 +10,14 @@ import (
 	"flag"
 	"fmt"
 	"io"
+	"path/filepath"
 	"strings"
 	"testing"
 
 	"cloud.google.com/go/storage"
 	"golang.org/x/pkgsite-metrics/internal/bigquery"
-	"golang.org/x/pkgsite-metrics/internal/config"
+	"golang.org/x/pkgsite-metrics/internal/buildtest"
 	"golang.org/x/pkgsite-metrics/internal/govulncheck"
-	"golang.org/x/pkgsite-metrics/internal/proxy"
-	vulnclient "golang.org/x/vuln/client"
 )
 
 var integration = flag.Bool("integration", false, "test against actual service")
@@ -66,54 +65,35 @@ func TestVulnsForMode(t *testing.T) {
 	}
 }
 
-func TestRunScanModule(t *testing.T) {
-	t.Skip("breaks on trybots")
+// TODO: can we have a test for sandbox? We do test the sandbox
+// and unmarshalling in cmd/govulncheck_sandbox, so what would be
+// left here is checking that runsc is initiated properly. It is
+// not clear how to do that here nor is it necessary.
+func TestRunScanModuleInsecure(t *testing.T) {
+	govulncheckPath, err := buildtest.BuildGovulncheck(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	vulndb, err := filepath.Abs("../testdata/vulndb")
+	if err != nil {
+		t.Fatal(err)
+	}
 
 	ctx := context.Background()
-	cfg, err := config.Init(ctx)
-	if err != nil {
-		t.Fatal(err)
-	}
-	dbClient, err := vulnclient.NewClient([]string{cfg.VulnDBURL}, vulnclient.Options{})
-	if err != nil {
-		t.Fatal(err)
-	}
-	proxyClient, err := proxy.New(cfg.ProxyURL)
-	if err != nil {
-		t.Fatal(err)
-	}
-	t.Run("binary", func(t *testing.T) {
-		if !*integration { // needs GCS read permission, not available on kokoro
-			t.Skip("missing -integration")
-		}
-		s := &scanner{proxyClient: proxyClient, dbClient: dbClient}
-		gcsClient, err := storage.NewClient(context.Background())
-		if err != nil {
-			t.Fatal(err)
-		}
-		s.gcsBucket = gcsClient.Bucket("go-ecosystem")
-		stats := &scanStats{}
-		vulns, err := s.runScanModule(ctx, "golang.org/x/pkgsite", "v0.0.0-20221004150836-873fb37c2479", "cmd/worker", ModeBinary, stats)
-		if err != nil {
-			t.Fatal(err)
-		}
-		if g, w := len(vulns), 14; g != w {
-			t.Errorf("got %d vulns, want %d", g, w)
-		}
-	})
 	t.Run("govulncheck", func(t *testing.T) {
-		s := &scanner{proxyClient: proxyClient, dbClient: dbClient, insecure: true}
+		s := &scanner{insecure: true, govulncheckPath: govulncheckPath, vulnDBDir: vulndb}
 		stats := &scanStats{}
-		vulns, err := s.runScanModule(ctx,
-			"golang.org/x/exp/event", "v0.0.0-20220929112958-4a82f8963a65",
-			"", ModeGovulncheck, stats)
+		vulns, err := s.runGovulncheckScanInsecure(ctx,
+			"golang.org/vuln", "v0.0.0",
+			"../testdata/module", ModeGovulncheck, stats)
 		if err != nil {
 			t.Fatal(err)
 		}
-		wantID := "GO-2022-0493"
+		wantID := "GO-2021-0113"
 		found := false
 		for _, v := range vulns {
-			if v.ID == wantID {
+			if v.OSV.ID == wantID {
 				found = true
 				break
 			}
@@ -126,6 +106,27 @@ func TestRunScanModule(t *testing.T) {
 		}
 		if got := stats.scanMemory; got <= 0 {
 			t.Errorf("scan memory not collected or negative: %v", got)
+		}
+	})
+	t.Run("binary", func(t *testing.T) {
+		if !*integration { // needs GCS read permission, not available on kokoro
+			t.Skip("missing -integration")
+		}
+		s := &scanner{govulncheckPath: govulncheckPath, vulnDBDir: vulndb}
+		gcsClient, err := storage.NewClient(context.Background())
+		if err != nil {
+			t.Fatal(err)
+		}
+		s.gcsBucket = gcsClient.Bucket("go-ecosystem")
+		stats := &scanStats{}
+		vulns, err := s.runGovulncheckScanInsecure(ctx,
+			"golang.org/vuln", "v0.0.0",
+			"cmd/worker", ModeBinary, stats)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if g, w := len(vulns), 14; g != w {
+			t.Errorf("got %d vulns, want %d", g, w)
 		}
 	})
 }

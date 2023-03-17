@@ -41,15 +41,17 @@ func Test(t *testing.T) {
 		}
 	}
 
+	testData := "../../internal/testdata"
+	module := filepath.Join(testData, "module")
 	// govulncheck binary requires a full path to the vuln db. Otherwise, one
 	// gets "[file://testdata/vulndb], opts): file URL specifies non-local host."
-	vulndb, err := filepath.Abs("testdata/vulndb")
+	vulndb, err := filepath.Abs(filepath.Join(testData, "vulndb"))
 	if err != nil {
 		t.Fatal(err)
 	}
 
 	t.Run("source", func(t *testing.T) {
-		resp, err := runTest([]string{govulncheckPath, worker.ModeGovulncheck, "testdata/module", vulndb})
+		resp, err := runTest([]string{govulncheckPath, worker.ModeGovulncheck, module, vulndb})
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -65,9 +67,9 @@ func Test(t *testing.T) {
 
 	t.Run("binary", func(t *testing.T) {
 		t.Skip("govulncheck may not support the Go version")
-		const binary = "testdata/module/vuln"
+		binary := filepath.Join(module, "vuln")
 		cmd := exec.Command("go", "build")
-		cmd.Dir = "testdata/module"
+		cmd.Dir = module
 		if _, err := cmd.Output(); err != nil {
 			t.Fatal(derrors.IncludeStderr(err))
 		}
@@ -92,17 +94,17 @@ func Test(t *testing.T) {
 		},
 		{
 			name: "no vulndb",
-			args: []string{govulncheckPath, worker.ModeGovulncheck, "testdata/module", "does not exist"},
+			args: []string{govulncheckPath, worker.ModeGovulncheck, module, "does not exist"},
 			want: "does not exist",
 		},
 		{
 			name: "no mode",
-			args: []string{govulncheckPath, "MODE", "testdata/module", vulndb},
+			args: []string{govulncheckPath, "MODE", module, vulndb},
 			want: "not a valid mode",
 		},
 		{
 			name: "no module",
-			args: []string{govulncheckPath, worker.ModeGovulncheck, "testdata/nosuchmodule", vulndb},
+			args: []string{govulncheckPath, worker.ModeGovulncheck, "nosuchmodule", vulndb},
 			want: "no such file",
 		},
 	} {
