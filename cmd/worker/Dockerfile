@@ -8,6 +8,11 @@
 #   make test
 # from the repo root.
 
+# NOTE: don't put anything in /tmp here. It will work locally,
+# but Cloud Run mounts something else to /tmp, so anything
+# installed here will be shadowed.
+
+
 FROM golang:1.19.4
 
 LABEL maintainer="Go Ecosystem Team <go-ecosystem-team@google.com>"
@@ -19,17 +24,17 @@ WORKDIR /
 # Create some directories.
 
 # The worker binary and related files live here.
-RUN mkdir app
-# The module being analyzed is unzipped here.
-# The sandbox mounts this directory.
-RUN mkdir module
+RUN mkdir /app
 
-# Where binaries and modules live.
-# The sandbox config.json file maps these to the same paths
-# inside the sandbox.
-RUN mkdir /tmp/binaries
-RUN mkdir /tmp/modules
+# Where binaries live.
+# Mapped by the sandbox config to the same place inside the sandbox.
+# If you change this, you must also edit the bind mount in config.json.commented.
+#
+# We use an ARG command here to make a variable, but this is not intended to be
+# provided as a command-line argument to `docker build`.
+ARG BINARY_DIR=/app/binaries
 
+RUN mkdir $BINARY_DIR
 
 #### Sandbox setup
 
@@ -78,12 +83,11 @@ RUN go mod download
 # Build the worker binary and put it in /app.
 RUN go build -mod=readonly -o /app/worker ./cmd/worker
 
-# Install the latest version of govulncheck in the binaries directory.
-RUN GOBIN=/tmp/binaries go install golang.org/x/vuln/cmd/govulncheck@latest
+# Install the latest version of govulncheck in app/binaries.
+RUN GOBIN=$BINARY_DIR go install golang.org/x/vuln/cmd/govulncheck@latest
 
-# Build the program that runs govulncheck inside the sandbox and install it in the sandbox's
-# binaries directory.
-RUN go build -mod=readonly -o /tmp/binaries/govulncheck_sandbox ./cmd/govulncheck_sandbox
+# Build the program that runs govulncheck inside the sandbox.
+RUN go build -mod=readonly -o $BINARY_DIR/govulncheck_sandbox ./cmd/govulncheck_sandbox
 
 # Build the sandbox runner program and put it in the bundle root.
 RUN go build -mod=readonly -o /bundle/rootfs/runner ./internal/sandbox/runner.go
@@ -98,5 +102,7 @@ ENV DOCKER_IMAGE=$DOCKER_IMAGE
 
 ARG BQ_DATASET
 ENV GO_ECOSYSTEM_BIGQUERY_DATASET=$BQ_DATASET
+
+ENV GO_ECOSYSTEM_BINARY_DIR=$BINARY_DIR
 
 CMD ["./worker"]

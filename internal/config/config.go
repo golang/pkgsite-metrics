@@ -83,6 +83,9 @@ type Config struct {
 	// BinaryBucket holds binaries for govulncheck scanning.
 	BinaryBucket string
 
+	// BinaryDir is the local directory for binaries.
+	BinaryDir string
+
 	// The host, port and user of the pkgsite database used to find
 	// modules to scan.
 	PkgsiteDBHost string
@@ -124,6 +127,7 @@ func Init(ctx context.Context) (_ *Config, err error) {
 		QueueURL:              os.Getenv("GO_ECOSYSTEM_QUEUE_URL"),
 		VulnDBBucketProjectID: os.Getenv("GO_ECOSYSTEM_VULNDB_BUCKET_PROJECT"),
 		BinaryBucket:          os.Getenv("GO_ECOSYSTEM_BINARY_BUCKET"),
+		BinaryDir:             GetEnv("GO_ECOSYSTEM_BINARY_DIR", "/tmp/binaries"),
 		PkgsiteDBHost:         GetEnv("GO_ECOSYSTEM_PKGSITE_DB_HOST", "localhost"),
 		PkgsiteDBPort:         GetEnv("GO_ECOSYSTEM_PKGSITE_DB_PORT", "5432"),
 		PkgsiteDBName:         GetEnv("GO_ECOSYSTEM_PKGSITE_DB_NAME", "discovery-db"),

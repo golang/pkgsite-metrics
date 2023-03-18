@@ -77,7 +77,7 @@ func (s *analysisServer) handleScan(w http.ResponseWriter, r *http.Request) (err
 	if req.Binary != path.Base(req.Binary) {
 		return fmt.Errorf("%w: analysis: binary name contains slashes (must be a basename)", derrors.InvalidArgument)
 	}
-	localBinaryPath := path.Join(binaryDir, req.Binary)
+	localBinaryPath := path.Join(s.cfg.BinaryDir, req.Binary)
 	srcPath := path.Join(analysisBinariesBucketDir, req.Binary)
 	const executable = true
 	if err := copyToLocalFile(localBinaryPath, executable, srcPath, s.openFile); err != nil {

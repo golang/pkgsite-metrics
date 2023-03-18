@@ -99,11 +99,11 @@
         # files in that directory will be hidden to code running inside the
         # sandbox.
         {
-            # Mount /tmp/binaries inside the sandbox to
+            # Mount /app/binaries inside the sandbox to
             # the same directory outside.
-            "destination": "/tmp/binaries",
+            "destination": "/app/binaries",
             "type": "none",
-            "source": "/tmp/binaries",
+            "source": "/app/binaries",
             "options": ["bind"]
         },
         {

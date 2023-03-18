@@ -34,10 +34,9 @@ const (
 	// The Go module cache resides in its default location, $HOME/go/pkg/mod.
 	sandboxGoModCache = "root/go/pkg/mod"
 
-	// The directories where binaries and modules live.
-	// The sandbox mounts this directory to the same path internally, so this
-	// path works for both secure and insecure modes.
-	binaryDir  = "/tmp/binaries"
+	// The directory where modules live.
+	// The sandbox mounts this directory to the same path internally, so
+	// this path works for both secure and insecure modes.
 	modulesDir = "/tmp/modules"
 )
 

@@ -6,7 +6,6 @@ package worker
 
 import (
 	"context"
-	"os"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -22,7 +21,6 @@ import (
 )
 
 func TestRunAnalysisBinary(t *testing.T) {
-	mustMakeBinaryDir(t)
 	binPath, cleanup := buildtest.GoBuild(t, "testdata/analyzer", "")
 	defer cleanup()
 
@@ -97,7 +95,6 @@ func TestAnalysisScan(t *testing.T) {
 		modulePath = "a.com/m"
 		version    = "v1.2.3"
 	)
-	mustMakeBinaryDir(t)
 	binaryPath, cleanup := buildtest.GoBuild(t, "testdata/analyzer", "")
 	defer cleanup()
 	proxyClient, cleanup2 := proxytest.SetupTestClient(t, []*proxytest.Module{
@@ -129,6 +126,7 @@ func G() {}
 			proxyClient: proxyClient,
 			cfg: &config.Config{
 				BinaryBucket: "unused",
+				BinaryDir:    t.TempDir(),
 			},
 		},
 	}
@@ -178,10 +176,4 @@ func G() {}
 		Error:         "executable file not found in $PATH",
 	}
 	diff(want, got)
-}
-
-func mustMakeBinaryDir(t *testing.T) {
-	if err := os.Mkdir(binaryDir, 0777); err != nil && !os.IsExist(err) {
-		t.Fatal(err)
-	}
 }
