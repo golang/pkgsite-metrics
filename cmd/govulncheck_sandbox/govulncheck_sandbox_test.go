@@ -71,7 +71,6 @@ func Test(t *testing.T) {
 		if resp.Stats.ScanMemory <= 0 {
 			t.Errorf("got %d; want >0 scan memory", resp.Stats.ScanMemory)
 		}
-
 	})
 
 	t.Run("binary", func(t *testing.T) {
@@ -107,7 +106,7 @@ func Test(t *testing.T) {
 			name:   "no vulndb",
 			args:   []string{govulncheckPath, worker.ModeGovulncheck, "testdata/module"},
 			vulndb: "does not exist",
-			want:   "exit status 1",
+			want:   "does not exist",
 		},
 		{
 			name:   "no mode",

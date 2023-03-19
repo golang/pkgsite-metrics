@@ -80,12 +80,12 @@ func runGovulncheck(govulncheckPath, mode, filePath, vulnDBDir string) (*govulnc
 	govulncheckCmd.Dir = dir
 	govulncheckCmd.Env = append(govulncheckCmd.Environ(), "GOVULNDB=file://"+vulnDBDir)
 	start := time.Now()
-	output, err := govulncheckCmd.Output()
+	output, err := govulncheckCmd.CombinedOutput()
 	if err != nil {
 		// Temporary check because govulncheck currently exits code 3 if any vulns
 		// are found but no other errors occurred.
 		if e := (&exec.ExitError{}); !errors.As(err, &e) || e.ProcessState.ExitCode() != 3 {
-			return nil, err
+			return nil, fmt.Errorf("govulncheck error: err=%v out=%s", err, output)
 		}
 	}
 	response := govulncheck.SandboxResponse{}
