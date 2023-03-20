@@ -8,20 +8,14 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
-	"fmt"
 	"net/http"
-	"sort"
 	"strings"
 	"time"
 
-	"cloud.google.com/go/civil"
-	"golang.org/x/exp/maps"
 	"golang.org/x/pkgsite-metrics/internal/bigquery"
 	"golang.org/x/pkgsite-metrics/internal/derrors"
-	"golang.org/x/pkgsite-metrics/internal/log"
 	"golang.org/x/pkgsite-metrics/internal/scan"
 	"golang.org/x/vuln/exp/govulncheck"
-	"google.golang.org/api/iterator"
 )
 
 // EnqueueQueryParams for govulncheck/enqueue
@@ -217,113 +211,6 @@ func ReadWorkVersions(ctx context.Context, c *bigquery.Client) (_ map[[2]string]
 		return nil, err
 	}
 	return m, nil
-}
-
-// The module path along with the four sort columns should uniquely specify a
-// row, because we do not generate a new row for a (module, version) if the
-// other three versions are identical. (There is actually a fourth component of
-// the work version, the schema version. But since it is represented by a struct
-// in the worker code and the worker version captures every change to that code,
-// it cannot change independently of worker_version.)
-const orderByClauses = `
-			vulndb_last_modified DESC, -- latest version of database
-			x_vuln_version DESC,       -- latest version of x/vuln
-			worker_version DESC,       -- latest version of x/pkgsite-metrics
-			sort_version DESC,         -- latest version of module
-			created_at DESC            -- latest insertion time
-`
-
-func FetchResults(ctx context.Context, c *bigquery.Client) (rows []*Result, err error) {
-	return fetchResults(ctx, c, TableName)
-}
-
-func fetchResults(ctx context.Context, c *bigquery.Client, tableName string) (rows []*Result, err error) {
-	name := c.FullTableName(tableName)
-	query := bigquery.PartitionQuery{
-		Table:       name,
-		PartitionOn: "module_path, scan_mode",
-		OrderBy:     orderByClauses,
-	}.String()
-	log.Infof(ctx, "running latest query on %s", name)
-	iter, err := c.Query(ctx, query)
-	if err != nil {
-		return nil, err
-	}
-	rows, err = bigquery.All[Result](iter)
-	if err != nil {
-		return nil, err
-	}
-	log.Infof(ctx, "got %d rows", len(rows))
-
-	// Check for duplicate rows.
-	modvers := map[string]int{}
-	for _, r := range rows {
-		modvers[r.ModulePath+"@"+r.Version+" "+r.ScanMode]++
-	}
-	keys := maps.Keys(modvers)
-	sort.Strings(keys)
-	for _, k := range keys {
-		if n := modvers[k]; n > 1 {
-			return nil, fmt.Errorf("%s has %d rows", k, n)
-		}
-	}
-	return rows, nil
-}
-
-type ReportResult struct {
-	*Result
-	ReportDate civil.Date `bigquery:"report_date"` // for reporting (e.g. dashboard)
-	InsertedAt time.Time  `bigquery:"inserted_at"` // to disambiguate if >1 insertion for same date
-}
-
-func init() {
-	s, err := bigquery.InferSchema(ReportResult{})
-	if err != nil {
-		panic(err)
-	}
-	bigquery.AddTable(TableName+"-report", s)
-}
-
-func InsertResults(ctx context.Context, c *bigquery.Client, results []*Result, date civil.Date, allowDuplicates bool) (err error) {
-	return insertResults(ctx, c, TableName+"-report", results, date, allowDuplicates)
-}
-
-func insertResults(ctx context.Context, c *bigquery.Client, reportTableName string, results []*Result, date civil.Date, allowDuplicates bool) (err error) {
-	derrors.Wrap(&err, "InsertResults(%s)", date)
-	// Create the report table if it doesn't exist.
-	if err := c.CreateTable(ctx, reportTableName); err != nil {
-		return err
-	}
-
-	if !allowDuplicates {
-		query := fmt.Sprintf("SELECT COUNT(*) FROM `%s` WHERE report_date = '%s'",
-			c.FullTableName(reportTableName), date)
-		iter, err := c.Query(ctx, query)
-		if err != nil {
-			return err
-		}
-		var count struct {
-			n int
-		}
-		err = iter.Next(&count)
-		if err != nil && err != iterator.Done {
-			return err
-		}
-		if count.n > 0 {
-			return fmt.Errorf("already have %d rows for %s", count.n, date)
-		}
-	}
-
-	now := time.Now()
-	var rows []ReportResult
-	for _, r := range results {
-		rows = append(rows, ReportResult{Result: r, ReportDate: date, InsertedAt: now})
-	}
-
-	ctx, cancel := context.WithTimeout(ctx, 5*time.Minute) // to avoid retrying forever on permanent errors
-	defer cancel()
-	const chunkSize = 1024 // Chunk rows to a void exceeding the maximum allowable request size.
-	return bigquery.UploadMany(ctx, c, reportTableName, rows, chunkSize)
 }
 
 // ScanStats represent monitoring information about a given

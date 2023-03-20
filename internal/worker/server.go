@@ -171,7 +171,6 @@ func (s *Server) registerGovulncheckHandlers(ctx context.Context) error {
 	s.handle("/govulncheck/enqueueall", h.handleEnqueueAll)
 	s.handle("/govulncheck/enqueue", h.handleEnqueue)
 	s.handle("/govulncheck/scan/", h.handleScan)
-	s.handle("/govulncheck/insert-results", h.handleInsertResults)
 	return nil
 }
 
