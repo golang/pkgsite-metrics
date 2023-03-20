@@ -23,9 +23,8 @@ var unsupportedGoosGoarch = map[string]bool{
 
 // GoBuild runs "go build" on dir using the additional environment variables in
 // envVarVals, which should be an alternating list of variables and values.
-// It returns the path to the resulting binary, and a function
-// to call when finished with the binary.
-func GoBuild(t *testing.T, dir, tags string, envVarVals ...string) (binaryPath string, cleanup func()) {
+// It returns the path to the resulting binary.
+func GoBuild(t *testing.T, dir, tags string, envVarVals ...string) (binaryPath string) {
 	switch runtime.GOOS {
 	case "android", "js", "ios":
 		t.Skipf("skipping on OS without 'go build' %s", runtime.GOOS)
@@ -47,14 +46,11 @@ func GoBuild(t *testing.T, dir, tags string, envVarVals ...string) (binaryPath s
 		t.Skipf("skipping unsupported GOOS/GOARCH pair %s", gg)
 	}
 
-	tmpDir, err := os.MkdirTemp("", "buildtest")
-	if err != nil {
-		t.Fatal(err)
-	}
 	abs, err := filepath.Abs(dir)
 	if err != nil {
 		t.Fatal(err)
 	}
+	tmpDir := t.TempDir()
 	binaryPath = filepath.Join(tmpDir, filepath.Base(abs))
 	var exeSuffix string
 	if runtime.GOOS == "windows" {
@@ -77,7 +73,7 @@ func GoBuild(t *testing.T, dir, tags string, envVarVals ...string) (binaryPath s
 	if err := cmd.Run(); err != nil {
 		t.Fatal(err)
 	}
-	return binaryPath + exeSuffix, func() { os.RemoveAll(tmpDir) }
+	return binaryPath + exeSuffix
 }
 
 // lookEnv looks for name in env, a list of "VAR=VALUE" strings. It returns

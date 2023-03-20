@@ -21,8 +21,7 @@ import (
 )
 
 func TestRunAnalysisBinary(t *testing.T) {
-	binPath, cleanup := buildtest.GoBuild(t, "testdata/analyzer", "")
-	defer cleanup()
+	binPath := buildtest.GoBuild(t, "testdata/analyzer", "")
 
 	got, err := runAnalysisBinary(nil, binPath, "-name Fact", "testdata/module")
 	if err != nil {
@@ -95,8 +94,7 @@ func TestAnalysisScan(t *testing.T) {
 		modulePath = "a.com/m"
 		version    = "v1.2.3"
 	)
-	binaryPath, cleanup := buildtest.GoBuild(t, "testdata/analyzer", "")
-	defer cleanup()
+	binaryPath := buildtest.GoBuild(t, "testdata/analyzer", "")
 	proxyClient, cleanup2 := proxytest.SetupTestClient(t, []*proxytest.Module{
 		{
 			ModulePath: modulePath,

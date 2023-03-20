@@ -26,17 +26,7 @@ func Test(t *testing.T) {
 		t.Skip("cannot run on Windows")
 	}
 
-	tempDir, err := os.MkdirTemp("", "installGovulncheck")
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer func() {
-		if err := os.RemoveAll(tempDir); err != nil {
-			t.Fatal(err)
-		}
-	}()
-
-	govulncheckPath, err := buildtest.BuildGovulncheck(tempDir)
+	govulncheckPath, err := buildtest.BuildGovulncheck(t.TempDir())
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -7,7 +7,6 @@ package modules
 import (
 	"archive/zip"
 	"bytes"
-	"os"
 	"path/filepath"
 	"testing"
 )
@@ -44,17 +43,7 @@ func TestWriteZip(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	// Create space to unpack the module.
-	tempDir, err := os.MkdirTemp("", "testWriteZip")
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer func() {
-		if err := os.RemoveAll(tempDir); err != nil {
-			t.Fatal(err)
-		}
-	}()
-
+	tempDir := t.TempDir()
 	if err := writeZip(r, tempDir, ""); err != nil {
 		t.Error(err)
 	}
