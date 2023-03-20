@@ -381,6 +381,12 @@ func (s *scanner) runBinaryScanSandbox(ctx context.Context, modulePath, version,
 }
 
 func (s *scanner) runGovulncheckSandbox(ctx context.Context, mode, arg string) (*govulncheck.SandboxResponse, error) {
+	goOut, err := s.sbox.Command("/usr/local/go/bin/go", "version").Output()
+	if err != nil {
+		log.Debugf(ctx, "running go version error: %v", err)
+	} else {
+		log.Debugf(ctx, "Sandbox running %s", goOut)
+	}
 	log.Infof(ctx, "running govulncheck in sandbox: mode %s, arg %q", mode, arg)
 	cmd := s.sbox.Command(filepath.Join(s.binaryDir, "govulncheck_sandbox"), s.govulncheckPath, mode, arg, s.vulnDBDir)
 	stdout, err := cmd.Output()
