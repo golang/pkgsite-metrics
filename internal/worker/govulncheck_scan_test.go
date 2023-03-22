@@ -7,7 +7,6 @@ package worker
 import (
 	"context"
 	"errors"
-	"flag"
 	"fmt"
 	"io"
 	"path/filepath"
@@ -17,9 +16,8 @@ import (
 	"cloud.google.com/go/storage"
 	"golang.org/x/pkgsite-metrics/internal/buildtest"
 	"golang.org/x/pkgsite-metrics/internal/govulncheck"
+	test "golang.org/x/pkgsite-metrics/internal/testing"
 )
-
-var integration = flag.Bool("integration", false, "test against actual service")
 
 func TestAsScanError(t *testing.T) {
 	check := func(err error, want bool) {
@@ -80,52 +78,53 @@ func TestRunScanModuleInsecure(t *testing.T) {
 	}
 
 	ctx := context.Background()
-	t.Run("govulncheck", func(t *testing.T) {
-		s := &scanner{insecure: true, govulncheckPath: govulncheckPath, vulnDBDir: vulndb}
-		stats := &scanStats{}
-		vulns, err := s.runGovulncheckScanInsecure(ctx,
-			"golang.org/vuln", "v0.0.0",
-			"../testdata/module", ModeGovulncheck, stats)
-		if err != nil {
-			t.Fatal(err)
-		}
-		wantID := "GO-2021-0113"
-		found := false
-		for _, v := range vulns {
-			if v.OSV.ID == wantID {
-				found = true
-				break
+	for _, tc := range []struct {
+		name  string
+		input string
+		mode  string
+	}{
+		{"govulncheck", "../testdata/module", ModeGovulncheck},
+		// test_vuln binary on gcs is built from ../testdata/module.
+		{"govulncheck", "test_vuln", ModeBinary},
+	} {
+		tc := tc
+		t.Run(tc.name, func(t *testing.T) {
+			s := &scanner{insecure: true, govulncheckPath: govulncheckPath, vulnDBDir: vulndb}
+
+			if tc.mode == ModeBinary {
+				test.NeedsIntegrationEnv(t)
+
+				gcsClient, err := storage.NewClient(ctx)
+				if err != nil {
+					t.Fatal(err)
+				}
+				s.gcsBucket = gcsClient.Bucket("go-ecosystem")
 			}
-		}
-		if !found {
-			t.Errorf("want %s, did not find it in %d vulns", wantID, len(vulns))
-		}
-		if got := stats.scanSeconds; got <= 0 {
-			t.Errorf("scan time not collected or negative: %v", got)
-		}
-		if got := stats.scanMemory; got <= 0 {
-			t.Errorf("scan memory not collected or negative: %v", got)
-		}
-	})
-	t.Run("binary", func(t *testing.T) {
-		if !*integration { // needs GCS read permission, not available on kokoro
-			t.Skip("missing -integration")
-		}
-		s := &scanner{govulncheckPath: govulncheckPath, vulnDBDir: vulndb}
-		gcsClient, err := storage.NewClient(context.Background())
-		if err != nil {
-			t.Fatal(err)
-		}
-		s.gcsBucket = gcsClient.Bucket("go-ecosystem")
-		stats := &scanStats{}
-		vulns, err := s.runGovulncheckScanInsecure(ctx,
-			"golang.org/vuln", "v0.0.0",
-			"cmd/worker", ModeBinary, stats)
-		if err != nil {
-			t.Fatal(err)
-		}
-		if g, w := len(vulns), 14; g != w {
-			t.Errorf("got %d vulns, want %d", g, w)
-		}
-	})
+
+			stats := &scanStats{}
+			vulns, err := s.runGovulncheckScanInsecure(ctx,
+				"golang.org/vuln", "v0.0.0",
+				tc.input, tc.mode, stats)
+			if err != nil {
+				t.Fatal(err)
+			}
+			wantID := "GO-2021-0113"
+			found := false
+			for _, v := range vulns {
+				if v.OSV.ID == wantID {
+					found = true
+					break
+				}
+			}
+			if !found {
+				t.Errorf("want %s, did not find it in %d vulns", wantID, len(vulns))
+			}
+			if got := stats.scanSeconds; got <= 0 {
+				t.Errorf("scan time not collected or negative: %v", got)
+			}
+			if got := stats.scanMemory; got <= 0 {
+				t.Errorf("scan memory not collected or negative: %v", got)
+			}
+		})
+	}
 }

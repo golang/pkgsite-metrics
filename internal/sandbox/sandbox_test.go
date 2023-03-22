@@ -12,13 +12,24 @@ import (
 	"testing"
 
 	"golang.org/x/pkgsite-metrics/internal/derrors"
+	test "golang.org/x/pkgsite-metrics/internal/testing"
 )
 
-// These tests require a minimal bundle, in testdata/bundle.
-// The Makefile in this directory will build and install
-// the binaries needed for the test.
+func TestIntegration(t *testing.T) {
+	test.NeedsIntegrationEnv(t)
 
-func Test(t *testing.T) {
+	cmd := exec.Command("make")
+	cmd.Stdout = os.Stdout
+	cmd.Stderr = os.Stderr
+	if err := cmd.Run(); err != nil {
+		t.Fatal(err)
+	}
+}
+
+// TestSandbox tests require a minimal bundle, in testdata/bundle.
+// The Makefile in this directory will build and install the binaries
+// needed for the test. See TestIntegration above.
+func TestSandbox(t *testing.T) {
 	if os.Getenv("RUN_FROM_MAKE") != "1" {
 		t.Skip("skipping; must run with 'make'.")
 	}

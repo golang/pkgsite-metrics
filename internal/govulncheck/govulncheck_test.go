@@ -6,7 +6,6 @@ package govulncheck
 
 import (
 	"context"
-	"flag"
 	"fmt"
 	"testing"
 	"time"
@@ -15,6 +14,7 @@ import (
 	"github.com/google/go-cmp/cmp"
 	"github.com/google/go-cmp/cmp/cmpopts"
 	"golang.org/x/pkgsite-metrics/internal/bigquery"
+	test "golang.org/x/pkgsite-metrics/internal/testing"
 	"golang.org/x/vuln/exp/govulncheck"
 	"golang.org/x/vuln/osv"
 	"google.golang.org/api/iterator"
@@ -146,9 +146,9 @@ func TestSchemaString(t *testing.T) {
 	}
 }
 
-var integration = flag.Bool("integration", false, "test against actual service")
-
 func TestIntegration(t *testing.T) {
+	test.NeedsIntegrationEnv(t)
+
 	must := func(err error) {
 		t.Helper()
 		if err != nil {
@@ -156,9 +156,6 @@ func TestIntegration(t *testing.T) {
 		}
 	}
 
-	if !*integration {
-		t.Skip("missing -integration")
-	}
 	ctx := context.Background()
 	const projectID = "go-ecosystem"
 

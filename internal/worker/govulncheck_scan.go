@@ -422,7 +422,6 @@ func (s *scanner) runBinaryScanInsecure(ctx context.Context, modulePath, version
 	if err := copyToLocalFile(localPathname, false, gcsPathname, gcsOpenFileFunc(ctx, s.gcsBucket)); err != nil {
 		return nil, err
 	}
-
 	vulns, err := s.runGovulncheckCmd(localPathname, "", stats)
 	if err != nil {
 		return nil, err
@@ -435,10 +434,10 @@ func (s *scanner) runGovulncheckCmd(pattern, tempDir string, stats *scanStats) (
 	govulncheckCmd := exec.Command(s.govulncheckPath, "-json", pattern)
 	govulncheckCmd.Env = append(govulncheckCmd.Environ(), "GOVULNDB=file://"+s.vulnDBDir)
 	govulncheckCmd.Dir = tempDir
-	output, err := govulncheckCmd.Output()
+	output, err := govulncheckCmd.CombinedOutput()
 	if err != nil {
 		if e := (&exec.ExitError{}); !errors.As(err, &e) || e.ProcessState.ExitCode() != 3 {
-			return nil, err
+			return nil, fmt.Errorf("govulncheck error: err=%v out=%s", err, output)
 		}
 	}
 	stats.scanSeconds = time.Since(start).Seconds()

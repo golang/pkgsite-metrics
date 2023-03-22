@@ -90,6 +90,14 @@ check_misspell() {
     -o -type f -not -name modules.txt -not -name '*.svg' -not -name '*.ts.snap' -not -name '*.json')
 }
 
+# check_integration prints a warning if the environment
+# variable for integration testing is not set.
+check_integration() {
+  if [[ "${GO_ECOSYSTEM_INTEGRATION_TESTING}" != "1" ]]; then
+    warn "Running go test ./... will skip integration tests (GO_ECOSYSTEM_INTEGRATION_TESTING != 1)"
+  fi
+}
+
 go_linters() {
   check_vet
   check_staticcheck
@@ -102,6 +110,7 @@ go_modtidy() {
 }
 
 runchecks() {
+  check_integration
   check_headers
   go_linters
   go_modtidy

@@ -5,6 +5,7 @@
 package testing
 
 import (
+	"os"
 	"os/exec"
 	"testing"
 )
@@ -16,5 +17,19 @@ func NeedsGoEnv(t testing.TB) {
 
 	if _, err := exec.LookPath("go"); err != nil {
 		t.Skip("skipping test: can't run go env")
+	}
+}
+
+// NeedsIntegrationEnv skips t if the underlying test satisfies integration
+// requirements. It must be executed in the non-short test mode with an
+// appropriate integration environment.
+func NeedsIntegrationEnv(t testing.TB) {
+	t.Helper()
+
+	if os.Getenv("GO_ECOSYSTEM_INTEGRATION_TESTING") != "1" {
+		t.Skip("skipping; need local test environment with GCS permissions")
+	}
+	if testing.Short() {
+		t.Skip("skipping; integration tests must be run in non-short mode")
 	}
 }

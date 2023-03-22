@@ -6,7 +6,6 @@ package bigquery
 
 import (
 	"context"
-	"flag"
 	"fmt"
 	"testing"
 	"time"
@@ -16,11 +15,12 @@ import (
 	"github.com/google/go-cmp/cmp"
 	"github.com/google/go-cmp/cmp/cmpopts"
 	"golang.org/x/exp/slices"
+	test "golang.org/x/pkgsite-metrics/internal/testing"
 )
 
-var integration = flag.Bool("integration", false, "test against actual service")
-
 func TestIntegration(t *testing.T) {
+	test.NeedsIntegrationEnv(t)
+
 	must := func(err error) {
 		t.Helper()
 		if err != nil {
@@ -28,9 +28,6 @@ func TestIntegration(t *testing.T) {
 		}
 	}
 
-	if !*integration {
-		t.Skip("missing -integration")
-	}
 	ctx := context.Background()
 	const projectID = "go-ecosystem"
 
@@ -81,9 +78,8 @@ func TestIntegration(t *testing.T) {
 }
 
 func TestIsNotFoundError(t *testing.T) {
-	if !*integration {
-		t.Skip("missing -integration")
-	}
+	test.NeedsIntegrationEnv(t)
+
 	client, err := bq.NewClient(context.Background(), "go-ecosystem")
 	if err != nil {
 		t.Fatal(err)

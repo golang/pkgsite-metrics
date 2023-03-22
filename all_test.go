@@ -14,6 +14,10 @@ import (
 )
 
 func Test(t *testing.T) {
+	if os.Getenv("GO_ECOSYSTEM_INTEGRATION_TESTING") != "1" {
+		t.Log("warning: running go test ./... will skip checking integration tests")
+	}
+
 	bash, err := exec.LookPath("bash")
 	if err != nil {
 		t.Skipf("skipping: %v", err)
