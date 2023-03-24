@@ -26,7 +26,7 @@ var startDate = civil.Date{Year: 2023, Month: time.January, Day: 1}
 // ComputeAndStore computes Vuln DB request counts from the last date we have
 // data for, and writes them to BigQuery.
 func ComputeAndStore(ctx context.Context, vulndbBucketProjectID string, client *bigquery.Client) error {
-	rcs, err := readFromBigQuery(ctx, client)
+	rcs, err := ReadFromBigQuery(ctx, client)
 	if err != nil {
 		return err
 	}

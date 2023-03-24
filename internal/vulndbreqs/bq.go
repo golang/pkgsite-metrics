@@ -47,8 +47,8 @@ func writeToBigQuery(ctx context.Context, client *bigquery.Client, rcs []*Reques
 	return bigquery.UploadMany(ctx, client, TableName, rcs, 0)
 }
 
-// readFromBigQuery returns daily counts for requests to the vuln DB, most recent first.
-func readFromBigQuery(ctx context.Context, client *bigquery.Client) (_ []*RequestCount, err error) {
+// ReadFromBigQuery returns daily counts for requests to the vuln DB, most recent first.
+func ReadFromBigQuery(ctx context.Context, client *bigquery.Client) (_ []*RequestCount, err error) {
 	defer derrors.Wrap(&err, "readFromBigQuery")
 	// Select the most recently inserted row for each date.
 	q := fmt.Sprintf("(%s) ORDER BY date DESC", bigquery.PartitionQuery{

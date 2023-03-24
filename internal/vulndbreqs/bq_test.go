@@ -53,7 +53,7 @@ func TestBigQuery(t *testing.T) {
 	}
 	must(writeToBigQuery(ctx, client, counts))
 
-	got, err := readFromBigQuery(ctx, client)
+	got, err := ReadFromBigQuery(ctx, client)
 	if err != nil {
 		t.Fatal(err)
 	}
