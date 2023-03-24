@@ -251,11 +251,5 @@ func moduleDir(modulePath, version string) string {
 // cleanup calls f and combines the error with errp.
 // It is meant to be deferred.
 func cleanup(errp *error, f func() error) {
-	if err := f(); err != nil {
-		if *errp == nil {
-			*errp = err
-		} else {
-			*errp = fmt.Errorf("cleanup: %v, and also %w", err, *errp)
-		}
-	}
+	*errp = errors.Join(*errp, f())
 }
