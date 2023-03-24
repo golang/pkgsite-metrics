@@ -26,6 +26,9 @@ WORKDIR /
 # The worker binary and related files live here.
 RUN mkdir /app
 
+# When debugging the sandbox manually, run this as well:
+# RUN mkdir /tmp/modules
+
 # Where binaries live.
 # Mapped by the sandbox config to the same place inside the sandbox.
 # If you change this, you must also edit the bind mount in config.json.commented.
