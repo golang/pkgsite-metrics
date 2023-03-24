@@ -23,6 +23,7 @@ import (
 	"golang.org/x/pkgsite-metrics/internal/observe"
 	"golang.org/x/pkgsite-metrics/internal/proxy"
 	"golang.org/x/pkgsite-metrics/internal/queue"
+	"golang.org/x/pkgsite-metrics/internal/vulndbreqs"
 	vulnc "golang.org/x/vuln/client"
 )
 
@@ -50,6 +51,11 @@ func NewServer(ctx context.Context, cfg *config.Config) (_ *Server, err error) {
 			return nil, err
 		}
 		for _, tableID := range bigquery.Tables() {
+			// Hack to avoid creating the table for vulndb requests in the
+			// same dataset.
+			if tableID == vulndbreqs.TableName {
+				continue
+			}
 			created, err := bq.CreateOrUpdateTable(ctx, tableID)
 			if err != nil {
 				return nil, err
