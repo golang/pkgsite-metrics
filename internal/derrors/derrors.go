@@ -216,3 +216,9 @@ func IncludeStderr(err error) string {
 	}
 	return err.Error()
 }
+
+// Cleanup calls f and combines the error with errp.
+// It is meant to be deferred.
+func Cleanup(errp *error, f func() error) {
+	*errp = errors.Join(*errp, f())
+}

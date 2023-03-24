@@ -83,7 +83,7 @@ func (s *analysisServer) handleScan(w http.ResponseWriter, r *http.Request) (err
 	if err := copyToLocalFile(localBinaryPath, executable, srcPath, s.openFile); err != nil {
 		return err
 	}
-	defer cleanup(&err, func() error { return os.Remove(localBinaryPath) })
+	defer derrors.Cleanup(&err, func() error { return os.Remove(localBinaryPath) })
 
 	binaryHash, err := hashFile(localBinaryPath)
 	if err != nil {
@@ -134,7 +134,7 @@ func (s *analysisServer) scan(ctx context.Context, req *analysis.ScanRequest, lo
 
 func (s *analysisServer) scanInternal(ctx context.Context, req *analysis.ScanRequest, binaryPath string) (jt analysis.JSONTree, err error) {
 	mdir := moduleDir(req.Module, req.Version)
-	defer cleanup(&err, func() error { return os.RemoveAll(mdir) })
+	defer derrors.Cleanup(&err, func() error { return os.RemoveAll(mdir) })
 	if err := prepareModule(ctx, req.Module, req.Version, mdir, s.proxyClient, req.Insecure); err != nil {
 		return nil, err
 	}

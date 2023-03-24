@@ -247,9 +247,3 @@ func prepareModule(ctx context.Context, modulePath, version, dir string, proxyCl
 func moduleDir(modulePath, version string) string {
 	return filepath.Join(modulesDir, modulePath+"@"+version)
 }
-
-// cleanup calls f and combines the error with errp.
-// It is meant to be deferred.
-func cleanup(errp *error, f func() error) {
-	*errp = errors.Join(*errp, f())
-}
