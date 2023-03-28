@@ -46,7 +46,7 @@ type VersionInfo struct {
 	Time    time.Time
 }
 
-// Setting this header to true prevents the proxy from fetching uncached
+// DisableFetchHeader is used to prevent the proxy from fetching uncached
 // modules.
 const DisableFetchHeader = "Disable-Module-Fetch"
 
