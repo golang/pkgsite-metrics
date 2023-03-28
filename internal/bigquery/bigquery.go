@@ -356,6 +356,6 @@ func (q PartitionQuery) String() string {
 	return fmt.Sprintf(qf, cols, q.PartitionOn, q.OrderBy, "`"+q.Table+"`")
 }
 
-// Copy InferSchema so users don't have to import cloud.google.com/go/bigquery
-// just to get it.
+// InferSchema is a copy of cloud.google.com/go/bigquery.InferSchema so
+// users don't have to import cloud.google.com/go/bigquery just to get it.
 var InferSchema = bq.InferSchema

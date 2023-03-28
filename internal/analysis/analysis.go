@@ -2,6 +2,8 @@
 // Use of this source code is governed by a BSD-style
 // license that can be found in the LICENSE file.
 
+// Package analysis provides functionality for manipulating
+// inputs and outputs of analysis endpoints.
 package analysis
 
 import (
@@ -75,8 +77,8 @@ func ParseScanRequest(r *http.Request, prefix string) (*ScanRequest, error) {
 // Each result is either a jsonError or a list of JSONDiagnostic.
 type JSONTree map[string]map[string]DiagnosticsOrError
 
-// A JSONDiagnostic can be used to encode and decode analysis.Diagnostics to and
-// from JSON.
+// A JSONDiagnostic can be used to encode and decode
+// analysis.Diagnostics to and from JSON.
 type JSONDiagnostic struct {
 	Category       string             `json:"category,omitempty"`
 	Posn           string             `json:"posn"`
@@ -92,7 +94,7 @@ type JSONSuggestedFix struct {
 	Edits   []JSONTextEdit `json:"edits"`
 }
 
-// A TextEdit describes the replacement of a portion of a file.
+// A JSONTextEdit describes the replacement of a portion of a file.
 // Start and End are zero-based half-open indices into the original byte
 // sequence of the file, and New is the new text.
 type JSONTextEdit struct {
