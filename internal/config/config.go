@@ -28,7 +28,7 @@ type Config struct {
 	// ProjectID is the Google Cloud ProjectID where the resources live.
 	ProjectID string
 
-	// Identifier for the version currently running.
+	// VersionID is the identifier for the version currently running.
 	// We do not use the version ID from Cloud Run (see
 	// https://cloud.google.com/run/docs/reference/container-contract).
 	// Instead, we use the DOCKER_IMAGE environment variable, set
@@ -51,7 +51,7 @@ type Config struct {
 	// UseErrorReporting determines whether errors go to the Error Reporting API.
 	UseErrorReporting bool
 
-	// BigQuery dataset to write results to.
+	// BigQueryDataset is the BigQuery dataset to write results to.
 	BigQueryDataset string
 
 	// QueueName is the name of the Cloud Tasks queue.
@@ -61,13 +61,13 @@ type Config struct {
 	// It should be used when the worker is not on AppEngine.
 	QueueURL string
 
-	// LocalQueueWorkers is the number of concurrent requests to the fetch service, when running locally.
+	// LocalQueueWorkers is the number of concurrent requests to the fetch service,
+	// when running locally.
 	LocalQueueWorkers int
 
 	// MonitoredResource represents the resource that is running the current binary.
 	// It might be a Google AppEngine app, a Cloud Run service, or a Kubernetes pod.
-	// See https://cloud.google.com/monitoring/api/resources for more
-	// details:
+	// See https://cloud.google.com/monitoring/api/resources for more details:
 	// "An object representing a resource that can be used for monitoring, logging,
 	// billing, or other purposes. Examples include virtual machine instances,
 	// databases, and storage devices such as disks.""
@@ -89,16 +89,18 @@ type Config struct {
 	// VulnDBDir is the local directory of the vulnerability database.
 	VulnDBDir string
 
-	// The host, port and user of the pkgsite database used to find
-	// modules to scan.
+	// PkgsiteDBHost is the host of the pkgsite db used to find modules to scan.
 	PkgsiteDBHost string
+	// PkgsiteDBPort is the port of the pkgsite db used to find modules to scan.
 	PkgsiteDBPort string
+	// PkgsiteDBName is the name of the pkgsite db used to find modules to scan.
 	PkgsiteDBName string
+	// PkgsiteDBUser is the user of the pkgsite db used to find modules to scan.
 	PkgsiteDBUser string
-	// The name of the Secret Manager secret holding the DB password.
+	// PkgsiteDBSecret is the name of the secret holding the pkgsite db password.
 	PkgsiteDBSecret string
 
-	// Run analysis binaries without sandbox.
+	// Insecure runs analysis binaries without sandbox.
 	Insecure bool
 
 	// ProxyURL is the url for the Go module proxy.
