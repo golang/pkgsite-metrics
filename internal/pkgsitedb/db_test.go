@@ -19,7 +19,7 @@ import (
 	_ "github.com/lib/pq"
 )
 
-// Pass -db to test against a a local database (host 127.0.0.1).
+// dbInfo is -db flag used to test against a a local database (host 127.0.0.1).
 var dbInfo = flag.String("db", "",
 	"DB info for testing in the form 'name=NAME&port=PORT&user=USER&password=PW'")
 
