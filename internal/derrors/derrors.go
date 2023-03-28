@@ -3,7 +3,7 @@
 // license that can be found in the LICENSE file.
 
 // Package derrors defines internal error values to categorize the different
-// types error semantics.
+// types of semantic errors.
 package derrors
 
 import (
