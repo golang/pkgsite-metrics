@@ -2,6 +2,8 @@
 // Use of this source code is governed by a BSD-style
 // license that can be found in the LICENSE file.
 
+// Package govulncheck provides functionality for manipulating
+// inputs and outputs of govulncheck endpoints.
 package govulncheck
 
 import (
@@ -18,7 +20,7 @@ import (
 	"golang.org/x/vuln/exp/govulncheck"
 )
 
-// EnqueueQueryParams for govulncheck/enqueue
+// EnqueueQueryParams for govulncheck/enqueue.
 type EnqueueQueryParams struct {
 	Suffix string // appended to task queue IDs to generate unique tasks
 	Mode   string // type of analysis to run
@@ -26,8 +28,7 @@ type EnqueueQueryParams struct {
 	File   string // path to file containing modules; if missing, use DB
 }
 
-// Request contains information passed
-// to a scan endpoint.
+// Request contains information passed to a scan endpoint.
 type Request struct {
 	scan.ModuleURLPath
 	QueryParams
@@ -41,7 +42,8 @@ type QueryParams struct {
 	Serve      bool   // serve results back to client instead of writing them to BigQuery
 }
 
-// These methods implement queue.Task.
+// The below methods implement queue.Task.
+
 func (r *Request) Name() string { return r.Module + "@" + r.Version }
 
 func (r *Request) Path() string { return r.ModuleURLPath.Path() }
@@ -213,8 +215,7 @@ func ReadWorkVersions(ctx context.Context, c *bigquery.Client) (_ map[[2]string]
 	return m, nil
 }
 
-// ScanStats represent monitoring information about a given
-// run of govulncheck.
+// ScanStats contains monitoring information for a govulncheck run.
 type ScanStats struct {
 	// ScanSeconds is the amount of time a scan took to run, in seconds.
 	ScanSeconds float64
