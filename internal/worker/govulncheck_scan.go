@@ -212,11 +212,13 @@ func (s *scanner) ScanModule(ctx context.Context, w http.ResponseWriter, sreq *g
 		case errors.Is(err, derrors.LoadPackagesNoGoModError) ||
 			errors.Is(err, derrors.LoadPackagesNoGoSumError):
 			// errors already classified by package loading.
-		case isMissingGoMod(err):
-			// specific for govulncheck
+		case isMissingGoMod(err) || isNoModulesSpecified(err):
+			// Covers the missing go.mod file cases when running govulncheck in the sandbox
 			err = fmt.Errorf("%v: %w", err, derrors.LoadPackagesNoGoModError)
 		case isNoRequiredModule(err):
 			err = fmt.Errorf("%v: %w", err, derrors.LoadPackagesNoRequiredModuleError)
+		case isTooManyFiles(err):
+			err = fmt.Errorf("%v: %w", err, derrors.ScanModuleTooManyOpenFiles)
 		case isMissingGoSumEntry(err):
 			err = fmt.Errorf("%v: %w", err, derrors.LoadPackagesMissingGoSumEntryError)
 		case errors.Is(err, derrors.LoadPackagesError):
@@ -437,6 +439,7 @@ func (s *scanner) runGovulncheckCmd(pattern, tempDir string, stats *scanStats) (
 	output, err := govulncheckCmd.CombinedOutput()
 	if err != nil {
 		if e := (&exec.ExitError{}); !errors.As(err, &e) || e.ProcessState.ExitCode() != 3 {
+			// TODO: error processing here
 			return nil, fmt.Errorf("govulncheck error: err=%v out=%s", err, output)
 		}
 	}
@@ -446,8 +449,17 @@ func (s *scanner) runGovulncheckCmd(pattern, tempDir string, stats *scanStats) (
 	res, err := govulncheck.UnmarshalGovulncheckResult(output)
 	if err != nil {
 		return nil, err
+		//TODO:
 	}
 	return res.Vulns, nil
+}
+
+func isNoModulesSpecified(err error) bool {
+	return strings.Contains(err.Error(), "no modules specified")
+}
+
+func isTooManyFiles(err error) bool {
+	return strings.Contains(err.Error(), "too many open files")
 }
 
 func isNoRequiredModule(err error) bool {

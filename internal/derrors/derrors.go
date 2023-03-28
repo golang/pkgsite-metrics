@@ -94,6 +94,9 @@ var (
 
 	// ScanModuleMemoryLimitExceeded occurs when scanning uses too much memory.
 	ScanModuleMemoryLimitExceeded = errors.New("scan module memory limit exceeded")
+
+	// ScanModuleTooManyOpenFiles occurs when there are too many files open while scanning.
+	ScanModuleTooManyOpenFiles = errors.New("scan module too many open files")
 )
 
 // Wrap adds context to the error and allows
@@ -195,6 +198,8 @@ func CategorizeError(err error) string {
 		return "PANIC"
 	case errors.Is(err, ScanModuleMemoryLimitExceeded):
 		return "MEM LIMIT EXCEEDED"
+	case errors.Is(err, ScanModuleTooManyOpenFiles):
+		return "TOO MANY OPEN FILES"
 	case errors.Is(err, ProxyError):
 		return "PROXY"
 	case errors.Is(err, BigQueryError):
