@@ -12,6 +12,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"syscall"
 	"time"
@@ -212,6 +213,8 @@ func (s *scanner) ScanModule(ctx context.Context, w http.ResponseWriter, sreq *g
 			err = fmt.Errorf("%v: %w", err, derrors.ScanModuleTooManyOpenFiles)
 		case isMissingGoSumEntry(err):
 			err = fmt.Errorf("%v: %w", err, derrors.LoadPackagesMissingGoSumEntryError)
+		case isReplacingWithLocalPath(err):
+			err = fmt.Errorf("%v: %w", err, derrors.LoadPackagesImportedLocalError)
 		case errors.Is(err, derrors.LoadPackagesError):
 			// general load packages error
 		case isVulnDBConnection(err):
@@ -461,6 +464,16 @@ func isMissingGoSumEntry(err error) bool {
 
 func isMissingGoMod(err error) bool {
 	return strings.Contains(err.Error(), "no go.mod file")
+}
+
+func isModVendor(err error) bool {
+	return strings.Contains(err.Error(), "-mod=vendor")
+}
+
+func isReplacingWithLocalPath(err error) bool {
+	errStr := err.Error()
+	matched, err := regexp.MatchString(`replaced by .{0,2}/`, errStr)
+	return err == nil && matched && strings.Contains(errStr, "go.mod: no such file")
 }
 
 func isVulnDBConnection(err error) bool {
