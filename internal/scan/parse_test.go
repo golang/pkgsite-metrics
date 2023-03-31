@@ -50,7 +50,7 @@ func TestParseModuleURLPath(t *testing.T) {
 	}
 }
 
-func TestModuleURLPAthError(t *testing.T) {
+func TestModuleURLPathError(t *testing.T) {
 	for _, test := range []struct {
 		name string
 		path string

@@ -64,7 +64,7 @@ func ParseCorpusFile(filename string, minImportedByCount int) (ms []ModuleSpec, 
 	return ms, nil
 }
 
-// ReadFilelines reads and returns the lines from a file.
+// ReadFileLines reads and returns the lines from a file.
 // Whitespace on each line is trimmed.
 // Blank lines and lines beginning with '#' are ignored.
 func ReadFileLines(filename string) (lines []string, err error) {
