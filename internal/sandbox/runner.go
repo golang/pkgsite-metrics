@@ -4,12 +4,12 @@
 
 //go:build ignore
 
-// This program runs another program provided on standard input,
-// prints its standard output, then terminates. It logs to stderr.
+// Package main defines a program that runs another program
+// provided on standard input, prints its standard output, then
+// terminates. It logs to stderr.
 //
-// It first reads all of standard input, then splits it into words on
-// whitespace. It treats the first word as the program path and the rest as
-// arguments.
+// The input is expected to be json content encoding an exec.Cmd
+// structure extended with a boolean AppendToEnv field.
 package main
 
 import (
