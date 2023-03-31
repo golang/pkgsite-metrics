@@ -86,9 +86,11 @@ func cleanGoCaches(ctx context.Context, insecure bool) {
 		out, err = exec.Command("go", "clean", "-cache", "-modcache").CombinedOutput()
 	} else {
 		logDiskUsage("before")
-		// TODO(zpavlinovic): clean within sandbox. Currently, there is a memory leak.
-		//const sandboxGoPath = "/usr/local/go/bin/go"
-		//out, err = s.sbox.Command(sandboxGoPath, "clean", "-cache", "-modcache").Output()
+		// We need to clear Go caches after a scan to avoid memory issues. The caches
+		// are created and populated outside of the sandbox. We cannot clear them from
+		// within the sandbox since "any modifications to the root filesystem are destroyed
+		// with the container" (https://gvisor.dev/docs/user_guide/filesystem/). We hence
+		// also clean the caches from the outside.
 		c := exec.Command("go", "clean", "-cache", "-modcache")
 		c.Env = append(os.Environ(), "GOCACHE=/bundle/rootfs/"+sandboxGoCache, "GOMODCACHE=/bundle/rootfs/"+sandboxGoModCache)
 		out, err = c.CombinedOutput()

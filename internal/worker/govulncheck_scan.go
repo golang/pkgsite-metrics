@@ -58,10 +58,6 @@ func IsValidGovulncheckMode(mode string) bool {
 	return modes[mode]
 }
 
-// TODO(b/241402488): shouldSkip is the list of modules that we are not
-// currently scanning due to previous issues that need investigation.
-var shouldSkip = map[string]bool{}
-
 var scanCounter = event.NewCounter("scans", &event.MetricOptions{Namespace: metricNamespace})
 
 // handleScan runs a govulncheck scan for a single input module. It is triggered
@@ -82,10 +78,6 @@ func (h *GovulncheckServer) handleScan(w http.ResponseWriter, r *http.Request) (
 	}
 	if sreq.Mode == "" {
 		sreq.Mode = ModeGovulncheck
-	}
-	if shouldSkip[sreq.Module] {
-		log.Infof(ctx, "skipping (module in shouldSkip list): %s", sreq.Path())
-		return nil
 	}
 	if err := h.readGovulncheckWorkVersions(ctx); err != nil {
 		return err
@@ -438,7 +430,6 @@ func (s *scanner) runGovulncheckCmd(pattern, tempDir string, stats *scanStats) (
 	output, err := govulncheckCmd.CombinedOutput()
 	if err != nil {
 		if e := (&exec.ExitError{}); !errors.As(err, &e) || e.ProcessState.ExitCode() != 3 {
-			// TODO: error processing here
 			return nil, fmt.Errorf("govulncheck error: err=%v out=%s", err, output)
 		}
 	}
@@ -448,7 +439,6 @@ func (s *scanner) runGovulncheckCmd(pattern, tempDir string, stats *scanStats) (
 	res, err := govulncheck.UnmarshalGovulncheckResult(output)
 	if err != nil {
 		return nil, err
-		//TODO:
 	}
 	return res.Vulns, nil
 }
