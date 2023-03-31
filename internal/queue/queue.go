@@ -35,8 +35,8 @@ type Task interface {
 
 // A Queue provides an interface for asynchronous scheduling of fetch actions.
 type Queue interface {
-	// Enqueue a scan request.
-	// Reports whether a new task was actually added.
+	// EnqueueScan enqueues a scan request.
+	// It reports whether a new task was actually added.
 	EnqueueScan(context.Context, Task, *Options) (bool, error)
 }
 
@@ -58,8 +58,7 @@ func New(ctx context.Context, cfg *config.Config, processFunc inMemoryProcessFun
 	return g, nil
 }
 
-// GCP provides a Queue implementation backed by the Google Cloud Tasks
-// API.
+// GCP provides a Queue implementation backed by the Google Cloud Tasks API.
 type GCP struct {
 	client    *cloudtasks.Client
 	queueName string // full GCP name of the queue
@@ -71,7 +70,7 @@ type GCP struct {
 	token *taskspb.HttpRequest_OidcToken
 }
 
-// NewGCP returns a new Queue that can be used to enqueue tasks using the
+// newGCP returns a new Queue that can be used to enqueue tasks using the
 // cloud tasks API.  The given queueID should be the name of the queue in the
 // cloud tasks console.
 func newGCP(cfg *config.Config, client *cloudtasks.Client, queueID string) (_ *GCP, err error) {
@@ -103,7 +102,7 @@ func newGCP(cfg *config.Config, client *cloudtasks.Client, queueID string) (_ *G
 	}, nil
 }
 
-// Enqueue enqueues a task on GCP.
+// EnqueueScan enqueues a scan task on GCP.
 // It returns an error if there was an error hashing the task name, or
 // an error pushing the task to GCP.
 // If the task was a duplicate, it returns (false, nil).
@@ -149,7 +148,7 @@ type Options struct {
 	TaskNameSuffix string
 }
 
-// Maximum timeout for HTTP tasks.
+// maxCloudTasksTimeout is the maximum timeout for HTTP tasks.
 // See https://cloud.google.com/tasks/docs/creating-http-target-tasks.
 const maxCloudTasksTimeout = 30 * time.Minute
 
@@ -196,7 +195,7 @@ func (q *GCP) newTaskRequest(task Task, opts *Options) (*taskspb.CreateTaskReque
 	return req, nil
 }
 
-// Create a task ID for the given task.
+// newTaskID creates a task ID for the given task.
 // Tasks with the same ID that are created within a few hours of each other. will be de-duplicated.
 // See https://cloud.google.com/tasks/docs/reference/rpc/google.cloud.tasks.v2#createtaskrequest
 // under "Task De-duplication".
@@ -210,7 +209,7 @@ func newTaskID(namespace string, task Task) string {
 	return escapeTaskID(fmt.Sprintf("%s-%s-%s", name, namespace, hash[:8]))
 }
 
-// escapeTaskIDs escapes s so it contains only valid characters for a Cloud Tasks name.
+// escapeTaskID escapes s so it contains only valid characters for a Cloud Tasks name.
 // It tries to produce a readable result.
 // Task IDs can contain only letters ([A-Za-z]), numbers ([0-9]), hyphens (-), or underscores (_).
 func escapeTaskID(s string) string {
@@ -290,7 +289,7 @@ func NewInMemory(ctx context.Context, workerCount int, processFunc inMemoryProce
 	return q
 }
 
-// Enqueue pushes a fetch task into the local queue to be processed
+// EnqueueScan pushes a scan task into the local queue to be processed
 // asynchronously.
 func (q *InMemory) EnqueueScan(ctx context.Context, task Task, _ *Options) (bool, error) {
 	q.queue <- task
