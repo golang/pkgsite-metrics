@@ -201,9 +201,6 @@ func (s *scanner) ScanModule(ctx context.Context, w http.ResponseWriter, sreq *g
 	row.ScanMemory = int64(stats.scanMemory)
 	if err != nil {
 		switch {
-		case errors.Is(err, derrors.LoadPackagesNoGoModError) ||
-			errors.Is(err, derrors.LoadPackagesNoGoSumError):
-			// errors already classified by package loading.
 		case isMissingGoMod(err) || isNoModulesSpecified(err):
 			// Covers the missing go.mod file cases when running govulncheck in the sandbox
 			err = fmt.Errorf("%v: %w", err, derrors.LoadPackagesNoGoModError)
@@ -215,10 +212,6 @@ func (s *scanner) ScanModule(ctx context.Context, w http.ResponseWriter, sreq *g
 			err = fmt.Errorf("%v: %w", err, derrors.LoadPackagesMissingGoSumEntryError)
 		case isReplacingWithLocalPath(err):
 			err = fmt.Errorf("%v: %w", err, derrors.LoadPackagesImportedLocalError)
-		case errors.Is(err, derrors.LoadPackagesError):
-			// general load packages error
-		case isVulnDBConnection(err):
-			err = fmt.Errorf("%v: %w", err, derrors.ScanModuleGovulncheckDBConnectionError)
 		default:
 			err = fmt.Errorf("%v: %w", err, derrors.ScanModuleGovulncheckError)
 		}
@@ -466,18 +459,8 @@ func isMissingGoMod(err error) bool {
 	return strings.Contains(err.Error(), "no go.mod file")
 }
 
-func isModVendor(err error) bool {
-	return strings.Contains(err.Error(), "-mod=vendor")
-}
-
 func isReplacingWithLocalPath(err error) bool {
 	errStr := err.Error()
 	matched, err := regexp.MatchString(`replaced by .{0,2}/`, errStr)
 	return err == nil && matched && strings.Contains(errStr, "go.mod: no such file")
-}
-
-func isVulnDBConnection(err error) bool {
-	s := err.Error()
-	return strings.Contains(s, "https://vuln.go.dev") &&
-		strings.Contains(s, "connection")
 }
