@@ -164,7 +164,7 @@ func hashFile(filename string) (_ []byte, err error) {
 	return h.Sum(nil), nil
 }
 
-// Run the binary on the module.
+// runAnalysisBinary runs the binary on the module.
 func runAnalysisBinary(sbox *sandbox.Sandbox, binaryPath, reqArgs, moduleDir string) (analysis.JSONTree, error) {
 	args := []string{"-json"}
 	args = append(args, strings.Fields(reqArgs)...)

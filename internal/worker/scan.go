@@ -29,14 +29,15 @@ import (
 )
 
 const (
-	// The root of the sandbox, relative to the docker container.
+	// sandboxRoot is the root of the sandbox, relative to the docker container.
 	sandboxRoot = "/bundle/rootfs"
-	// The Go module cache resides in its default location, $HOME/go/pkg/mod.
+	// sandboxGoModCache is where the Go module cache resides in its default
+	// location, $HOME/go/pkg/mod.
 	sandboxGoModCache = "root/go/pkg/mod"
 
-	// The directory where modules live.
-	// The sandbox mounts this directory to the same path internally, so
-	// this path works for both secure and insecure modes.
+	// modulesDir is the directory where input modules live. The sandbox mounts
+	// this directory to the same path internally, so this path works for both
+	// secure and insecure modes.
 	modulesDir = "/tmp/modules"
 )
 
@@ -214,10 +215,8 @@ func gcsOpenFileFunc(ctx context.Context, bucket *storage.BucketHandle) openFile
 	}
 }
 
-// prepareModule prepares a module for scanning.
-// It downloads the module to the given directory and
-// takes other actions that increase the chance that
-// packages.Load will succeed.
+// prepareModule prepares a module for scanning. It downloads the module to the given
+// directory and takes other actions that increase the chance that package loading will succeed.
 func prepareModule(ctx context.Context, modulePath, version, dir string, proxyClient *proxy.Client, insecure bool) error {
 	log.Debugf(ctx, "downloading %s@%s to %s", modulePath, version, dir)
 	if err := modules.Download(ctx, modulePath, version, dir, proxyClient, true); err != nil {

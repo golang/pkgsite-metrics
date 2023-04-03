@@ -30,28 +30,25 @@ import (
 )
 
 const (
-	// modeImports is used to report results of
-	// vulnerability detection at imports level
-	// precision. It cannot be directly triggered
-	// by scan endpoints. Instead, ModeGovulncheck
-	// mode reports its results to show difference
-	// in precision of vulnerability detection.
+	// modeImports is used to report results of vulnerability detection at
+	// imports level precision. It cannot be directly triggered by scan
+	// endpoints. Instead, ModeGovulncheck mode reports its results to show
+	// difference in precision of vulnerability detection.
 	modeImports string = "IMPORTS"
 
-	// ModeBinary runs the govulncheck binary in
-	// binary mode.
+	// ModeBinary runs the govulncheck binary in binary mode.
 	ModeBinary string = "BINARY"
 
-	// ModeGovulncheck runs the govulncheck binary in
-	// default (source) mode.
+	// ModeGovulncheck runs the govulncheck binary in default (source) mode.
 	ModeGovulncheck = "GOVULNCHECK"
 
-	// Inside the sandbox, the user is root and their $HOME directory is /root.
-	// The Go cache resides in its default location, $HOME/.cache/go-build.
+	// sandboxGoCache is the location of the Go cache inside the sandbox. The
+	// user is root and their $HOME directory is /root. The Go cache resides
+	// in its default location, $HOME/.cache/go-build.
 	sandboxGoCache = "root/.cache/go-build"
 )
 
-// modes is a set of supported vulncheck modes
+// modes is a set of supported govulncheck modes.
 var modes = map[string]bool{
 	ModeBinary:      true,
 	ModeGovulncheck: true,
@@ -67,7 +64,9 @@ var shouldSkip = map[string]bool{}
 
 var scanCounter = event.NewCounter("scans", &event.MetricOptions{Namespace: metricNamespace})
 
-// path: /govulncheck/scan/MODULE_VERSION_SUFFIX?params
+// handleScan runs a govulncheck scan for a single input module. It is triggered
+// by path /govulncheck/scan/MODULE_VERSION_SUFFIX?params.
+//
 // See internal/govulncheck.ParseRequest for allowed path forms and query params.
 func (h *GovulncheckServer) handleScan(w http.ResponseWriter, r *http.Request) (err error) {
 	defer derrors.Wrap(&err, "handleScan")
