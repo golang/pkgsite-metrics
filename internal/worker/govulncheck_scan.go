@@ -212,6 +212,8 @@ func (s *scanner) ScanModule(ctx context.Context, w http.ResponseWriter, sreq *g
 			err = fmt.Errorf("%v: %w", err, derrors.LoadPackagesMissingGoSumEntryError)
 		case isReplacingWithLocalPath(err):
 			err = fmt.Errorf("%v: %w", err, derrors.LoadPackagesImportedLocalError)
+		case isModVendor(err):
+			err = fmt.Errorf("%v: %w", err, derrors.VendorError)
 		default:
 			err = fmt.Errorf("%v: %w", err, derrors.ScanModuleGovulncheckError)
 		}
@@ -457,6 +459,10 @@ func isMissingGoSumEntry(err error) bool {
 
 func isMissingGoMod(err error) bool {
 	return strings.Contains(err.Error(), "no go.mod file")
+}
+
+func isModVendor(err error) bool {
+	return strings.Contains(err.Error(), "-mod=vendor")
 }
 
 func isReplacingWithLocalPath(err error) bool {
