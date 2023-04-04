@@ -90,7 +90,7 @@ func (c *Cmd) Output() (_ []byte, err error) {
 	}
 	// -ignore-cgroups is needed to avoid this error from runsc:
 	// cannot set up cgroup for root: configuring cgroup: write /sys/fs/cgroup/cgroup.subtree_control: device or resource busy
-	cmd := exec.Command(c.sb.Runsc, "-ignore-cgroups", "-network=none", "-dcache=500", "run", "sandbox")
+	cmd := exec.Command(c.sb.Runsc, "-ignore-cgroups", "-network=none", "-platform=systrap", "-dcache=500", "run", "sandbox")
 	cmd.Dir = c.sb.bundleDir
 	stdinPipe, err := cmd.StdinPipe()
 	if err != nil {
