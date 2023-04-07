@@ -126,6 +126,24 @@ func (s *analysisServer) scan(ctx context.Context, req *analysis.ScanRequest, lo
 		return nil
 	})
 	if err != nil {
+		switch {
+		case isNoModulesSpecified(err):
+			// We currently run `go mod download` before running the sandbox
+			// and hence implicitly require that the project under analysis
+			// is a module. Projects working in GOPATH mode are not supported.
+			err = fmt.Errorf("%v: %w", err, derrors.LoadPackagesNoGoModError)
+		case isNoRequiredModule(err):
+			err = fmt.Errorf("%v: %w", err, derrors.LoadPackagesNoRequiredModuleError)
+		case isTooManyFiles(err):
+			err = fmt.Errorf("%v: %w", err, derrors.ScanModuleTooManyOpenFiles)
+		case isMissingGoSumEntry(err):
+			err = fmt.Errorf("%v: %w", err, derrors.LoadPackagesMissingGoSumEntryError)
+		case isReplacingWithLocalPath(err):
+			err = fmt.Errorf("%v: %w", err, derrors.LoadPackagesImportedLocalError)
+		case isModVendor(err):
+			err = fmt.Errorf("%v: %w", err, derrors.VendorError)
+		default:
+		}
 		row.AddError(err)
 	}
 	row.SortVersion = version.ForSorting(row.Version)
