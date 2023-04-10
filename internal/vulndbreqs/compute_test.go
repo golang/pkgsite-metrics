@@ -25,7 +25,7 @@ func TestCompute(t *testing.T) {
 	today := civil.DateOf(time.Now())
 	// Compute yesterday's counts, up to 10 log entries.
 	// Assume there are more than ten requests a day.
-	got, err := compute(context.Background(), projID, today.AddDays(-2), today, 10)
+	got, err := Compute(context.Background(), projID, today.AddDays(-2), today, 10)
 	if err != nil {
 		t.Fatal(err)
 	}

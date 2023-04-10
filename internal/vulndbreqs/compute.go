@@ -17,7 +17,6 @@ import (
 	"golang.org/x/exp/slices"
 	"golang.org/x/pkgsite-metrics/internal/bigquery"
 	"golang.org/x/pkgsite-metrics/internal/log"
-	"golang.org/x/time/rate"
 	"google.golang.org/api/iterator"
 )
 
@@ -41,7 +40,7 @@ func ComputeAndStore(ctx context.Context, vulndbBucketProjectID string, client *
 	for d := startDate; d.Before(today); d = d.AddDays(1) {
 		if !have[d] {
 			// compute excludes both the start and end dates.
-			rcs, err := compute(ctx, vulndbBucketProjectID, d.AddDays(-1), d.AddDays(1), 0)
+			rcs, err := Compute(ctx, vulndbBucketProjectID, d.AddDays(-1), d.AddDays(1), 0)
 			if err != nil {
 				return err
 			}
@@ -61,11 +60,11 @@ func ComputeAndStore(ctx context.Context, vulndbBucketProjectID string, client *
 	return nil
 }
 
-// compute queries the vulndb load balancer logs for all
+// Compute queries the vulndb load balancer logs for all
 // vuln DB requests between the given dates, exclusive of both.
 // It returns request counts for each date, sorted from newest to oldest.
 // If limit is positive, it reads no more than limit entries from the log (for testing only).
-func compute(ctx context.Context, vulndbBucketProjectID string, fromDate, toDate civil.Date, limit int) ([]*RequestCount, error) {
+func Compute(ctx context.Context, vulndbBucketProjectID string, fromDate, toDate civil.Date, limit int) ([]*RequestCount, error) {
 	log.Infof(ctx, "computing request counts from %s to %s", fromDate, toDate)
 	client, err := logadmin.NewClient(ctx, vulndbBucketProjectID)
 	if err != nil {
@@ -75,7 +74,7 @@ func compute(ctx context.Context, vulndbBucketProjectID string, fromDate, toDate
 
 	counts := map[civil.Date]int{}
 
-	it := client.Entries(ctx,
+	it := newEntryIterator(ctx, client,
 		// This filter has three sections, marked with blank lines. It is more
 		// efficient to do as much filtering as possible in the logging API
 		// query, rather than in code.
@@ -94,7 +93,7 @@ func compute(ctx context.Context, vulndbBucketProjectID string, fromDate, toDate
 		// times. It formats the times as dates like "2022-08-10". We want
 		// the filter to be exclusive on both ends, so we use "<" for the end date,
 		// and add one day to the start date.
-		logadmin.Filter(`
+		`
 		resource.type=http_load_balancer
 		resource.labels.forwarding_rule_name=go-vulndb-lb-forwarding-rule
 		resource.labels.url_map_name=go-vulndb-lb
@@ -107,18 +106,12 @@ func compute(ctx context.Context, vulndbBucketProjectID string, fromDate, toDate
 		-httpRequest.requestUrl:"https://vuln.go.dev/ID/"
 
 		timestamp>=`+fromDate.AddDays(1).String()+`
-		timestamp<`+toDate.String()))
-	// Using a large page size results in fewer requests to the logging API.
-	// 1000 is the maximum allowed.
-	const pageSize = 1000
-	it.PageInfo().MaxSize = pageSize
+		timestamp<`+toDate.String())
 	// Count each log entry we see, bucketing by date.
 	// The timestamps are in order from oldest to newest
 	// (https://cloud.google.com/logging/docs/reference/v2/rpc/google.logging.v2#google.logging.v2.ListLogEntriesRequest).
 	var logErr error
 	n := 1
-	const requestsPerMinuteQuota = 60 // estimated log read quota
-	lim := rate.NewLimiter(requestsPerMinuteQuota/60.0, 1)
 	for {
 		entry, err := it.Next()
 		if err != nil {
@@ -128,16 +121,9 @@ func compute(ctx context.Context, vulndbBucketProjectID string, fromDate, toDate
 			break
 		}
 		counts[civil.DateOf(entry.Timestamp)]++
-		// Assume one request per pageSize items.
-		// Throttle to avoid exceeding quota.
 		n++
 		if limit > 0 && n > limit {
 			break
-		}
-		if n%pageSize == 0 {
-			if err := lim.Wait(ctx); err != nil {
-				return nil, err
-			}
 		}
 	}
 
