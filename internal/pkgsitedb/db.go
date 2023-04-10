@@ -16,8 +16,7 @@ import (
 
 	_ "github.com/lib/pq"
 
-	secretmanager "cloud.google.com/go/secretmanager/apiv1"
-	smpb "cloud.google.com/go/secretmanager/apiv1/secretmanagerpb"
+	"golang.org/x/pkgsite-metrics/internal"
 	"golang.org/x/pkgsite-metrics/internal/config"
 	"golang.org/x/pkgsite-metrics/internal/derrors"
 	"golang.org/x/pkgsite-metrics/internal/scan"
@@ -26,7 +25,7 @@ import (
 // Open creates a connection to the pkgsite database.
 func Open(ctx context.Context, cfg *config.Config) (_ *sql.DB, err error) {
 	defer derrors.Wrap(&err, "Open")
-	password, err := getPasswordSecret(ctx, cfg.PkgsiteDBSecret)
+	password, err := internal.GetSecret(ctx, cfg.PkgsiteDBSecret)
 	if err != nil {
 		return nil, err
 	}
@@ -48,23 +47,6 @@ var passwordRegexp = regexp.MustCompile(`password=\S+`)
 
 func redactPassword(dbinfo string) string {
 	return passwordRegexp.ReplaceAllLiteralString(dbinfo, "password=REDACTED")
-}
-
-func getPasswordSecret(ctx context.Context, secretFullName string) (_ string, err error) {
-	defer derrors.Wrap(&err, "getPasswordSecret(ctx, %q)", secretFullName)
-
-	client, err := secretmanager.NewClient(ctx)
-	if err != nil {
-		return "", err
-	}
-	defer client.Close()
-	result, err := client.AccessSecretVersion(ctx, &smpb.AccessSecretVersionRequest{
-		Name: secretFullName + "/versions/latest",
-	})
-	if err != nil {
-		return "", err
-	}
-	return string(result.Payload.Data), nil
 }
 
 // ModuleSpecs retrieves all modules that contain packages that are
