@@ -16,14 +16,15 @@ import (
 	"time"
 
 	"cloud.google.com/go/errorreporting"
+	"golang.org/x/pkgsite-metrics/internal/analysis"
 	"golang.org/x/pkgsite-metrics/internal/bigquery"
 	"golang.org/x/pkgsite-metrics/internal/config"
 	"golang.org/x/pkgsite-metrics/internal/derrors"
+	"golang.org/x/pkgsite-metrics/internal/govulncheck"
 	"golang.org/x/pkgsite-metrics/internal/log"
 	"golang.org/x/pkgsite-metrics/internal/observe"
 	"golang.org/x/pkgsite-metrics/internal/proxy"
 	"golang.org/x/pkgsite-metrics/internal/queue"
-	"golang.org/x/pkgsite-metrics/internal/vulndbreqs"
 	vulnc "golang.org/x/vuln/client"
 )
 
@@ -49,22 +50,6 @@ func NewServer(ctx context.Context, cfg *config.Config) (_ *Server, err error) {
 		bq, err = bigquery.NewClientCreate(ctx, cfg.ProjectID, cfg.BigQueryDataset)
 		if err != nil {
 			return nil, err
-		}
-		for _, tableID := range bigquery.Tables() {
-			// Hack to avoid creating the table for vulndb requests in the
-			// same dataset.
-			if tableID == vulndbreqs.TableName {
-				continue
-			}
-			created, err := bq.CreateOrUpdateTable(ctx, tableID)
-			if err != nil {
-				return nil, err
-			}
-			verb := "updated"
-			if created {
-				verb = "created"
-			}
-			log.Infof(ctx, "%s table %s\n", verb, tableID)
 		}
 	}
 
@@ -120,14 +105,32 @@ func NewServer(ctx context.Context, cfg *config.Config) (_ *Server, err error) {
 		derrors.SetReportingClient(reportingClient)
 	}
 
+	if err := ensureTable(ctx, bq, govulncheck.TableName); err != nil {
+		return nil, err
+	}
 	if err := s.registerGovulncheckHandlers(ctx); err != nil {
+		return nil, err
+	}
+	if err := ensureTable(ctx, bq, analysis.TableName); err != nil {
 		return nil, err
 	}
 	if err := s.registerAnalysisHandlers(ctx); err != nil {
 		return nil, err
 	}
-
 	return s, nil
+}
+
+func ensureTable(ctx context.Context, bq *bigquery.Client, name string) error {
+	created, err := bq.CreateOrUpdateTable(ctx, name)
+	if err != nil {
+		return err
+	}
+	verb := "updated"
+	if created {
+		verb = "created"
+	}
+	log.Infof(ctx, "%s table %s\n", verb, name)
+	return nil
 }
 
 const metricNamespace = "ecosystem/worker"

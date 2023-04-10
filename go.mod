@@ -25,7 +25,6 @@ require (
 	golang.org/x/exp/event v0.0.0-20220218215828-6cf2b201936e
 	golang.org/x/mod v0.7.0
 	golang.org/x/net v0.7.0
-	golang.org/x/time v0.0.0-20191024005414-555d28b269f0
 	golang.org/x/tools v0.5.1-0.20230117180257-8aba49bb5ea2
 	golang.org/x/vuln v0.0.0-20230201222900-4c848edceff1
 	google.golang.org/api v0.110.0

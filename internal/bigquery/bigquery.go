@@ -12,14 +12,12 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
-	"sort"
 	"strings"
 	"sync"
 	"time"
 
 	bq "cloud.google.com/go/bigquery"
 	"cloud.google.com/go/civil"
-	"golang.org/x/exp/maps"
 	"golang.org/x/pkgsite-metrics/internal/derrors"
 	"google.golang.org/api/googleapi"
 	"google.golang.org/api/iterator"
@@ -300,6 +298,7 @@ var (
 	tables  = map[string]bq.Schema{}
 )
 
+// AddTable records the schema for a table, so CreateTable just needs the name.
 func AddTable(tableID string, s bq.Schema) {
 	tableMu.Lock()
 	defer tableMu.Unlock()
@@ -312,15 +311,6 @@ func TableSchema(tableID string) bq.Schema {
 	tableMu.Lock()
 	defer tableMu.Unlock()
 	return tables[tableID]
-}
-
-// Tables returns all the tables used by the worker.
-func Tables() []string {
-	tableMu.Lock()
-	defer tableMu.Unlock()
-	tableIDs := maps.Keys(tables)
-	sort.Strings(tableIDs)
-	return tableIDs
 }
 
 // PartitionQuery describes a query that returns one row for each distinct value
