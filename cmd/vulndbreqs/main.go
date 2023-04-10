@@ -16,6 +16,7 @@ import (
 	"log"
 
 	"cloud.google.com/go/civil"
+	"golang.org/x/pkgsite-metrics/internal"
 	"golang.org/x/pkgsite-metrics/internal/bigquery"
 	"golang.org/x/pkgsite-metrics/internal/config"
 	"golang.org/x/pkgsite-metrics/internal/vulndbreqs"
@@ -60,11 +61,18 @@ func run(ctx context.Context) error {
 	}
 	defer client.Close()
 
+	keyName := "projects/" + cfg.ProjectID + "/secrets/vulndb-hmac-key"
+	hk, err := internal.GetSecret(ctx, keyName)
+	if err != nil {
+		return err
+	}
+	hmacKey := []byte(hk)
+
 	switch flag.Arg(0) {
 	case "add":
-		err = doAdd(ctx, cfg.VulnDBBucketProjectID, client)
+		err = doAdd(ctx, cfg.VulnDBBucketProjectID, client, hmacKey)
 	case "compute":
-		err = doCompute(ctx, cfg.VulnDBBucketProjectID)
+		err = doCompute(ctx, cfg.VulnDBBucketProjectID, hmacKey)
 	case "show":
 		err = doShow(ctx, client)
 	default:
@@ -73,11 +81,11 @@ func run(ctx context.Context) error {
 	return err
 }
 
-func doAdd(ctx context.Context, projectID string, client *bigquery.Client) error {
-	return vulndbreqs.ComputeAndStore(ctx, projectID, client)
+func doAdd(ctx context.Context, projectID string, client *bigquery.Client, hmacKey []byte) error {
+	return vulndbreqs.ComputeAndStore(ctx, projectID, client, hmacKey)
 }
 
-func doCompute(ctx context.Context, projectID string) error {
+func doCompute(ctx context.Context, projectID string, hmacKey []byte) error {
 	from, err := civil.ParseDate(*fromDate)
 	if err != nil {
 		return err
@@ -88,18 +96,18 @@ func doCompute(ctx context.Context, projectID string) error {
 		return err
 	}
 	to = to.AddDays(1)
-	rcs, err := vulndbreqs.Compute(ctx, projectID, from, to, *limit)
+	rcs, err := vulndbreqs.Compute(ctx, projectID, from, to, *limit, hmacKey)
 	if err != nil {
 		return err
 	}
 	for _, rc := range rcs {
-		fmt.Printf("%s\t%d\n", rc.Date, rc.Count)
+		fmt.Printf("%s\t%d\t%s\n", rc.Date, rc.Count, rc.IP)
 	}
 	return nil
 }
 
 func doShow(ctx context.Context, client *bigquery.Client) error {
-	counts, err := vulndbreqs.ReadFromBigQuery(ctx, client)
+	counts, err := vulndbreqs.ReadRequestCountsFromBigQuery(ctx, client)
 	if err != nil {
 		return err
 	}

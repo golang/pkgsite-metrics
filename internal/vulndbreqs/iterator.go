@@ -24,6 +24,7 @@ type entryIterator struct {
 	client *logadmin.Client
 	filter string
 	it     *logadmin.EntryIterator
+	count  int
 	token  string
 }
 
@@ -44,6 +45,7 @@ func (it *entryIterator) Next() (*logging.Entry, error) {
 			if it.token != "" {
 				pi.Token = it.token
 			}
+			it.count = 0
 		}
 		entry, err := it.it.Next()
 		if err == iterator.Done {
@@ -51,7 +53,7 @@ func (it *entryIterator) Next() (*logging.Entry, error) {
 		}
 		if s, ok := status.FromError(err); ok && s.Code() == codes.ResourceExhausted {
 			// We ran out of quota. Wait a little and try again.
-			log.Infof(it.ctx, "entryIterator: got ResourceExhausted, sleeping...")
+			log.Infof(it.ctx, "entryIterator: got ResourceExhausted after reading %d entries, sleeping...", it.count)
 			time.Sleep(10 * time.Second)
 			log.Infof(it.ctx, "entryIterator: retrying")
 			it.token = it.it.PageInfo().Token
@@ -60,6 +62,7 @@ func (it *entryIterator) Next() (*logging.Entry, error) {
 			it.it = nil
 			continue
 		}
+		it.count++
 		return entry, nil
 	}
 }

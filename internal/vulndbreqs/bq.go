@@ -16,8 +16,9 @@ import (
 
 const (
 	// Vuln DB requests live in their own dataset that doesn't vary.
-	DatasetName = "vulndb"
-	TableName   = "requests"
+	DatasetName             = "vulndb"
+	RequestCountTableName   = "requests"
+	IPRequestCountTableName = "ip-requests"
 )
 
 func init() {
@@ -25,10 +26,15 @@ func init() {
 	if err != nil {
 		panic(err)
 	}
-	bigquery.AddTable(TableName, s)
+	bigquery.AddTable(RequestCountTableName, s)
+	s, err = bigquery.InferSchema(IPRequestCount{})
+	if err != nil {
+		panic(err)
+	}
+	bigquery.AddTable(IPRequestCountTableName, s)
 }
 
-// RequestCount is a row in the BigQuery table.
+// RequestCount holds the number of requests made on a date.
 type RequestCount struct {
 	CreatedAt time.Time  `bigquery:"created_at"`
 	Date      civil.Date `bigquery:"date"` // year-month-day without a timezone
@@ -38,21 +44,38 @@ type RequestCount struct {
 // SetUploadTime is used by Client.Upload.
 func (r *RequestCount) SetUploadTime(t time.Time) { r.CreatedAt = t }
 
-// writeToBigQuery writes a list of RequestCounts to BigQuery.
-func writeToBigQuery(ctx context.Context, client *bigquery.Client, rcs []*RequestCount) (err error) {
-	defer derrors.Wrap(&err, "vulndbreqs.writeToBigQuery")
-	if err := client.CreateTable(ctx, TableName); err != nil {
-		return err
-	}
-	return bigquery.UploadMany(ctx, client, TableName, rcs, 0)
+// IPRequestCount holds the number of requests for a single IP on a date.
+type IPRequestCount struct {
+	CreatedAt time.Time  `bigquery:"created_at"`
+	Date      civil.Date `bigquery:"date"` // year-month-day without a timezone
+	IP        string     `bigquery:"ip"`   // obfuscated IP address
+	Count     int        `bigquery:"count"`
 }
 
-// ReadFromBigQuery returns daily counts for requests to the vuln DB, most recent first.
-func ReadFromBigQuery(ctx context.Context, client *bigquery.Client) (_ []*RequestCount, err error) {
+// SetUploadTime is used by Client.Upload.
+func (r *IPRequestCount) SetUploadTime(t time.Time) { r.CreatedAt = t }
+
+// writeToBigQuery writes request counts to BigQuery.
+func writeToBigQuery(ctx context.Context, client *bigquery.Client, rcs []*RequestCount, ircs []*IPRequestCount) (err error) {
+	defer derrors.Wrap(&err, "vulndbreqs.writeToBigQuery")
+	if err := client.CreateTable(ctx, RequestCountTableName); err != nil {
+		return err
+	}
+	if err := bigquery.UploadMany(ctx, client, RequestCountTableName, rcs, 0); err != nil {
+		return err
+	}
+	if err := client.CreateTable(ctx, IPRequestCountTableName); err != nil {
+		return err
+	}
+	return bigquery.UploadMany(ctx, client, IPRequestCountTableName, ircs, 0)
+}
+
+// ReadRequestCountsFromBigQuery returns daily counts for requests to the vuln DB, most recent first.
+func ReadRequestCountsFromBigQuery(ctx context.Context, client *bigquery.Client) (_ []*RequestCount, err error) {
 	defer derrors.Wrap(&err, "readFromBigQuery")
 	// Select the most recently inserted row for each date.
 	q := fmt.Sprintf("(%s) ORDER BY date DESC", bigquery.PartitionQuery{
-		Table:       client.FullTableName(TableName),
+		Table:       client.FullTableName(RequestCountTableName),
 		PartitionOn: "date",
 		OrderBy:     "created_at DESC",
 	})

@@ -40,24 +40,24 @@ func TestBigQuery(t *testing.T) {
 		return civil.Date{Year: y, Month: time.Month(m), Day: d}
 	}
 
-	counts := []*RequestCount{
-		{Date: date(2022, 10, 1), Count: 1},
-		{Date: date(2022, 10, 3), Count: 3},
-		{Date: date(2022, 10, 4), Count: 4},
+	counts := []*IPRequestCount{
+		{Date: date(2022, 10, 1), IP: "A", Count: 1},
+		{Date: date(2022, 10, 3), IP: "B", Count: 3},
+		{Date: date(2022, 10, 4), IP: "C", Count: 4},
 	}
-	must(writeToBigQuery(ctx, client, counts))
+	must(writeToBigQuery(ctx, client, computeRequestCounts(counts), counts))
 	// Insert duplicates with a later time; we expect to get these, not the originals.
 	time.Sleep(50 * time.Millisecond)
 	for _, row := range counts {
 		row.Count++
 	}
-	must(writeToBigQuery(ctx, client, counts))
+	want := computeRequestCounts(counts)
+	must(writeToBigQuery(ctx, client, want, counts))
 
-	got, err := ReadFromBigQuery(ctx, client)
+	got, err := ReadRequestCountsFromBigQuery(ctx, client)
 	if err != nil {
 		t.Fatal(err)
 	}
-	want := slices.Clone(counts)
 	slices.SortFunc(want, func(c1, c2 *RequestCount) bool { return c1.Date.After(c2.Date) })
 	if diff := cmp.Diff(want, got, cmpopts.IgnoreFields(RequestCount{}, "CreatedAt")); diff != "" {
 		t.Errorf("mismatch (-want, +got):\n%s", diff)
