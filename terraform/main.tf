@@ -251,6 +251,14 @@ resource "google_cloudbuild_trigger" "deploy_prod_worker" {
   }
 }
 
+# Secret for computing HMACs to obfuscate VulnDB request IPs.
+resource "google_secret_manager_secret" "vulndb-hmac-key" {
+  secret_id = "vulndb-hmac-key"
+  replication {
+    automatic = true
+  }
+}
+
 # Deployment environments
 
 module "prod" {
