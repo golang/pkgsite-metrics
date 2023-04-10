@@ -10,13 +10,21 @@ package main
 
 import (
 	"context"
+	"errors"
 	"flag"
 	"fmt"
 	"log"
 
+	"cloud.google.com/go/civil"
 	"golang.org/x/pkgsite-metrics/internal/bigquery"
 	"golang.org/x/pkgsite-metrics/internal/config"
 	"golang.org/x/pkgsite-metrics/internal/vulndbreqs"
+)
+
+var (
+	limit    = flag.Int("limit", 0, "max log entries to compute")
+	fromDate = flag.String("from", "", "start date for compute")
+	toDate   = flag.String("to", "", "end date for compute")
 )
 
 func main() {
@@ -25,6 +33,8 @@ func main() {
 		fmt.Fprintln(out, "usage:")
 		fmt.Fprintln(out, "vulndbreqs add")
 		fmt.Fprintln(out, "  calculate missing vuln DB counts and add to BigQuery")
+		fmt.Fprintln(out, "vulndbreqs compute")
+		fmt.Fprintln(out, "  calculate and display vuln DB counts")
 		fmt.Fprintln(out, "vulndbreqs show")
 		fmt.Fprintln(out, "  display vuln DB counts")
 		flag.PrintDefaults()
@@ -41,7 +51,9 @@ func run(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
-
+	if cfg.ProjectID == "" {
+		return errors.New("missing project ID (GOOGLE_CLOUD_PROJECT environment variable)")
+	}
 	client, err := bigquery.NewClientCreate(ctx, cfg.ProjectID, vulndbreqs.DatasetName)
 	if err != nil {
 		return err
@@ -51,6 +63,8 @@ func run(ctx context.Context) error {
 	switch flag.Arg(0) {
 	case "add":
 		err = doAdd(ctx, cfg.VulnDBBucketProjectID, client)
+	case "compute":
+		err = doCompute(ctx, cfg.VulnDBBucketProjectID)
 	case "show":
 		err = doShow(ctx, client)
 	default:
@@ -61,6 +75,27 @@ func run(ctx context.Context) error {
 
 func doAdd(ctx context.Context, projectID string, client *bigquery.Client) error {
 	return vulndbreqs.ComputeAndStore(ctx, projectID, client)
+}
+
+func doCompute(ctx context.Context, projectID string) error {
+	from, err := civil.ParseDate(*fromDate)
+	if err != nil {
+		return err
+	}
+	from = from.AddDays(-1)
+	to, err := civil.ParseDate(*toDate)
+	if err != nil {
+		return err
+	}
+	to = to.AddDays(1)
+	rcs, err := vulndbreqs.Compute(ctx, projectID, from, to, *limit)
+	if err != nil {
+		return err
+	}
+	for _, rc := range rcs {
+		fmt.Printf("%s\t%d\n", rc.Date, rc.Count)
+	}
+	return nil
 }
 
 func doShow(ctx context.Context, client *bigquery.Client) error {
