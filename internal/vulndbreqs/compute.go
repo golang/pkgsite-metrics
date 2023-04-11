@@ -43,8 +43,7 @@ func ComputeAndStore(ctx context.Context, vulndbBucketProjectID string, client *
 	// Compute one day at a time, so if it fails after a few days we at least make some progress.
 	for d := startDate; d.Before(today); d = d.AddDays(1) {
 		if !have[d] {
-			// compute excludes both the start and end dates.
-			ircs, err := Compute(ctx, vulndbBucketProjectID, d.AddDays(-1), d.AddDays(1), 0, hmacKey)
+			ircs, err := Compute(ctx, vulndbBucketProjectID, d, d, 0, hmacKey)
 			if err != nil {
 				return err
 			}
@@ -52,7 +51,7 @@ func ComputeAndStore(ctx context.Context, vulndbBucketProjectID string, client *
 				ircs = []*IPRequestCount{{Date: d, IP: "NONE", Count: 0}}
 			}
 
-			rcs := computeRequestCounts(ircs)
+			rcs := sumRequestCounts(ircs)
 			if len(rcs) != 1 {
 				return fmt.Errorf("got %d dates, want 1", len(rcs))
 			}
@@ -66,7 +65,7 @@ func ComputeAndStore(ctx context.Context, vulndbBucketProjectID string, client *
 	return nil
 }
 
-func computeRequestCounts(ircs []*IPRequestCount) []*RequestCount {
+func sumRequestCounts(ircs []*IPRequestCount) []*RequestCount {
 	counts := map[civil.Date]int{}
 	for _, irc := range ircs {
 		counts[irc.Date] += irc.Count
@@ -79,7 +78,7 @@ func computeRequestCounts(ircs []*IPRequestCount) []*RequestCount {
 }
 
 // Compute queries the vulndb load balancer logs for all
-// vuln DB requests between the given dates, exclusive of both.
+// vuln DB requests between the given dates, inclusive.
 // It returns request counts for each date, sorted from newest to oldest.
 // If limit is positive, it reads no more than limit entries from the log (for testing only).
 func Compute(ctx context.Context, vulndbBucketProjectID string, fromDate, toDate civil.Date, limit int, hmacKey []byte) ([]*IPRequestCount, error) {
@@ -127,8 +126,8 @@ func Compute(ctx context.Context, vulndbBucketProjectID string, fromDate, toDate
 		-httpRequest.requestUrl="https://vuln.go.dev/index.json"
 		-httpRequest.requestUrl:"https://vuln.go.dev/ID/"
 
-		timestamp>=`+fromDate.AddDays(1).String()+`
-		timestamp<`+toDate.String())
+		timestamp>=`+fromDate.String()+`
+		timestamp<`+toDate.AddDays(1).String())
 	// Count each log entry we see, bucketing by date.
 	// The timestamps are in order from oldest to newest
 	// (https://cloud.google.com/logging/docs/reference/v2/rpc/google.logging.v2#google.logging.v2.ListLogEntriesRequest).

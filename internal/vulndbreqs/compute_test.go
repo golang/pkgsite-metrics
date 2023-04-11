@@ -22,17 +22,17 @@ func TestCompute(t *testing.T) {
 	if projID == "" {
 		t.Skip("GO_ECOSYSTEM_VULNDB_BUCKET_PROJECT not defined")
 	}
-	today := civil.DateOf(time.Now())
 	// Compute yesterday's counts, up to 10 log entries.
-	// Assume there are more than ten requests a day.
+	// Assume there are more than 10 requests a day.
+	yesterday := civil.DateOf(time.Now()).AddDays(-1)
 	const n = 10
-	igot, err := Compute(context.Background(), projID, today.AddDays(-2), today, n, []byte("fake-hmac-key"))
+	igot, err := Compute(context.Background(), projID, yesterday, yesterday, n, []byte("fake-hmac-key"))
 	if err != nil {
 		t.Fatal(err)
 	}
-	got := computeRequestCounts(igot)
+	got := sumRequestCounts(igot)
 	want := []*RequestCount{{
-		Date:  today.AddDays(-1),
+		Date:  yesterday,
 		Count: 10,
 	}}
 	if diff := cmp.Diff(want, got); diff != "" {

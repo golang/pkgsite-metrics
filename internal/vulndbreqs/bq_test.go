@@ -45,13 +45,13 @@ func TestBigQuery(t *testing.T) {
 		{Date: date(2022, 10, 3), IP: "B", Count: 3},
 		{Date: date(2022, 10, 4), IP: "C", Count: 4},
 	}
-	must(writeToBigQuery(ctx, client, computeRequestCounts(counts), counts))
+	must(writeToBigQuery(ctx, client, sumRequestCounts(counts), counts))
 	// Insert duplicates with a later time; we expect to get these, not the originals.
 	time.Sleep(50 * time.Millisecond)
 	for _, row := range counts {
 		row.Count++
 	}
-	want := computeRequestCounts(counts)
+	want := sumRequestCounts(counts)
 	must(writeToBigQuery(ctx, client, want, counts))
 
 	got, err := ReadRequestCountsFromBigQuery(ctx, client)
