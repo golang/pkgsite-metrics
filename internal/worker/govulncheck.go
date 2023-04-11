@@ -6,9 +6,6 @@ package worker
 
 import (
 	"context"
-	"errors"
-	"fmt"
-	"runtime/debug"
 
 	"golang.org/x/pkgsite-metrics/internal"
 	"golang.org/x/pkgsite-metrics/internal/derrors"
@@ -50,10 +47,6 @@ func (h *GovulncheckServer) getWorkVersion(ctx context.Context) (_ *govulncheck.
 		if err != nil {
 			return nil, err
 		}
-		vulnVersion, err := readVulnVersion()
-		if err != nil {
-			return nil, err
-		}
 		goEnv, err := internal.GoEnv()
 		if err != nil {
 			return nil, err
@@ -63,28 +56,8 @@ func (h *GovulncheckServer) getWorkVersion(ctx context.Context) (_ *govulncheck.
 			VulnDBLastModified: lmt,
 			WorkerVersion:      h.cfg.VersionID,
 			SchemaVersion:      govulncheck.SchemaVersion,
-			VulnVersion:        vulnVersion,
 		}
 		log.Infof(ctx, "govulncheck work version: %+v", h.workVersion)
 	}
 	return h.workVersion, nil
-}
-
-// readVulnVersion returns the version of the golang.org/x/vuln module linked into
-// the current binary.
-func readVulnVersion() (string, error) {
-	const modulePath = "golang.org/x/vuln"
-	info, ok := debug.ReadBuildInfo()
-	if !ok {
-		return "", errors.New("vuln version not available")
-	}
-	for _, mod := range info.Deps {
-		if mod.Path == modulePath {
-			if mod.Replace != nil {
-				mod = mod.Replace
-			}
-			return mod.Version, nil
-		}
-	}
-	return "", fmt.Errorf("module %s not found", modulePath)
 }

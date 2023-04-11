@@ -138,8 +138,6 @@ type WorkVersion struct {
 	WorkerVersion string `bigquery:"worker_version"`
 	// The version of the bigquery schema.
 	SchemaVersion string ` bigquery:"schema_version"`
-	// The version of the golang.org/x/vuln module used by the current module.
-	VulnVersion string `bigquery:"x_vuln_version"`
 	// When the vuln DB was last modified.
 	VulnDBLastModified time.Time `bigquery:"vulndb_last_modified"`
 }
@@ -151,7 +149,6 @@ func (v1 *WorkVersion) Equal(v2 *WorkVersion) bool {
 	return v1.GoVersion == v2.GoVersion &&
 		v1.WorkerVersion == v2.WorkerVersion &&
 		v1.SchemaVersion == v2.SchemaVersion &&
-		v1.VulnVersion == v2.VulnVersion &&
 		v1.VulnDBLastModified.Equal(v2.VulnDBLastModified)
 }
 
@@ -197,7 +194,7 @@ func ReadWorkVersions(ctx context.Context, c *bigquery.Client) (_ map[[2]string]
 	m := map[[2]string]*WorkVersion{}
 	query := bigquery.PartitionQuery{
 		Table:       c.FullTableName(TableName),
-		Columns:     "module_path, version, go_version, worker_version, schema_version, x_vuln_version, vulndb_last_modified",
+		Columns:     "module_path, version, go_version, worker_version, schema_version, vulndb_last_modified",
 		PartitionOn: "module_path, sort_version",
 		OrderBy:     "created_at DESC",
 	}.String()

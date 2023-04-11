@@ -185,7 +185,6 @@ func TestIntegration(t *testing.T) {
 			GoVersion:          "go1.19.6",
 			WorkerVersion:      "1",
 			SchemaVersion:      "s",
-			VulnVersion:        "2",
 			VulnDBLastModified: tm,
 		},
 	}
