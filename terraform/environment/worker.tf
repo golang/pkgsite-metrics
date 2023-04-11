@@ -229,17 +229,17 @@ resource "google_secret_manager_secret" "github_access_token" {
   }
 }
 
-resource "google_cloud_scheduler_job" "requests" {
+resource "google_cloud_scheduler_job" "compute_requests" {
   count       = var.env == "prod" ? 1 : 0
-  name        = "${var.env}-requests"
-  description = "Get count of vuln DB requests."
+  name        = "${var.env}-compute-requests"
+  description = "Compute vuln DB request counts."
   schedule    = "0 7 * * *" # 7 AM daily
   time_zone   = local.tz
   project     = var.project
 
   http_target {
     http_method = "GET"
-    uri         = "${local.worker_url}/requests"
+    uri         = "${local.worker_url}/compute-requests"
     oidc_token {
       service_account_email = local.worker_service_account
       audience              = local.worker_url
