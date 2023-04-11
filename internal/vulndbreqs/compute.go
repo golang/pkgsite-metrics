@@ -11,6 +11,7 @@ import (
 	"crypto/hmac"
 	"crypto/sha256"
 	"encoding/hex"
+	"errors"
 	"fmt"
 	"io"
 	"time"
@@ -43,26 +44,30 @@ func ComputeAndStore(ctx context.Context, vulndbBucketProjectID string, client *
 	// Compute one day at a time, so if it fails after a few days we at least make some progress.
 	for d := startDate; d.Before(today); d = d.AddDays(1) {
 		if !have[d] {
-			ircs, err := Compute(ctx, vulndbBucketProjectID, d, d, 0, hmacKey)
-			if err != nil {
-				return err
-			}
-			if len(ircs) == 0 {
-				ircs = []*IPRequestCount{{Date: d, IP: "NONE", Count: 0}}
-			}
-
-			rcs := sumRequestCounts(ircs)
-			if len(rcs) != 1 {
-				return fmt.Errorf("got %d dates, want 1", len(rcs))
-			}
-
-			log.Infof(ctx, "writing request count %d for %s; %d distinct IPs", rcs[0].Count, rcs[0].Date, len(ircs))
-			if err := writeToBigQuery(ctx, client, rcs, ircs); err != nil {
+			if err := ComputeAndStoreDate(ctx, vulndbBucketProjectID, client, hmacKey, d); err != nil {
 				return err
 			}
 		}
 	}
 	return nil
+}
+
+// ComputeAndStoreDate computes the request counts for the given date and writes them to BigQuery.
+// It does so even if there is already stored information for that date.
+func ComputeAndStoreDate(ctx context.Context, vulndbBucketProjectID string, client *bigquery.Client, hmacKey []byte, date civil.Date) error {
+	ircs, err := Compute(ctx, vulndbBucketProjectID, date, date, 0, hmacKey)
+	if err != nil {
+		return err
+	}
+	if len(ircs) == 0 {
+		ircs = []*IPRequestCount{{Date: date, IP: "NONE", Count: 0}}
+	}
+	rcs := sumRequestCounts(ircs)
+	if len(rcs) != 1 {
+		return fmt.Errorf("got %d dates, want 1", len(rcs))
+	}
+	log.Infof(ctx, "writing request count %d for %s; %d distinct IPs", rcs[0].Count, rcs[0].Date, len(ircs))
+	return writeToBigQuery(ctx, client, rcs, ircs)
 }
 
 func sumRequestCounts(ircs []*IPRequestCount) []*RequestCount {
@@ -82,6 +87,9 @@ func sumRequestCounts(ircs []*IPRequestCount) []*RequestCount {
 // It returns request counts for each date, sorted from newest to oldest.
 // If limit is positive, it reads no more than limit entries from the log (for testing only).
 func Compute(ctx context.Context, vulndbBucketProjectID string, fromDate, toDate civil.Date, limit int, hmacKey []byte) ([]*IPRequestCount, error) {
+	if len(hmacKey) < 16 {
+		return nil, errors.New("HMAC secret must be at least 16 bytes")
+	}
 	log.Infof(ctx, "computing request counts from %s to %s", fromDate, toDate)
 	client, err := logadmin.NewClient(ctx, vulndbBucketProjectID)
 	if err != nil {

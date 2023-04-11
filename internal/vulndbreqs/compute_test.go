@@ -26,7 +26,7 @@ func TestCompute(t *testing.T) {
 	// Assume there are more than 10 requests a day.
 	yesterday := civil.DateOf(time.Now()).AddDays(-1)
 	const n = 10
-	igot, err := Compute(context.Background(), projID, yesterday, yesterday, n, []byte("fake-hmac-key"))
+	igot, err := Compute(context.Background(), projID, yesterday, yesterday, n, []byte("this-is-a-fake-hmac-key"))
 	if err != nil {
 		t.Fatal(err)
 	}

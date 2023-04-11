@@ -32,7 +32,7 @@ func main() {
 	flag.Usage = func() {
 		out := flag.CommandLine.Output()
 		fmt.Fprintln(out, "usage:")
-		fmt.Fprintln(out, "vulndbreqs add")
+		fmt.Fprintln(out, "vulndbreqs add [DATE]")
 		fmt.Fprintln(out, "  calculate missing vuln DB counts and add to BigQuery")
 		fmt.Fprintln(out, "vulndbreqs compute")
 		fmt.Fprintln(out, "  calculate and display vuln DB counts")
@@ -62,15 +62,18 @@ func run(ctx context.Context) error {
 	defer client.Close()
 
 	keyName := "projects/" + cfg.ProjectID + "/secrets/vulndb-hmac-key"
-	hk, err := internal.GetSecret(ctx, keyName)
-	if err != nil {
-		return err
+	var hmacKey []byte
+	if flag.Arg(0) == "add" || flag.Arg(0) == "compute" {
+		hk, err := internal.GetSecret(ctx, keyName)
+		if err != nil {
+			return err
+		}
+		hmacKey = []byte(hk)
 	}
-	hmacKey := []byte(hk)
 
 	switch flag.Arg(0) {
 	case "add":
-		err = doAdd(ctx, cfg.VulnDBBucketProjectID, client, hmacKey)
+		err = doAdd(ctx, cfg.VulnDBBucketProjectID, client, hmacKey, flag.Arg(1))
 	case "compute":
 		err = doCompute(ctx, cfg.VulnDBBucketProjectID, hmacKey)
 	case "show":
@@ -81,8 +84,15 @@ func run(ctx context.Context) error {
 	return err
 }
 
-func doAdd(ctx context.Context, projectID string, client *bigquery.Client, hmacKey []byte) error {
-	return vulndbreqs.ComputeAndStore(ctx, projectID, client, hmacKey)
+func doAdd(ctx context.Context, projectID string, client *bigquery.Client, hmacKey []byte, date string) error {
+	if date == "" {
+		return vulndbreqs.ComputeAndStore(ctx, projectID, client, hmacKey)
+	}
+	d, err := civil.ParseDate(date)
+	if err != nil {
+		return err
+	}
+	return vulndbreqs.ComputeAndStoreDate(ctx, projectID, client, hmacKey, d)
 }
 
 func doCompute(ctx context.Context, projectID string, hmacKey []byte) error {
