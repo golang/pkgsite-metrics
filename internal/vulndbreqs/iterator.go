@@ -62,6 +62,9 @@ func (it *entryIterator) Next() (*logging.Entry, error) {
 			it.it = nil
 			continue
 		}
+		if err != nil {
+			return nil, err
+		}
 		it.count++
 		return entry, nil
 	}
