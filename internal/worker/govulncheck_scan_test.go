@@ -62,6 +62,23 @@ func TestVulnsForMode(t *testing.T) {
 	}
 }
 
+func TestUnrecoverableError(t *testing.T) {
+	for _, e := range []struct {
+		ec   string
+		want bool
+	}{
+		{"LOAD - NO GO.MOD", true},
+		{"LOAD - NO REQUIRED MODULE", true},
+		{"LOAD - GO.MOD REPLACES WITH A LOCAL PATH", true},
+		{"MISC", false},
+		{"BIGQUERY", false},
+	} {
+		if got := unrecoverableError(e.ec); got != e.want {
+			t.Errorf("want %t for %s; got %t", e.want, e.ec, got)
+		}
+	}
+}
+
 // TODO: can we have a test for sandbox? We do test the sandbox
 // and unmarshalling in cmd/govulncheck_sandbox, so what would be
 // left here is checking that runsc is initiated properly. It is

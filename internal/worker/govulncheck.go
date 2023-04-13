@@ -15,25 +15,25 @@ import (
 
 type GovulncheckServer struct {
 	*Server
-	storedWorkVersions map[[2]string]*govulncheck.WorkVersion
-	workVersion        *govulncheck.WorkVersion
+	storedWorkStates map[[2]string]*govulncheck.WorkState
+	workVersion      *govulncheck.WorkVersion
 }
 
 func newGovulncheckServer(ctx context.Context, s *Server) (*GovulncheckServer, error) {
 	var (
-		swv map[[2]string]*govulncheck.WorkVersion
+		swv map[[2]string]*govulncheck.WorkState
 		err error
 	)
 	if s.bqClient != nil {
-		swv, err = govulncheck.ReadWorkVersions(ctx, s.bqClient)
+		swv, err = govulncheck.ReadWorkStates(ctx, s.bqClient)
 		if err != nil {
 			return nil, err
 		}
 		log.Infof(ctx, "read %d work versions", len(swv))
 	}
 	return &GovulncheckServer{
-		Server:             s,
-		storedWorkVersions: swv,
+		Server:           s,
+		storedWorkStates: swv,
 	}, nil
 }
 

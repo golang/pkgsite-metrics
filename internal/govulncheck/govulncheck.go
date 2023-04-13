@@ -188,13 +188,19 @@ func init() {
 	bigquery.AddTable(TableName, s)
 }
 
-// ReadWorkVersions reads the most recent WorkVersions in the govulncheck table.
-func ReadWorkVersions(ctx context.Context, c *bigquery.Client) (_ map[[2]string]*WorkVersion, err error) {
-	defer derrors.Wrap(&err, "ReadWorkVersions")
-	m := map[[2]string]*WorkVersion{}
+type WorkState struct {
+	WorkVersion   *WorkVersion
+	ErrorCategory string
+}
+
+// ReadWorkStates reads the most recent work versions in the govulncheck table
+// together with their accompanying error categories.
+func ReadWorkStates(ctx context.Context, c *bigquery.Client) (_ map[[2]string]*WorkState, err error) {
+	defer derrors.Wrap(&err, "ReadWorkStates")
+	m := map[[2]string]*WorkState{}
 	query := bigquery.PartitionQuery{
 		Table:       c.FullTableName(TableName),
-		Columns:     "module_path, version, go_version, worker_version, schema_version, vulndb_last_modified",
+		Columns:     "module_path, version, go_version, worker_version, schema_version, vulndb_last_modified, error_category",
 		PartitionOn: "module_path, sort_version",
 		OrderBy:     "created_at DESC",
 	}.String()
@@ -203,7 +209,10 @@ func ReadWorkVersions(ctx context.Context, c *bigquery.Client) (_ map[[2]string]
 		return nil, err
 	}
 	err = bigquery.ForEachRow(iter, func(r *Result) bool {
-		m[[2]string{r.ModulePath, r.Version}] = &r.WorkVersion
+		m[[2]string{r.ModulePath, r.Version}] = &WorkState{
+			WorkVersion:   &r.WorkVersion,
+			ErrorCategory: r.ErrorCategory,
+		}
 		return true
 	})
 	if err != nil {

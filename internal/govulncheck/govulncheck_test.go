@@ -187,6 +187,7 @@ func TestIntegration(t *testing.T) {
 			SchemaVersion:      "s",
 			VulnDBLastModified: tm,
 		},
+		ErrorCategory: "SOME ERROR",
 	}
 
 	t.Run("upload", func(t *testing.T) {
@@ -209,19 +210,26 @@ func TestIntegration(t *testing.T) {
 		}
 	})
 	t.Run("work versions", func(t *testing.T) {
-		wv, err := ReadWorkVersions(ctx, client)
+		wss, err := ReadWorkStates(ctx, client)
 		if err != nil {
 			t.Fatal(err)
 		}
-		wgot := wv[[2]string{"m", "v"}]
+		wsgot := wss[[2]string{"m", "v"}]
+		if wsgot == nil {
+			t.Fatal("got nil, wanted work state")
+		}
+		wgot := wsgot.WorkVersion
 		if wgot == nil {
 			t.Fatal("got nil, wanted work version")
 		}
 		if want := &row.WorkVersion; !wgot.Equal(want) {
 			t.Errorf("got %+v, want %+v", wgot, want)
 		}
-
-		if got := wv[[2]string{"m", "v2"}]; got != nil {
+		egot := wsgot.ErrorCategory
+		if want := row.ErrorCategory; want != egot {
+			t.Errorf("got %+v, want %+v", egot, want)
+		}
+		if got := wss[[2]string{"m", "v2"}]; got != nil {
 			t.Errorf("got %v; want nil", got)
 		}
 	})

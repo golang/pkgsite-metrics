@@ -80,9 +80,6 @@ func (h *GovulncheckServer) handleScan(w http.ResponseWriter, r *http.Request) (
 	if sreq.Mode == "" {
 		sreq.Mode = ModeGovulncheck
 	}
-	if err := h.readGovulncheckWorkVersions(ctx); err != nil {
-		return err
-	}
 	scanner, err := newScanner(ctx, h)
 	if err != nil {
 		return err
@@ -91,26 +88,62 @@ func (h *GovulncheckServer) handleScan(w http.ResponseWriter, r *http.Request) (
 	if sreq.Insecure {
 		scanner.insecure = sreq.Insecure
 	}
-	wv := h.storedWorkVersions[[2]string{sreq.Module, sreq.Version}]
-	if scanner.workVersion.Equal(wv) {
-		log.Infof(ctx, "skipping (work version unchanged): %s@%s", sreq.Module, sreq.Version)
+	skip, err := h.canSkip(ctx, sreq, scanner)
+	if err != nil {
+		return err
+	}
+	if skip {
+		log.Infof(ctx, "skipping (work version unchanged or unrecoverable error): %s@%s", sreq.Module, sreq.Version)
 		return nil
 	}
 
 	return scanner.ScanModule(ctx, w, sreq)
 }
 
-func (h *GovulncheckServer) readGovulncheckWorkVersions(ctx context.Context) error {
+func (h *GovulncheckServer) canSkip(ctx context.Context, sreq *govulncheck.Request, scanner *scanner) (bool, error) {
+	if err := h.readGovulncheckWorkStates(ctx); err != nil {
+		return false, err
+	}
+	wve := h.storedWorkStates[[2]string{sreq.Module, sreq.Version}]
+	if wve == nil {
+		// sreq.Module@sreq.Version have not been analyzed before.
+		return false, nil
+	}
+
+	if scanner.workVersion.Equal(wve.WorkVersion) {
+		// If the work version has not changed, skip analyzing the module
+		return true, nil
+	}
+	// Otherwise, skip if the error is not recoverable
+	// TODO: should we perhaps do this at enqueueall point
+	// as well? Would that introduce more savings?
+	return unrecoverableError(wve.ErrorCategory), nil
+}
+
+// unrecoverableError returns true iff errorCategory encodes that
+// the project is not a module or it requires local dependencies.
+func unrecoverableError(errorCategory string) bool {
+	switch errorCategory {
+	case derrors.CategorizeError(derrors.LoadPackagesNoGoModError),
+		derrors.CategorizeError(derrors.LoadPackagesNoRequiredModuleError),
+		derrors.CategorizeError(derrors.LoadPackagesImportedLocalError):
+		return true
+	default:
+		return false
+	}
+}
+
+func (h *GovulncheckServer) readGovulncheckWorkStates(ctx context.Context) error {
 	h.mu.Lock()
 	defer h.mu.Unlock()
-	if h.storedWorkVersions != nil {
+	if h.storedWorkStates != nil {
 		return nil
 	}
 	if h.bqClient == nil {
 		return nil
 	}
 	var err error
-	h.storedWorkVersions, err = govulncheck.ReadWorkVersions(ctx, h.bqClient)
+	h.storedWorkStates, err = govulncheck.ReadWorkStates(ctx, h.bqClient)
 	return err
 }
 
