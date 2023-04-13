@@ -63,6 +63,11 @@ variable "pkgsite_db_name" {
   type        = string
 }
 
+variable "vulndb_bucket_project" {
+  description = "project ID for vuln DB bucket logs"
+  type        = string
+}
+
 # Enabled APIs
 
 resource "google_project_service" "apis" {
@@ -159,9 +164,9 @@ resource "google_logging_metric" "scheduler_errors" {
 }
 
 resource "google_logging_metric" "build_errors" {
-  name = "cloud-build-errors"
+  name        = "cloud-build-errors"
   description = "Errors from Cloud Build"
-  filter = "resource.type=build AND textPayload=ERROR"
+  filter      = "resource.type=build AND textPayload=ERROR"
   metric_descriptor {
     metric_kind = "DELTA"
     unit        = "1"
@@ -262,23 +267,25 @@ resource "google_secret_manager_secret" "vulndb-hmac-key" {
 # Deployment environments
 
 module "prod" {
-  source             = "./environment"
-  env                = "prod"
-  project            = var.prod_project
-  region             = local.region
-  pkgsite_db_project = var.pkgsite_db_project
-  pkgsite_db_name    = var.pkgsite_db_name
-  use_profiler       = true
+  source                = "./environment"
+  env                   = "prod"
+  project               = var.prod_project
+  region                = local.region
+  pkgsite_db_project    = var.pkgsite_db_project
+  pkgsite_db_name       = var.pkgsite_db_name
+  vulndb_bucket_project = var.vulndb_bucket_project
+  use_profiler          = true
 }
 
 
 module "dev" {
-  source             = "./environment"
-  env                = "dev"
-  project            = var.dev_project
-  region             = local.region
-  pkgsite_db_project = var.pkgsite_db_project
-  pkgsite_db_name    = var.pkgsite_db_name
-  use_profiler       = false
+  source                = "./environment"
+  env                   = "dev"
+  project               = var.dev_project
+  region                = local.region
+  pkgsite_db_project    = var.pkgsite_db_project
+  pkgsite_db_name       = var.pkgsite_db_name
+  vulndb_bucket_project = var.vulndb_bucket_project
+  use_profiler          = false
 }
 

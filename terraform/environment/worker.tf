@@ -37,6 +37,11 @@ variable "use_profiler" {
   type        = bool
 }
 
+variable "vulndb_bucket_project" {
+  description = "project ID for vuln DB bucket logs"
+  type        = string
+}
+
 locals {
   worker_url             = data.google_cloud_run_service.worker.status[0].url
   tz                     = "America/New_York"
@@ -153,6 +158,10 @@ resource "google_cloud_run_service" "worker" {
         env {
           name  = "GO_ECOSYSTEM_BINARY_BUCKET"
           value = "go-ecosystem"
+        }
+        env {
+          name  = "GO_ECOSYSTEM_VULNDB_BUCKET_PROJECT"
+          value = var.vulndb_bucket_project
         }
       }
 
