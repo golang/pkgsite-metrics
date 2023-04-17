@@ -5,6 +5,7 @@
 package worker
 
 import (
+	"bufio"
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
@@ -16,6 +17,7 @@ import (
 	"os"
 	"os/exec"
 	"path"
+	"strconv"
 	"strings"
 
 	"cloud.google.com/go/storage"
@@ -111,8 +113,13 @@ func (s *analysisServer) scan(ctx context.Context, req *analysis.ScanRequest, lo
 		BinaryName:  req.Binary,
 		WorkVersion: wv,
 	}
-	err := doScan(ctx, req.Module, req.Version, req.Insecure, func() error {
-		jsonTree, err := s.scanInternal(ctx, req, localBinaryPath)
+	err := doScan(ctx, req.Module, req.Version, req.Insecure, func() (err error) {
+		// Create a module directory. scanInternal will write the module contents there,
+		// and both the analysis binary and addSource will read them.
+		mdir := moduleDir(req.Module, req.Version)
+		defer derrors.Cleanup(&err, func() error { return os.RemoveAll(mdir) })
+
+		jsonTree, err := s.scanInternal(ctx, req, localBinaryPath, mdir)
 		if err != nil {
 			return err
 		}
@@ -123,7 +130,7 @@ func (s *analysisServer) scan(ctx context.Context, req *analysis.ScanRequest, lo
 		row.Version = info.Version
 		row.CommitTime = info.Time
 		row.Diagnostics = analysis.JSONTreeToDiagnostics(jsonTree)
-		return nil
+		return addSource(row.Diagnostics, 1)
 	})
 	if err != nil {
 		switch {
@@ -150,10 +157,8 @@ func (s *analysisServer) scan(ctx context.Context, req *analysis.ScanRequest, lo
 	return row
 }
 
-func (s *analysisServer) scanInternal(ctx context.Context, req *analysis.ScanRequest, binaryPath string) (jt analysis.JSONTree, err error) {
-	mdir := moduleDir(req.Module, req.Version)
-	defer derrors.Cleanup(&err, func() error { return os.RemoveAll(mdir) })
-	if err := prepareModule(ctx, req.Module, req.Version, mdir, s.proxyClient, req.Insecure); err != nil {
+func (s *analysisServer) scanInternal(ctx context.Context, req *analysis.ScanRequest, binaryPath, moduleDir string) (jt analysis.JSONTree, err error) {
+	if err := prepareModule(ctx, req.Module, req.Version, moduleDir, s.proxyClient, req.Insecure); err != nil {
 		return nil, err
 	}
 	var sbox *sandbox.Sandbox
@@ -161,11 +166,7 @@ func (s *analysisServer) scanInternal(ctx context.Context, req *analysis.ScanReq
 		sbox = sandbox.New("/bundle")
 		sbox.Runsc = "/usr/local/bin/runsc"
 	}
-	tree, err := runAnalysisBinary(sbox, binaryPath, req.Args, mdir)
-	if err != nil {
-		return nil, err
-	}
-	return tree, nil
+	return runAnalysisBinary(sbox, binaryPath, req.Args, moduleDir)
 }
 
 func hashFile(filename string) (_ []byte, err error) {
@@ -207,6 +208,77 @@ func runBinaryInDir(sbox *sandbox.Sandbox, path string, args []string, dir strin
 	cmd := sbox.Command(path, args...)
 	cmd.Dir = dir
 	return cmd.Output()
+}
+
+// addSource adds source code lines to the diagnostics.
+// Each diagnostic's position includes a full file path and line number.
+// addSource reads the file at the line, and includes nContext lines from above
+// and below.
+func addSource(ds []*analysis.Diagnostic, nContext int) error {
+	for _, d := range ds {
+		file, line, _, err := parsePosition(d.Position)
+		if err != nil {
+			return err
+		}
+		source, err := readSource(file, line, nContext)
+		if err != nil {
+			return fmt.Errorf("reading %s:%d: %w", file, line, err)
+		}
+		d.Source = source
+	}
+	return nil
+}
+
+// parsePosition parses a position from a diagnostic.
+// Positions are in the format file:line:col.
+func parsePosition(pos string) (file string, line, col int, err error) {
+	defer derrors.Wrap(&err, "parsePosition(%q)", pos)
+	i := strings.LastIndexByte(pos, ':')
+	if i < 0 {
+		return "", 0, 0, errors.New("missing colon")
+	}
+	col, err = strconv.Atoi(pos[i+1:])
+	if err != nil {
+		return "", 0, 0, err
+	}
+	pos = pos[:i]
+	i = strings.LastIndexByte(pos, ':')
+	if i < 0 {
+		return "", 0, 0, errors.New("missing second colon")
+	}
+	line, err = strconv.Atoi(pos[i+1:])
+	if err != nil {
+		return "", 0, 0, err
+	}
+	return pos[:i], line, col, nil
+}
+
+// readSource returns the given line (1-based) from the file, along with
+// nContext lines above and below it.
+func readSource(file string, line int, nContext int) (_ string, err error) {
+	defer derrors.Wrap(&err, "readSource(%q, %d, %d)", file, line, nContext)
+	f, err := os.Open(file)
+	if err != nil {
+		return "", err
+	}
+	defer f.Close()
+	scan := bufio.NewScanner(f)
+	var lines []string
+	n := 0 // 1-based line number
+	for scan.Scan() {
+		n++
+		if n < line-nContext {
+			continue
+		}
+		if n > line+nContext {
+			break
+		}
+		lines = append(lines, scan.Text())
+	}
+	if scan.Err() != nil {
+		return "", scan.Err()
+	}
+	return strings.Join(lines, "\n"), nil
 }
 
 func (s *analysisServer) handleEnqueue(w http.ResponseWriter, r *http.Request) (err error) {

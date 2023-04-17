@@ -184,6 +184,7 @@ type Diagnostic struct {
 	Category string `bigquery:"category"`
 	Position string `bigquery:"position"`
 	Message  string `bigquery:"message"`
+	Source   string `bigquery:"source"`
 }
 
 // SchemaVersion changes whenever the analysis schema changes.

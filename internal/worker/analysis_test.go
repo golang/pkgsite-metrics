@@ -6,6 +6,8 @@ package worker
 
 import (
 	"context"
+	"fmt"
+	"os"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -152,6 +154,7 @@ func G() {}
 				PackageID:    "a.com/m",
 				AnalyzerName: "findcall",
 				Message:      "call of G(...)",
+				Source:       "package p\nfunc F()  { G() }\nfunc G() {}",
 			},
 		},
 	}
@@ -174,4 +177,59 @@ func G() {}
 		Error:         "executable file not found in $PATH",
 	}
 	diff(want, got)
+}
+
+func TestParsePosition(t *testing.T) {
+	for _, test := range []struct {
+		pos      string
+		wantFile string
+		wantLine int
+		wantCol  int
+		wantErr  bool
+	}{
+		{"", "", 0, 0, true},
+		{"x", "", 0, 0, true},
+		{"x/y:b:1", "", 0, 0, true},
+		{"x/y:17:2", "x/y", 17, 2, false},
+		{"x:y:z:973:3", "x:y:z", 973, 3, false},
+	} {
+		gotFile, gotLine, gotCol, err := parsePosition(test.pos)
+		gotErr := err != nil
+		if gotFile != test.wantFile || gotLine != test.wantLine || gotCol != test.wantCol || gotErr != test.wantErr {
+			t.Errorf("got (%q, %d, %d, %t), want (%q, %d, %d, %t)",
+				gotFile, gotLine, gotCol, gotErr,
+				test.wantFile, test.wantLine, test.wantCol, test.wantErr)
+		}
+	}
+}
+
+func TestReadSource(t *testing.T) {
+	// Create a file with five lines containing the numbers 1 through 5.
+	file := filepath.Join(t.TempDir(), "f")
+	if err := os.WriteFile(file, []byte("1\n2\n3\n4\n5\n"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	for _, test := range []struct {
+		line     int
+		nContext int
+		want     string
+	}{
+		// line number out of range -> empty string
+		{-1, 0, ""},
+		{6, 0, ""},
+		{1, 0, "1"},
+		{1, 1, "1\n2"},
+		{2, 1, "1\n2\n3"},
+		{4, 2, "2\n3\n4\n5"},
+	} {
+		t.Run(fmt.Sprintf("line:%d,nc:%d", test.line, test.nContext), func(t *testing.T) {
+			got, err := readSource(file, test.line, test.nContext)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if g, w := got, test.want; g != w {
+				t.Errorf("got\n%s\nwant\n%s", g, w)
+			}
+		})
+	}
 }
