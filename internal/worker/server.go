@@ -16,7 +16,6 @@ import (
 	"time"
 
 	"cloud.google.com/go/errorreporting"
-	"golang.org/x/pkgsite-metrics/internal"
 	"golang.org/x/pkgsite-metrics/internal/analysis"
 	"golang.org/x/pkgsite-metrics/internal/bigquery"
 	"golang.org/x/pkgsite-metrics/internal/config"
@@ -26,7 +25,6 @@ import (
 	"golang.org/x/pkgsite-metrics/internal/observe"
 	"golang.org/x/pkgsite-metrics/internal/proxy"
 	"golang.org/x/pkgsite-metrics/internal/queue"
-	"golang.org/x/pkgsite-metrics/internal/vulndbreqs"
 	vulnc "golang.org/x/vuln/client"
 )
 
@@ -119,6 +117,9 @@ func NewServer(ctx context.Context, cfg *config.Config) (_ *Server, err error) {
 	if err := s.registerAnalysisHandlers(ctx); err != nil {
 		return nil, err
 	}
+
+	// compute vulndb entries
+	s.handle("/vulndb", s.handleVulnDB)
 	// compute missing vuln.go.dev request counts
 	s.handle("/compute-requests", s.handleComputeRequests)
 	return s, nil
@@ -193,27 +194,6 @@ func (s *Server) registerAnalysisHandlers(ctx context.Context) error {
 	}
 	s.handle("/analysis/scan/", h.handleScan)
 	s.handle("/analysis/enqueue", h.handleEnqueue)
-	return nil
-}
-
-func (s *Server) handleComputeRequests(w http.ResponseWriter, r *http.Request) error {
-	ctx := r.Context()
-	// Don't use the Server's BigQuery client: it's for the wrong
-	// dataset.
-	vClient, err := bigquery.NewClientCreate(ctx, s.cfg.ProjectID, vulndbreqs.DatasetName)
-	if err != nil {
-		return err
-	}
-	keyName := "projects/" + s.cfg.ProjectID + "/secrets/vulndb-hmac-key"
-	hmacKey, err := internal.GetSecret(ctx, keyName)
-	if err != nil {
-		return err
-	}
-	err = vulndbreqs.ComputeAndStore(ctx, s.cfg.VulnDBBucketProjectID, vClient, []byte(hmacKey))
-	if err != nil {
-		return err
-	}
-	fmt.Fprintf(w, "Successfully computed and stored request counts.\n")
 	return nil
 }
 

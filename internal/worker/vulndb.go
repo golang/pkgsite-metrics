@@ -7,14 +7,84 @@ package worker
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"os"
 	"path/filepath"
 	"strings"
 
+	"fmt"
+	"net/http"
+
 	"cloud.google.com/go/storage"
 	"golang.org/x/vuln/osv"
 	"google.golang.org/api/iterator"
+
+	"golang.org/x/pkgsite-metrics/internal"
+	"golang.org/x/pkgsite-metrics/internal/bigquery"
+	"golang.org/x/pkgsite-metrics/internal/derrors"
+	"golang.org/x/pkgsite-metrics/internal/vulndb"
+	"golang.org/x/pkgsite-metrics/internal/vulndbreqs"
 )
+
+func (s *Server) handleComputeRequests(w http.ResponseWriter, r *http.Request) (err error) {
+	defer derrors.Wrap(&err, "handleComputeRequests")
+
+	ctx := r.Context()
+	// Don't use the Server's BigQuery client: it's for the wrong
+	// dataset.
+	vClient, err := bigquery.NewClientCreate(ctx, s.cfg.ProjectID, vulndbreqs.DatasetName)
+	if err != nil {
+		return err
+	}
+	keyName := "projects/" + s.cfg.ProjectID + "/secrets/vulndb-hmac-key"
+	hmacKey, err := internal.GetSecret(ctx, keyName)
+	if err != nil {
+		return err
+	}
+	err = vulndbreqs.ComputeAndStore(ctx, s.cfg.VulnDBBucketProjectID, vClient, []byte(hmacKey))
+	if err != nil {
+		return err
+	}
+	fmt.Fprintf(w, "Successfully computed and stored request counts.\n")
+	return nil
+}
+
+func (s *Server) handleVulnDB(w http.ResponseWriter, r *http.Request) (err error) {
+	defer derrors.Wrap(&err, "handleVulnDB")
+
+	ctx := r.Context()
+	dbClient, err := bigquery.NewClientCreate(ctx, s.cfg.ProjectID, vulndb.DatasetName)
+	if err != nil {
+		return err
+	}
+
+	c, err := storage.NewClient(ctx)
+	if err != nil {
+		return err
+	}
+	bucket := c.Bucket("go-vulndb")
+	if bucket == nil {
+		return errors.New("failed to create go-vulndb bucket")
+	}
+	entries, err := vulndbEntries(ctx, bucket)
+	if err != nil {
+		return err
+	}
+
+	return bigquery.UploadMany(ctx, dbClient, vulndb.TableName, entries, 10000)
+}
+
+func vulndbEntries(ctx context.Context, bucket *storage.BucketHandle) ([]*vulndb.Entry, error) {
+	osvEntries, err := allVulnerabilities(ctx, bucket)
+	if err != nil {
+		return nil, err
+	}
+	var entries []*vulndb.Entry
+	for _, oe := range osvEntries {
+		entries = append(entries, vulndb.Convert(oe))
+	}
+	return entries, nil
+}
 
 // gcsOSVPrefix is the directory under which .json
 // files with OSV entries are located.
