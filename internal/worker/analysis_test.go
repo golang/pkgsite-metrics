@@ -12,6 +12,7 @@ import (
 	"strings"
 	"testing"
 
+	bq "cloud.google.com/go/bigquery"
 	"github.com/google/go-cmp/cmp"
 	"github.com/google/go-cmp/cmp/cmpopts"
 	"golang.org/x/pkgsite-metrics/internal/analysis"
@@ -154,7 +155,10 @@ func G() {}
 				PackageID:    "a.com/m",
 				AnalyzerName: "findcall",
 				Message:      "call of G(...)",
-				Source:       "package p\nfunc F()  { G() }\nfunc G() {}",
+				Source: bq.NullString{
+					StringVal: "package p\nfunc F()  { G() }\nfunc G() {}",
+					Valid:     true,
+				},
 			},
 		},
 	}

@@ -14,6 +14,7 @@ import (
 	"strings"
 	"time"
 
+	bq "cloud.google.com/go/bigquery"
 	"golang.org/x/exp/maps"
 	"golang.org/x/pkgsite-metrics/internal/bigquery"
 	"golang.org/x/pkgsite-metrics/internal/derrors"
@@ -181,10 +182,10 @@ type Diagnostic struct {
 	AnalyzerName string `bigquery:"analyzer_name"`
 	Error        string `bigquery:"error"`
 	// These fields are from internal/worker.JSONDiagnostic.
-	Category string `bigquery:"category"`
-	Position string `bigquery:"position"`
-	Message  string `bigquery:"message"`
-	Source   string `bigquery:"source"`
+	Category string        `bigquery:"category"`
+	Position string        `bigquery:"position"`
+	Message  string        `bigquery:"message"`
+	Source   bq.NullString `bigquery:"source"`
 }
 
 // SchemaVersion changes whenever the analysis schema changes.

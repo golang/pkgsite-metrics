@@ -20,6 +20,7 @@ import (
 	"strconv"
 	"strings"
 
+	bq "cloud.google.com/go/bigquery"
 	"cloud.google.com/go/storage"
 	"golang.org/x/pkgsite-metrics/internal/analysis"
 	"golang.org/x/pkgsite-metrics/internal/derrors"
@@ -224,7 +225,7 @@ func addSource(ds []*analysis.Diagnostic, nContext int) error {
 		if err != nil {
 			return fmt.Errorf("reading %s:%d: %w", file, line, err)
 		}
-		d.Source = source
+		d.Source = bq.NullString{StringVal: source, Valid: true}
 	}
 	return nil
 }
