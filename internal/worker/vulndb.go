@@ -11,6 +11,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"fmt"
 	"net/http"
@@ -22,6 +23,7 @@ import (
 	"golang.org/x/pkgsite-metrics/internal"
 	"golang.org/x/pkgsite-metrics/internal/bigquery"
 	"golang.org/x/pkgsite-metrics/internal/derrors"
+	"golang.org/x/pkgsite-metrics/internal/log"
 	"golang.org/x/pkgsite-metrics/internal/vulndb"
 	"golang.org/x/pkgsite-metrics/internal/vulndbreqs"
 )
@@ -66,12 +68,28 @@ func (s *Server) handleVulnDB(w http.ResponseWriter, r *http.Request) (err error
 	if bucket == nil {
 		return errors.New("failed to create go-vulndb bucket")
 	}
+
+	lmts, err := lastModified(ctx, dbClient)
+	if err != nil {
+		return err
+	}
 	entries, err := vulndbEntries(ctx, bucket)
 	if err != nil {
 		return err
 	}
+	for _, e := range entries {
+		lmt, ok := lmts[e.ID]
+		if ok && e.ModifiedTime.Equal(lmt) {
+			// Skip adding the entry if nothing has changed in the meantime.
+			log.Infof(ctx, "skipping entry %s, it has not been modified", e.ID)
+			continue
+		}
+		if err = writeResult(ctx, false, w, dbClient, vulndb.TableName, e); err != nil {
+			return err
+		}
+	}
 
-	return bigquery.UploadMany(ctx, dbClient, vulndb.TableName, entries, 10000)
+	return nil
 }
 
 func vulndbEntries(ctx context.Context, bucket *storage.BucketHandle) ([]*vulndb.Entry, error) {
@@ -131,4 +149,16 @@ func readEntry(ctx context.Context, bucket *storage.BucketHandle, gcsPath string
 		return nil, err
 	}
 	return &entry, nil
+}
+
+func lastModified(ctx context.Context, c *bigquery.Client) (map[string]time.Time, error) {
+	es, err := vulndb.ReadMostRecentDB(ctx, c)
+	if err != nil {
+		return nil, err
+	}
+	m := make(map[string]time.Time)
+	for _, e := range es {
+		m[e.ID] = e.ModifiedTime
+	}
+	return m, nil
 }

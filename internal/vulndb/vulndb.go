@@ -7,9 +7,11 @@
 package vulndb
 
 import (
+	"context"
 	"time"
 
 	"golang.org/x/pkgsite-metrics/internal/bigquery"
+	"golang.org/x/pkgsite-metrics/internal/derrors"
 	"golang.org/x/vuln/osv"
 )
 
@@ -106,4 +108,27 @@ func ranges(a osv.Affected) []Range {
 		}
 	}
 	return rs
+}
+
+// ReadMostRecentDB returns entries from the table that reflect the
+// most recent state of the vulnerability database at c.
+func ReadMostRecentDB(ctx context.Context, c *bigquery.Client) (entries []*Entry, err error) {
+	defer derrors.Wrap(&err, "ReadMostRecentDB")
+	query := bigquery.PartitionQuery{
+		Table:       c.FullTableName(TableName),
+		PartitionOn: "ID",
+		OrderBy:     "modified_time DESC",
+	}.String()
+	iter, err := c.Query(ctx, query)
+	if err != nil {
+		return nil, err
+	}
+	err = bigquery.ForEachRow(iter, func(e *Entry) bool {
+		entries = append(entries, e)
+		return true
+	})
+	if err != nil {
+		return nil, err
+	}
+	return entries, nil
 }

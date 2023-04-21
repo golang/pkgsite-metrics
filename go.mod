@@ -25,7 +25,6 @@ require (
 	golang.org/x/exp/event v0.0.0-20220218215828-6cf2b201936e
 	golang.org/x/mod v0.7.0
 	golang.org/x/net v0.7.0
-	golang.org/x/sync v0.1.0
 	golang.org/x/tools v0.5.1-0.20230117180257-8aba49bb5ea2
 	golang.org/x/vuln v0.0.0-20230201222900-4c848edceff1
 	google.golang.org/api v0.110.0
@@ -58,6 +57,7 @@ require (
 	go.opentelemetry.io/otel/trace v1.11.2 // indirect
 	golang.org/x/exp/typeparams v0.0.0-20221208152030-732eee02a75a // indirect
 	golang.org/x/oauth2 v0.5.0 // indirect
+	golang.org/x/sync v0.1.0 // indirect
 	golang.org/x/sys v0.5.0 // indirect
 	golang.org/x/text v0.7.0 // indirect
 	golang.org/x/xerrors v0.0.0-20220907171357-04be3eba64a2 // indirect
