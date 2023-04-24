@@ -238,6 +238,24 @@ resource "google_secret_manager_secret" "github_access_token" {
   }
 }
 
+resource "google_cloud_scheduler_job" "vulndb" {
+  count       = var.env == "prod" ? 1 : 0
+  name        = "${var.env}-vulndb"
+  description = "Compute vuln DB request counts."
+  schedule    = "0 6 * * *" # 6 AM daily
+  time_zone   = local.tz
+  project     = var.project
+
+  http_target {
+    http_method = "GET"
+    uri         = "${local.worker_url}/vulndb"
+    oidc_token {
+      service_account_email = local.worker_service_account
+      audience              = local.worker_url
+    }
+  }
+}
+
 resource "google_cloud_scheduler_job" "compute_requests" {
   count       = var.env == "prod" ? 1 : 0
   name        = "${var.env}-compute-requests"
@@ -275,20 +293,3 @@ resource "google_cloud_scheduler_job" "enqueueall" {
   }
 }
 
-resource "google_cloud_scheduler_job" "results" {
-  count       = var.env == "prod" ? 1 : 0
-  name        = "${var.env}-insert-results"
-  description = "Insert results into report table."
-  schedule    = "0 20 * * *" # 8 PM daily
-  time_zone   = local.tz
-  project     = var.project
-
-  http_target {
-    http_method = "GET"
-    uri         = "${local.worker_url}/govulncheck/insert-results"
-    oidc_token {
-      service_account_email = local.worker_service_account
-      audience              = local.worker_url
-    }
-  }
-}
