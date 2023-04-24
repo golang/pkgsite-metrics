@@ -267,7 +267,7 @@ resource "google_cloud_scheduler_job" "enqueueall" {
 
   http_target {
     http_method = "GET"
-    uri         = "${local.worker_url}/govulncheck/enqueueall?min=5"
+    uri         = "${local.worker_url}/govulncheck/enqueueall?min=3"
     oidc_token {
       service_account_email = local.worker_service_account
       audience              = local.worker_url
