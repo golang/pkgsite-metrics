@@ -53,7 +53,7 @@ func (it *entryIterator) Next() (*logging.Entry, error) {
 		}
 		if s, ok := status.FromError(err); ok && s.Code() == codes.ResourceExhausted {
 			// We ran out of quota. Wait a little and try again.
-			log.Infof(it.ctx, "entryIterator: got ResourceExhausted after reading %d entries, sleeping...", it.count)
+			log.Infof(it.ctx, "entryIterator: got ResourceExhausted after reading %d entries, sleeping...:\n%v", it.count, err)
 			time.Sleep(10 * time.Second)
 			log.Infof(it.ctx, "entryIterator: retrying")
 			it.token = it.it.PageInfo().Token
