@@ -114,6 +114,14 @@ func ranges(a osv.Affected) []Range {
 // most recent state of the vulnerability database at c.
 func ReadMostRecentDB(ctx context.Context, c *bigquery.Client) (entries []*Entry, err error) {
 	defer derrors.Wrap(&err, "ReadMostRecentDB")
+
+	// The server does not create vulndb table since it lives
+	// in a different dataset. Hence, one could get an error
+	// accessing it if it was not created in the past.
+	if _, err := c.CreateOrUpdateTable(ctx, TableName); err != nil {
+		return nil, err
+	}
+
 	query := bigquery.PartitionQuery{
 		Table:       c.FullTableName(TableName),
 		PartitionOn: "ID",
