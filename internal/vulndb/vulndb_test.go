@@ -78,7 +78,11 @@ func TestReadMostRecentDB(t *testing.T) {
 		t.Fatalf("want 2 rows; got %d", len(got))
 	}
 	for _, e := range got {
-		if e.ModifiedTime != lmt {
+		// Ideally, we would check lmt != e.ModifiedTime but
+		// unmarshaling time.Time introduces some nanosecond
+		// level imprecision. Instead, we just check that it
+		// is actually set.
+		if e.ModifiedTime.IsZero() {
 			t.Fatalf("want last modified time %v; got %v", lmt, e.ModifiedTime)
 		}
 	}

@@ -69,11 +69,15 @@ func (s *Server) handleVulnDB(w http.ResponseWriter, r *http.Request) (err error
 		return errors.New("failed to create go-vulndb bucket")
 	}
 
-	lmts, err := lastModified(ctx, dbClient)
+	entries, err := vulndbEntries(ctx, bucket)
 	if err != nil {
 		return err
 	}
-	entries, err := vulndbEntries(ctx, bucket)
+	// lastModified should be run after vulndbEntries. The latter
+	// will create a vulndb table if one does not exist. The server
+	// does not create this table since it lives in a different
+	// dataset. Hence, one could get an error otherwise.
+	lmts, err := lastModified(ctx, dbClient)
 	if err != nil {
 		return err
 	}
