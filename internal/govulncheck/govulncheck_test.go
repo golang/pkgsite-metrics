@@ -14,24 +14,47 @@ import (
 	"github.com/google/go-cmp/cmp"
 	"github.com/google/go-cmp/cmp/cmpopts"
 	"golang.org/x/pkgsite-metrics/internal/bigquery"
+	"golang.org/x/pkgsite-metrics/internal/osv"
 	test "golang.org/x/pkgsite-metrics/internal/testing"
 	"golang.org/x/vuln/exp/govulncheck"
-	"golang.org/x/vuln/osv"
+	oldOsv "golang.org/x/vuln/osv"
 	"google.golang.org/api/iterator"
 )
 
 func TestConvertGovulncheckOutput(t *testing.T) {
 	var (
-		osvEntry = &osv.Entry{
+		newOsvEntry = &osv.Entry{
 			ID: "GO-YYYY-1234",
 			Affected: []osv.Affected{
 				{
-					Package: osv.Package{
-						Name:      "example.com/repo/module",
+					Module: osv.Module{
+						Path:      "example.com/repo/module",
 						Ecosystem: "Go",
 					},
 					EcosystemSpecific: osv.EcosystemSpecific{
-						Imports: []osv.EcosystemSpecificImport{
+						Packages: []osv.Package{
+							{
+								Path: "example.com/repo/module/package",
+								Symbols: []string{
+									"Symbol",
+									"Another",
+								},
+							},
+						},
+					},
+				},
+			},
+		}
+		osvEntry = &oldOsv.Entry{
+			ID: newOsvEntry.ID,
+			Affected: []oldOsv.Affected{
+				{
+					Package: oldOsv.Package{
+						Name:      "example.com/repo/module",
+						Ecosystem: "Go",
+					},
+					EcosystemSpecific: oldOsv.EcosystemSpecific{
+						Imports: []oldOsv.EcosystemSpecificImport{
 							{
 								Path: "example.com/repo/module/package",
 								Symbols: []string{

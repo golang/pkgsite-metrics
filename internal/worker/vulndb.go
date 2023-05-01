@@ -17,13 +17,13 @@ import (
 	"net/http"
 
 	"cloud.google.com/go/storage"
-	"golang.org/x/vuln/osv"
 	"google.golang.org/api/iterator"
 
 	"golang.org/x/pkgsite-metrics/internal"
 	"golang.org/x/pkgsite-metrics/internal/bigquery"
 	"golang.org/x/pkgsite-metrics/internal/derrors"
 	"golang.org/x/pkgsite-metrics/internal/log"
+	"golang.org/x/pkgsite-metrics/internal/osv"
 	"golang.org/x/pkgsite-metrics/internal/vulndb"
 	"golang.org/x/pkgsite-metrics/internal/vulndbreqs"
 )

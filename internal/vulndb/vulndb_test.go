@@ -11,16 +11,16 @@ import (
 
 	"github.com/google/go-cmp/cmp"
 	"golang.org/x/pkgsite-metrics/internal/bigquery"
+	"golang.org/x/pkgsite-metrics/internal/osv"
 	test "golang.org/x/pkgsite-metrics/internal/testing"
-	"golang.org/x/vuln/osv"
 )
 
 func TestConvert(t *testing.T) {
 	oe := &osv.Entry{
 		ID: "a",
 		Affected: []osv.Affected{
-			{Package: osv.Package{Name: "example.mod/a"}, Ranges: []osv.AffectsRange{{Events: []osv.RangeEvent{{Introduced: "0"}, {Fixed: "0.9.0"}}}}},
-			{Package: osv.Package{Name: "a.example.mod/a"}, Ranges: []osv.AffectsRange{{Events: []osv.RangeEvent{{Introduced: "1.0.0"}, {Fixed: "2.0.0"}}}}},
+			{Module: osv.Module{Path: "example.mod/a"}, Ranges: []osv.Range{{Events: []osv.RangeEvent{{Introduced: "0"}, {Fixed: "0.9.0"}}}}},
+			{Module: osv.Module{Path: "a.example.mod/a"}, Ranges: []osv.Range{{Events: []osv.RangeEvent{{Introduced: "1.0.0"}, {Fixed: "2.0.0"}}}}},
 		}}
 	want := &Entry{
 		ID: "a",

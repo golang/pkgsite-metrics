@@ -12,7 +12,7 @@ import (
 
 	"golang.org/x/pkgsite-metrics/internal/bigquery"
 	"golang.org/x/pkgsite-metrics/internal/derrors"
-	"golang.org/x/vuln/osv"
+	"golang.org/x/pkgsite-metrics/internal/osv"
 )
 
 // Definitions for BigQuery.
@@ -90,7 +90,7 @@ func modules(oe *osv.Entry) []Module {
 	var modules []Module
 	for _, a := range oe.Affected {
 		modules = append(modules, Module{
-			Path:   a.Package.Name,
+			Path:   a.Module.Path,
 			Ranges: ranges(a),
 		})
 	}
