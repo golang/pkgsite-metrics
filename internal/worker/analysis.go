@@ -217,6 +217,14 @@ func runBinaryInDir(sbox *sandbox.Sandbox, path string, args []string, dir strin
 // and below.
 func addSource(ds []*analysis.Diagnostic, nContext int) error {
 	for _, d := range ds {
+		if d.Position == "" {
+			// some binaries might collect basic stats, such
+			// as number of occurrences of a certain pattern.
+			// It might not make sense for them to report a
+			// position.
+			continue
+		}
+
 		file, line, _, err := parsePosition(d.Position)
 		if err != nil {
 			return err
