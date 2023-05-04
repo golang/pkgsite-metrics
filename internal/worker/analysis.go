@@ -302,8 +302,11 @@ func (s *analysisServer) handleEnqueue(w http.ResponseWriter, r *http.Request) (
 		return err
 	}
 	tasks := createAnalysisQueueTasks(params, mods)
-	return enqueueTasks(ctx, tasks, s.queue,
+	err = enqueueTasks(ctx, tasks, s.queue,
 		&queue.Options{Namespace: "analysis", TaskNameSuffix: params.Suffix})
+	// Communicate enqueue status for better usability.
+	fmt.Fprintf(w, "enqueued %d analysis tasks with err=%v", len(tasks), err)
+	return err
 }
 
 func createAnalysisQueueTasks(params *analysis.EnqueueParams, mods []scan.ModuleSpec) []queue.Task {
