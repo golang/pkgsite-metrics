@@ -305,7 +305,7 @@ func (s *analysisServer) handleEnqueue(w http.ResponseWriter, r *http.Request) (
 	err = enqueueTasks(ctx, tasks, s.queue,
 		&queue.Options{Namespace: "analysis", TaskNameSuffix: params.Suffix})
 	// Communicate enqueue status for better usability.
-	fmt.Fprintf(w, "enqueued %d analysis tasks with err=%v", len(tasks), err)
+	fmt.Fprintf(w, "enqueued %d analysis tasks with err=%v\n", len(tasks), err)
 	return err
 }
 
