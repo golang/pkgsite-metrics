@@ -155,7 +155,10 @@ func (c *Client) CreateOrUpdateTable(ctx context.Context, tableID string) (creat
 		return false, fmt.Errorf("no schema registered for table %q", tableID)
 	}
 	_, err = c.Table(tableID).Update(ctx, bq.TableMetadataToUpdate{Schema: schema}, meta.ETag)
-	return false, err
+	if err != nil && !isAlreadyExistsError(err) {
+		return false, err
+	}
+	return false, nil
 }
 
 // A Row is something that can be uploaded to BigQuery.
