@@ -109,7 +109,8 @@ runchecks() {
   check_integration
   check_headers
   go_linters
-  go_modtidy
+  # TODO(zpavlinovic): find a way to disable only for non-longtest builders.
+  #go_modtidy
 }
 
 usage() {
