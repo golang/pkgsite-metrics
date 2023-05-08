@@ -159,7 +159,8 @@ func (s *analysisServer) scan(ctx context.Context, req *analysis.ScanRequest, lo
 }
 
 func (s *analysisServer) scanInternal(ctx context.Context, req *analysis.ScanRequest, binaryPath, moduleDir string) (jt analysis.JSONTree, err error) {
-	if err := prepareModule(ctx, req.Module, req.Version, moduleDir, s.proxyClient, req.Insecure); err != nil {
+	const init = true
+	if err := prepareModule(ctx, req.Module, req.Version, moduleDir, s.proxyClient, req.Insecure, init); err != nil {
 		return nil, err
 	}
 	var sbox *sandbox.Sandbox

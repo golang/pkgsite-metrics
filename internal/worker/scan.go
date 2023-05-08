@@ -219,32 +219,89 @@ func gcsOpenFileFunc(ctx context.Context, bucket *storage.BucketHandle) openFile
 
 // prepareModule prepares a module for scanning. It downloads the module to the given
 // directory and takes other actions that increase the chance that package loading will succeed.
-func prepareModule(ctx context.Context, modulePath, version, dir string, proxyClient *proxy.Client, insecure bool) error {
+// If init is true, those other actions include calling `go mod init` and `go mod tidy` on modules
+// that don't have go.mod files.
+func prepareModule(ctx context.Context, modulePath, version, dir string, proxyClient *proxy.Client, insecure, init bool) error {
 	log.Debugf(ctx, "downloading %s@%s to %s", modulePath, version, dir)
 	if err := modules.Download(ctx, modulePath, version, dir, proxyClient, true); err != nil {
 		log.Debugf(ctx, "download error: %v (%[1]T)", err)
 		return err
 	}
 
-	// Download all dependencies, using the given directory for the Go module cache
-	// if it is non-empty.
-	log.Debugf(ctx, "running go mod download on %s@%s", modulePath, version)
-	cmd := exec.Command("go", "mod", "download")
-	cmd.Dir = dir
-	cmd.Env = append(cmd.Environ(), "GOPROXY=https://proxy.golang.org")
-	if !insecure {
-		// Use sandbox mod cache.
-		cmd.Env = append(cmd.Env, "GOMODCACHE="+filepath.Join(sandboxRoot, sandboxGoModCache))
+	hasGoMod := fileExists(filepath.Join(dir, "go.mod"))
+	if !init || hasGoMod {
+		// Download all dependencies, using the given directory for the Go module cache
+		// if it is non-empty.
+		opts := &goCommandOptions{
+			dir:       dir,
+			insecure:  insecure,
+			proxyAddr: "https://proxy.golang.org",
+		}
+		return runGoCommand(ctx, modulePath, version, opts, "mod", "download")
 	}
-	if _, err := cmd.Output(); err != nil {
-		return fmt.Errorf("%w: 'go mod download' for %s@%s returned %s",
-			derrors.BadModule, modulePath, version, derrors.IncludeStderr(err))
+	// Run `go mod init` and `go mod tidy`.
+	if err := goModInit(ctx, modulePath, version, dir, "synthetic", insecure); err != nil {
+		return err
 	}
-	log.Debugf(ctx, "go mod download succeeded")
-	return nil
+	return goModTidy(ctx, modulePath, version, dir, insecure)
 }
 
 // moduleDir returns a the path of a directory where the module can be downloaded.
 func moduleDir(modulePath, version string) string {
 	return filepath.Join(modulesDir, modulePath+"@"+version)
+}
+
+func goModInit(ctx context.Context, modulePath, version, dir, name string, insecure bool) error {
+	return runGoCommand(ctx, modulePath, version, &goCommandOptions{dir: dir, insecure: insecure}, "mod", "init", name)
+}
+
+// goModTidy runs "go mod tidy" on a module in dir.
+func goModTidy(ctx context.Context, modulePath, version, dir string, insecure bool) error {
+	s := proxy.ServeDisablingFetch()
+	defer s.Close()
+	opts := &goCommandOptions{
+		dir:       dir,
+		insecure:  insecure,
+		proxyAddr: s.URL,
+	}
+	return runGoCommand(ctx, modulePath, version, opts, "mod", "tidy")
+}
+
+type goCommandOptions struct {
+	dir       string
+	proxyAddr string
+	insecure  bool
+}
+
+// runGoModCommand runs the command `go args...`.
+// modulePath and version are present only for messages.
+func runGoCommand(ctx context.Context, modulePath, version string, opts *goCommandOptions, args ...string) (err error) {
+	argstring := strings.Join(args, " ")
+	defer derrors.Wrap(&err, "runGoCommand(%s@%s, %q, %v)", modulePath, version, argstring, opts)
+	if opts == nil {
+		opts = &goCommandOptions{}
+	}
+	log.Infof(ctx, "running `go %s` on %s@%s", argstring, modulePath, version)
+
+	cmd := exec.Command("go", args...)
+	cmd.Dir = opts.dir
+	cmd.Env = cmd.Environ()
+	if opts.proxyAddr != "" {
+		cmd.Env = append(cmd.Env, fmt.Sprintf("GOPROXY=%s", opts.proxyAddr))
+	}
+	if !opts.insecure {
+		// Use sandbox mod cache.
+		cmd.Env = append(cmd.Env, "GOMODCACHE="+filepath.Join(sandboxRoot, sandboxGoModCache))
+	}
+	if _, err := cmd.Output(); err != nil {
+		return fmt.Errorf("%w: 'go %s' for %s@%s returned %s",
+			derrors.BadModule, argstring, modulePath, version, derrors.IncludeStderr(err))
+	}
+	log.Infof(ctx, "'go %s' succeeded", argstring)
+	return nil
+}
+
+func fileExists(filename string) bool {
+	_, err := os.Stat(filename)
+	return err == nil
 }

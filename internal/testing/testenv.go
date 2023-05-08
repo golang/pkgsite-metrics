@@ -28,7 +28,7 @@ func NeedsIntegrationEnv(t testing.TB) {
 	t.Helper()
 
 	if os.Getenv("GO_ECOSYSTEM_INTEGRATION_TESTING") != "1" {
-		t.Skip("skipping; need local test environment with GCS permissions")
+		t.Skip("skipping; need local test environment with GCS permissions (set GO_ECOSYSTEM_INTEGRATION_TESTING=1)")
 	}
 	if testing.Short() {
 		t.Skip("skipping; integration tests must be run in non-short mode")
