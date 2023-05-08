@@ -155,10 +155,14 @@ func (c *Client) CreateOrUpdateTable(ctx context.Context, tableID string) (creat
 		return false, fmt.Errorf("no schema registered for table %q", tableID)
 	}
 	_, err = c.Table(tableID).Update(ctx, bq.TableMetadataToUpdate{Schema: schema}, meta.ETag)
-	if err != nil && !isAlreadyExistsError(err) {
-		return false, err
+	// There is a race condition if multiple threads of control call this function concurrently:
+	// The table may have changed since Metadata was called above, making the Etag invalid and
+	// resulting in a PreconditionFailed error. This error is harmless: it just means that someone
+	// else updated the table before us. Ignore it.
+	if isAlreadyExistsError(err) || hasCode(err, http.StatusPreconditionFailed) {
+		return false, nil
 	}
-	return false, nil
+	return false, err
 }
 
 // A Row is something that can be uploaded to BigQuery.
