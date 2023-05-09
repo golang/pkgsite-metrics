@@ -141,14 +141,28 @@ resource "google_service_account_iam_policy" "impersonate" {
 # Permissions on the impersonate service account.
 data "google_iam_policy" "impersonate" {
   binding {
-    # Let anyone in the ecosystem group get an access token for this service account.
+    # Let anyone in the ecosystem and golang group get an access token for this service account.
     role    = "roles/iam.serviceAccountTokenCreator"
-    members = [var.team_group]
+    members = [
+    	var.team_group,
+	"group:golang-eng-policy@twosync.google.com"
+	]
   }
   binding {
-    # Let anyone in the ecosystem group act as this service account.
+    # Let anyone in the ecosystem and golang group act as this service account.
     role    = "roles/iam.serviceAccountUser"
-    members = [var.team_group]
+    members = [
+    	var.team_group,
+	"group:golang-eng-policy@twosync.google.com"
+	]
+  }
+  binding {
+    # Let anyone in the ecosystem and golang group view most of Cloud resources, including permissions.
+    role    = "roles/viewer"
+    members = [
+    	var.team_group,
+	"group:golang-eng-policy@twosync.google.com"
+	]
   }
 }
 
