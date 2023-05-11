@@ -6,6 +6,9 @@ package worker
 
 import (
 	"context"
+	"encoding/json"
+	"os"
+	"path/filepath"
 	"time"
 
 	"golang.org/x/pkgsite-metrics/internal"
@@ -44,7 +47,7 @@ func (h *GovulncheckServer) getWorkVersion(ctx context.Context) (_ *govulncheck.
 	defer h.mu.Unlock()
 
 	if h.workVersion == nil {
-		lmt := time.Now() // TODO: Implement this
+		lmt, err := dbLastModified(h.cfg.VulnDBDir)
 		if err != nil {
 			return nil, err
 		}
@@ -61,4 +64,32 @@ func (h *GovulncheckServer) getWorkVersion(ctx context.Context) (_ *govulncheck.
 		log.Infof(ctx, "govulncheck work version: %+v", h.workVersion)
 	}
 	return h.workVersion, nil
+}
+
+// dbLastModified computes the last modified time stamp of
+// vulnerability database rooted at vulnDB.
+//
+// Follows the logic of golang.org/x/internal/client/client.go:Client.LastModifiedTime.
+func dbLastModified(vulnDB string) (time.Time, error) {
+	dbFile := filepath.Join(vulnDB, "index/db.json")
+	b, err := os.ReadFile(dbFile)
+	if err != nil {
+		return time.Time{}, err
+	}
+
+	// dbMeta contains metadata about the database itself.
+	//
+	// Copy of golang.org/x/internal/client/schema.go:dbMeta.
+	type dbMeta struct {
+		// Modified is the time the database was last modified, calculated
+		// as the most recent time any single OSV entry was modified.
+		Modified time.Time `json:"modified"`
+	}
+
+	var dbm dbMeta
+	if err := json.Unmarshal(b, &dbm); err != nil {
+		return time.Time{}, err
+	}
+
+	return dbm.Modified, nil
 }

@@ -106,9 +106,6 @@ type Config struct {
 
 	// ProxyURL is the url for the Go module proxy.
 	ProxyURL string
-
-	// VulnDBURL is the url for the Go vulnerability database.
-	VulnDBURL string
 }
 
 // Init resolves all configuration values provided by the config package. It
@@ -140,8 +137,7 @@ func Init(ctx context.Context) (_ *Config, err error) {
 		PkgsiteDBName:         GetEnv("GO_ECOSYSTEM_PKGSITE_DB_NAME", "discovery-db"),
 		PkgsiteDBUser:         GetEnv("GO_ECOSYSTEM_PKGSITE_DB_USER", "postgres"),
 		PkgsiteDBSecret:       os.Getenv("GO_ECOSYSTEM_PKGSITE_DB_SECRET"),
-		ProxyURL:              GetEnv("GO_MODULE_PROXY_URL", "https://proxy.golang.org/cached-only"),
-		VulnDBURL:             GetEnv("GO_VULNDB_URL", "https://vuln.go.dev"),
+		ProxyURL:              GetEnv("GO_MODULE_PROXY_URL", "https://proxy.golang.org"),
 	}
 	if OnCloudRun() {
 		sa, err := gceMetadata(ctx, "instance/service-accounts/default/email")
