@@ -7,6 +7,7 @@ require (
 	cloud.google.com/go/bigquery v1.44.0
 	cloud.google.com/go/cloudtasks v1.8.0
 	cloud.google.com/go/errorreporting v0.3.0
+	cloud.google.com/go/firestore v1.9.0
 	cloud.google.com/go/logging v1.7.0
 	cloud.google.com/go/secretmanager v1.9.0
 	cloud.google.com/go/storage v1.28.1
@@ -60,6 +61,7 @@ require (
 	golang.org/x/sync v0.1.0 // indirect
 	golang.org/x/sys v0.5.0 // indirect
 	golang.org/x/text v0.7.0 // indirect
+	golang.org/x/time v0.1.0 // indirect
 	golang.org/x/xerrors v0.0.0-20220907171357-04be3eba64a2 // indirect
 	google.golang.org/appengine v1.6.7 // indirect
 )
