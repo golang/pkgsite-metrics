@@ -267,7 +267,7 @@ resource "google_cloudbuild_trigger" "deploy_prod_worker" {
 
   substitutions = {
     "_ENV"        = "prod"
-    "_BQ_DATASET" = "test_prod"
+    "_BQ_DATASET" = "prod"
   }
 }
 
