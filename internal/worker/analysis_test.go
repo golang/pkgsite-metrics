@@ -74,7 +74,7 @@ func TestCreateAnalysisQueueTasks(t *testing.T) {
 		Args:     "args",
 		Insecure: true,
 		Suffix:   "suff",
-	}, mods)
+	}, "", mods)
 	want := []queue.Task{
 		&analysis.ScanRequest{
 			ModuleURLPath: scan.ModuleURLPath{Module: "a.com/a", Version: "v1.2.3"},
@@ -137,6 +137,7 @@ func G() {}
 			Binary:   "analyzer",
 			Args:     "-name G",
 			Insecure: true,
+			JobID:    "jid",
 		},
 	}
 	wv := analysis.WorkVersion{BinaryArgs: "-name G", BinaryVersion: "bv", SchemaVersion: "sv"}

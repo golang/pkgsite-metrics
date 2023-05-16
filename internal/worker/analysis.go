@@ -19,11 +19,13 @@ import (
 	"path"
 	"strconv"
 	"strings"
+	"time"
 
 	bq "cloud.google.com/go/bigquery"
 	"cloud.google.com/go/storage"
 	"golang.org/x/pkgsite-metrics/internal/analysis"
 	"golang.org/x/pkgsite-metrics/internal/derrors"
+	"golang.org/x/pkgsite-metrics/internal/jobs"
 	"golang.org/x/pkgsite-metrics/internal/log"
 	"golang.org/x/pkgsite-metrics/internal/queue"
 	"golang.org/x/pkgsite-metrics/internal/sandbox"
@@ -65,12 +67,36 @@ const analysisBinariesBucketDir = "analysis-binaries"
 
 func (s *analysisServer) handleScan(w http.ResponseWriter, r *http.Request) (err error) {
 	defer derrors.Wrap(&err, "analysisServer.handleScan")
-
 	ctx := r.Context()
+
 	req, err := analysis.ParseScanRequest(r, "/analysis/scan")
 	if err != nil {
 		return fmt.Errorf("%w: %v", derrors.InvalidArgument, err)
 	}
+
+	// updateJob updates the job for this request if there is one.
+	// If there is an error, it logs it instead of failing.
+	updateJob := func(f func(*jobs.Job)) {
+		if req.JobID != "" && s.jobDB != nil {
+			err := s.jobDB.UpdateJob(ctx, req.JobID, func(j *jobs.Job) error {
+				f(j)
+				return nil
+			})
+			if err != nil {
+				log.Errorf(ctx, err, "failed to update job for id %q", req.JobID)
+			}
+		}
+	}
+
+	updateJob(func(j *jobs.Job) { j.NumStarted++ })
+
+	// Handle errors here.
+	defer func() {
+		if err != nil {
+			updateJob(func(j *jobs.Job) { j.NumFailed++ })
+		}
+	}()
+
 	if req.Suffix != "" {
 		return fmt.Errorf("%w: analysis: only implemented for whole modules (no suffix)", derrors.InvalidArgument)
 	}
@@ -101,10 +127,21 @@ func (s *analysisServer) handleScan(w http.ResponseWriter, r *http.Request) (err
 	key := analysis.WorkVersionKey{Module: req.Module, Version: req.Version, Binary: req.Binary}
 	if wv == s.storedWorkVersions[key] {
 		log.Infof(ctx, "skipping (work version unchanged): %+v", key)
+		updateJob(func(j *jobs.Job) { j.NumSkipped++ })
 		return nil
 	}
 	row := s.scan(ctx, req, localBinaryPath, wv)
-	return writeResult(ctx, req.Serve, w, s.bqClient, analysis.TableName, row)
+	if err := writeResult(ctx, req.Serve, w, s.bqClient, analysis.TableName, row); err != nil {
+		return err
+	}
+	updateJob(func(j *jobs.Job) {
+		if row.Error != "" {
+			j.NumErrored++
+		} else {
+			j.NumSucceeded++
+		}
+	})
+	return nil
 }
 
 func (s *analysisServer) scan(ctx context.Context, req *analysis.ScanRequest, localBinaryPath string, wv analysis.WorkVersion) *analysis.Result {
@@ -302,15 +339,36 @@ func (s *analysisServer) handleEnqueue(w http.ResponseWriter, r *http.Request) (
 	if err != nil {
 		return err
 	}
-	tasks := createAnalysisQueueTasks(params, mods)
+
+	var (
+		job   *jobs.Job
+		jobID string
+	)
+	// If a user was provided, create a Job.
+	if params.User != "" {
+		job = jobs.NewJob(params.User, time.Now(), r.URL.String())
+		jobID = job.ID()
+	}
+
+	tasks := createAnalysisQueueTasks(params, jobID, mods)
 	err = enqueueTasks(ctx, tasks, s.queue,
 		&queue.Options{Namespace: "analysis", TaskNameSuffix: params.Suffix})
+	if err != nil {
+		return fmt.Errorf("enequeue failed: %w", err)
+	}
+	if job != nil {
+		job.NumEnqueued = len(tasks)
+		if err := s.jobDB.CreateJob(ctx, job); err != nil {
+			return fmt.Errorf("enqueued %d analysis tasks successfully, but could not create job: %w", len(tasks), err)
+		}
+	}
+
 	// Communicate enqueue status for better usability.
-	fmt.Fprintf(w, "enqueued %d analysis tasks with err=%v\n", len(tasks), err)
-	return err
+	fmt.Fprintf(w, "enqueued %d analysis tasks successfully\n", len(tasks))
+	return nil
 }
 
-func createAnalysisQueueTasks(params *analysis.EnqueueParams, mods []scan.ModuleSpec) []queue.Task {
+func createAnalysisQueueTasks(params *analysis.EnqueueParams, jobID string, mods []scan.ModuleSpec) []queue.Task {
 	var tasks []queue.Task
 	for _, mod := range mods {
 		tasks = append(tasks, &analysis.ScanRequest{
@@ -323,6 +381,7 @@ func createAnalysisQueueTasks(params *analysis.EnqueueParams, mods []scan.Module
 				Args:       params.Args,
 				ImportedBy: mod.ImportedBy,
 				Insecure:   params.Insecure,
+				JobID:      jobID,
 			},
 		})
 	}

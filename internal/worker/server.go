@@ -21,6 +21,7 @@ import (
 	"golang.org/x/pkgsite-metrics/internal/config"
 	"golang.org/x/pkgsite-metrics/internal/derrors"
 	"golang.org/x/pkgsite-metrics/internal/govulncheck"
+	"golang.org/x/pkgsite-metrics/internal/jobs"
 	"golang.org/x/pkgsite-metrics/internal/log"
 	"golang.org/x/pkgsite-metrics/internal/observe"
 	"golang.org/x/pkgsite-metrics/internal/proxy"
@@ -35,6 +36,7 @@ type Server struct {
 	vulndbClient vulnc.Client
 	proxyClient  *proxy.Client
 	queue        queue.Queue
+	jobDB        *jobs.DB
 
 	devMode bool
 	mu      sync.Mutex
@@ -74,6 +76,15 @@ func NewServer(ctx context.Context, cfg *config.Config) (_ *Server, err error) {
 	if err != nil {
 		return nil, err
 	}
+
+	var jdb *jobs.DB
+	if cfg.ProjectID != "" {
+		var err error
+		jdb, err = jobs.NewDB(ctx, cfg.ProjectID, cfg.BigQueryDataset)
+		if err != nil {
+			return nil, err
+		}
+	}
 	s := &Server{
 		cfg:          cfg,
 		bqClient:     bq,
@@ -81,6 +92,7 @@ func NewServer(ctx context.Context, cfg *config.Config) (_ *Server, err error) {
 		queue:        q,
 		proxyClient:  proxyClient,
 		devMode:      cfg.DevMode,
+		jobDB:        jdb,
 	}
 
 	if cfg.ProjectID != "" && cfg.ServiceID != "" {

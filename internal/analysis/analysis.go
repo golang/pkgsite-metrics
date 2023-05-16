@@ -33,6 +33,7 @@ type ScanParams struct {
 	ImportedBy int    // imported-by count of module in path
 	Insecure   bool   // if true, run outside sandbox
 	Serve      bool   // serve results back to client instead of writing them to BigQuery
+	JobID      string // ID of job, if non-empty
 }
 
 type EnqueueParams struct {
@@ -42,6 +43,7 @@ type EnqueueParams struct {
 	Min      int    // minimum import-by count for a module to be included
 	File     string // path to file containing modules; if missing, use DB
 	Suffix   string // appended to task queue IDs to generate unique tasks
+	User     string // user initiating enqueue
 }
 
 // Request implements queue.Task so it can be put on a TaskQueue.
