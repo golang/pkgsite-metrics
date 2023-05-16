@@ -80,6 +80,7 @@ resource "google_project_service" "apis" {
     "cloudtrace",
     "compute",
     "containerregistry",
+    "firestore",
     "iap",
     "logging",
     "monitoring",
