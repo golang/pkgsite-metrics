@@ -37,6 +37,18 @@ func TestJobs(t *testing.T) {
 	if !cmp.Equal(&got, job) {
 		t.Errorf("got\n%+v\nwant\n%+v", got, job)
 	}
+
+	if err := processJobRequest(ctx, &buf, "/cancel", job.ID(), db); err != nil {
+		t.Fatal(err)
+	}
+
+	got2, err := db.GetJob(ctx, job.ID())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !got2.Canceled {
+		t.Error("got canceled false, want true")
+	}
 }
 
 type testJobDB struct {

@@ -74,6 +74,17 @@ func (s *analysisServer) handleScan(w http.ResponseWriter, r *http.Request) (err
 		return fmt.Errorf("%w: %v", derrors.InvalidArgument, err)
 	}
 
+	// If there is a job and it's canceled, return immediately.
+	if req.JobID != "" && s.jobDB != nil {
+		job, err := s.jobDB.GetJob(ctx, req.JobID)
+		if err != nil {
+			log.Errorf(ctx, err, "failed to get job for id %q", req.JobID)
+		} else if job.Canceled {
+			log.Infof(ctx, "job %q canceled; skipping", req.JobID)
+			return nil
+		}
+	}
+
 	// updateJob updates the job for this request if there is one.
 	// If there is an error, it logs it instead of failing.
 	updateJob := func(f func(*jobs.Job)) {

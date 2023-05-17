@@ -60,6 +60,15 @@ func processJobRequest(ctx context.Context, w io.Writer, path, jobID string, db 
 		enc.Encode(job)
 		return nil
 
+	case "/cancel":
+		if jobID == "" {
+			return fmt.Errorf("missing jobid: %w", derrors.InvalidArgument)
+		}
+		return db.UpdateJob(ctx, jobID, func(j *jobs.Job) error {
+			j.Canceled = true
+			return nil
+		})
+
 	default:
 		return fmt.Errorf("unknown path %q: %w", path, derrors.InvalidArgument)
 	}
