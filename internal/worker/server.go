@@ -134,6 +134,7 @@ func NewServer(ctx context.Context, cfg *config.Config) (_ *Server, err error) {
 	s.handle("/vulndb", s.handleVulnDB)
 	// compute missing vuln.go.dev request counts
 	s.handle("/compute-requests", s.handleComputeRequests)
+	s.handle("/jobs/", s.handleJobs)
 	return s, nil
 }
 
