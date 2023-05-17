@@ -7,9 +7,11 @@ package jobs
 import (
 	"context"
 	"errors"
+	"time"
 
 	"cloud.google.com/go/firestore"
 	"golang.org/x/pkgsite-metrics/internal/derrors"
+	"google.golang.org/api/iterator"
 )
 
 // A DB is a client for a database that stores Jobs.
@@ -87,6 +89,34 @@ func (d *DB) UpdateJob(ctx context.Context, id string, f func(*Job) error) (err 
 		}
 		return tx.Set(docref, j)
 	})
+}
+
+// ListJobs calls f on each job in the DB, most recently started first.
+// f is also passed the time that the job was last updated.
+// If f returns a non-nil error, the iteration stops and returns that error.
+func (d *DB) ListJobs(ctx context.Context, f func(_ *Job, lastUpdate time.Time) error) (err error) {
+	defer derrors.Wrap(&err, "job.DB.ListJobs()")
+
+	q := d.nsDoc.Collection(jobCollection).OrderBy("StartedAt", firestore.Desc)
+	iter := q.Documents(ctx)
+	defer iter.Stop()
+	for {
+		docsnap, err := iter.Next()
+		if err == iterator.Done {
+			break
+		}
+		if err != nil {
+			return err
+		}
+		job, err := docsnapToJob(docsnap)
+		if err != nil {
+			return err
+		}
+		if err := f(job, docsnap.UpdateTime); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 // jobRef returns the DocumentRef for a job with the given ID.

@@ -69,4 +69,20 @@ func TestDB(t *testing.T) {
 	if !cmp.Equal(got, job) {
 		t.Errorf("got\n%+v\nwant\n%+v", got, job)
 	}
+
+	// Create another job, then list both.
+	job2 := NewJob("user2", tm.Add(24*time.Hour), "url2")
+	must(db.DeleteJob(ctx, job2.ID()))
+	must(db.CreateJob(ctx, job2))
+
+	var got2 []*Job
+	must(db.ListJobs(ctx, func(j *Job, _ time.Time) error {
+		got2 = append(got2, j)
+		return nil
+	}))
+	// Jobs listed in reverse start-time order.
+	want2 := []*Job{job2, job}
+	if diff := cmp.Diff(want2, got2); diff != "" {
+		t.Errorf("mismatch (-want, +got)\n%s", diff)
+	}
 }
