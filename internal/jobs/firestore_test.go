@@ -2,7 +2,7 @@
 // Use of this source code is governed by a BSD-style
 // license that can be found in the LICENSE file.
 
-package job
+package jobs
 
 import (
 	"context"
@@ -35,7 +35,7 @@ func TestDB(t *testing.T) {
 	}
 
 	tm := time.Date(2001, 02, 03, 4, 5, 6, 0, time.UTC)
-	job := New("user", tm, "analysis/enqueue?min=10")
+	job := NewJob("user", tm, "analysis/enqueue?min=10")
 
 	// Make sure the job doesn't exist. Delete doesn't fail
 	// in that case.

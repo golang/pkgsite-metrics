@@ -2,8 +2,8 @@
 // Use of this source code is governed by a BSD-style
 // license that can be found in the LICENSE file.
 
-// Package job supports jobs, collections of enqueued tasks.
-package job
+// Package jobs supports jobs, which are collections of enqueued tasks.
+package jobs
 
 import (
 	"time"
@@ -18,14 +18,14 @@ type Job struct {
 	// Counts of tasks.
 	NumEnqueued  int // Written by enqueue endpoint.
 	NumStarted   int // Incremented at the start of a scan.
-	NumCached    int // Previously run, stored in BigQuery.
+	NumSkipped   int // Previously run, stored in BigQuery.
 	NumFailed    int // The HTTP request failed (status != 200)
 	NumErrored   int // The HTTP request succeeded, but the scan resulted in an error.
 	NumSucceeded int
 }
 
-// New creates a new Job.
-func New(user string, start time.Time, url string) *Job {
+// NewJob creates a new Job.
+func NewJob(user string, start time.Time, url string) *Job {
 	return &Job{
 		User:      user,
 		StartedAt: start,
@@ -35,6 +35,7 @@ func New(user string, start time.Time, url string) *Job {
 
 const startTimeFormat = "060102-030405" // YYMMDD-HHMMSS, UTC
 
+// ID returns a unique identifier for a job which can serve as a database key.
 func (j *Job) ID() string {
 	return j.User + "-" + j.StartedAt.In(time.UTC).Format(startTimeFormat)
 }
