@@ -367,15 +367,17 @@ func (s *analysisServer) handleEnqueue(w http.ResponseWriter, r *http.Request) (
 	if err != nil {
 		return fmt.Errorf("enequeue failed: %w", err)
 	}
+	sj := ""
 	if job != nil {
 		job.NumEnqueued = len(tasks)
 		if err := s.jobDB.CreateJob(ctx, job); err != nil {
-			return fmt.Errorf("enqueued %d analysis tasks successfully, but could not create job: %w", len(tasks), err)
+			sj = fmt.Sprintf(", but could not create job: %v", err)
+		} else {
+			sj = ", job ID is " + job.ID()
 		}
 	}
-
 	// Communicate enqueue status for better usability.
-	fmt.Fprintf(w, "enqueued %d analysis tasks successfully\n", len(tasks))
+	fmt.Fprintf(w, "enqueued %d analysis tasks successfully%s\n", len(tasks), sj)
 	return nil
 }
 

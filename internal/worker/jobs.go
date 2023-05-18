@@ -22,6 +22,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"strings"
 	"time"
 
 	"golang.org/x/pkgsite-metrics/internal/derrors"
@@ -49,8 +50,9 @@ type jobDB interface {
 }
 
 func processJobRequest(ctx context.Context, w io.Writer, path, jobID string, db jobDB) error {
+	path = strings.TrimPrefix(path, "/jobs/")
 	switch path {
-	case "/describe": // describe one job
+	case "describe": // describe one job
 		if jobID == "" {
 			return fmt.Errorf("missing jobid: %w", derrors.InvalidArgument)
 		}
@@ -63,7 +65,7 @@ func processJobRequest(ctx context.Context, w io.Writer, path, jobID string, db 
 		enc.Encode(job)
 		return nil
 
-	case "/cancel":
+	case "cancel":
 		if jobID == "" {
 			return fmt.Errorf("missing jobid: %w", derrors.InvalidArgument)
 		}
@@ -72,12 +74,13 @@ func processJobRequest(ctx context.Context, w io.Writer, path, jobID string, db 
 			return nil
 		})
 
-	case "/list":
+	case "list":
 		var buf bytes.Buffer
 		fmt.Fprintf(&buf, "%-20s\tEnq\tCompl\tCanceled\n", "ID")
 		err := db.ListJobs(ctx, func(j *jobs.Job, _ time.Time) error {
 			_, err := fmt.Fprintf(&buf, "%-20s\t%3d\t%3d\t%t\n",
-				j.ID(), j.NumEnqueued, j.NumFailed+j.NumErrored+j.NumSucceeded,
+				j.ID(), j.NumEnqueued,
+				j.NumSkipped+j.NumFailed+j.NumErrored+j.NumSucceeded,
 				j.Canceled)
 			return err
 		})
