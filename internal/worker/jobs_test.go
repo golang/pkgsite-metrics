@@ -9,10 +9,13 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"strings"
 	"testing"
 	"time"
 
 	"github.com/google/go-cmp/cmp"
+	"golang.org/x/exp/maps"
+	"golang.org/x/exp/slices"
 	"golang.org/x/pkgsite-metrics/internal/derrors"
 	"golang.org/x/pkgsite-metrics/internal/jobs"
 )
@@ -48,6 +51,17 @@ func TestJobs(t *testing.T) {
 	}
 	if !got2.Canceled {
 		t.Error("got canceled false, want true")
+	}
+
+	buf.Reset()
+	if err := processJobRequest(ctx, &buf, "/list", "", db); err != nil {
+		t.Fatal(err)
+	}
+	// Don't check for specific output, just make sure there's something
+	// that mentions the job ID.
+	got3 := buf.String()
+	if !strings.Contains(got3, job.ID()) {
+		t.Errorf("got\n%q\nwhich does not contain the job ID %q", got3, job.ID())
 	}
 }
 
@@ -88,5 +102,19 @@ func (d *testJobDB) UpdateJob(ctx context.Context, id string, f func(*jobs.Job) 
 		return err
 	}
 	d.jobs[id] = j
+	return nil
+}
+
+func (d *testJobDB) ListJobs(ctx context.Context, f func(*jobs.Job, time.Time) error) error {
+	jobslice := maps.Values(d.jobs)
+	// Sort by StartedAt descending.
+	slices.SortFunc(jobslice, func(j1, j2 *jobs.Job) bool {
+		return j1.StartedAt.After(j2.StartedAt)
+	})
+	for _, j := range jobslice {
+		if err := f(j, time.Time{}); err != nil {
+			return err
+		}
+	}
 	return nil
 }
