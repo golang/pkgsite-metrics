@@ -16,6 +16,7 @@ import (
 	"net/http"
 	"os"
 	"strconv"
+	"strings"
 
 	"github.com/google/safehtml/template"
 	"golang.org/x/net/context/ctxhttp"
@@ -148,16 +149,19 @@ func Init(ctx context.Context) (_ *Config, err error) {
 			return nil, err
 		}
 		cfg.ServiceAccount = sa
+		configName := os.Getenv("K_CONFIGURATION")
 		cfg.MonitoredResource = &mrpb.MonitoredResource{
 			Type: "cloud_run_revision",
 			Labels: map[string]string{
 				"project_id":         cfg.ProjectID,
 				"service_name":       cfg.ServiceID,
 				"revision_name":      cfg.VersionID,
-				"configuration_name": os.Getenv("K_CONFIGURATION"),
+				"configuration_name": configName,
 			},
 		}
-		cfg.UseErrorReporting = true
+		// Only enable error reporting for prod. The configName is the
+		// Cloud Run service name: "dev-ecosystem-worker" or "prod-ecosystem-worker".
+		cfg.UseErrorReporting = strings.HasPrefix(configName, "prod-")
 	} else { // running locally, perhaps
 		cfg.MonitoredResource = &mrpb.MonitoredResource{
 			Type:   "global",
