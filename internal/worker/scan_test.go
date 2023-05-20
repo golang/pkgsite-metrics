@@ -23,7 +23,7 @@ func TestPrepareModule(t *testing.T) {
 	ctx := context.Background()
 	slog.SetDefault(slog.New(log.NewLineHandler(os.Stderr)))
 	const insecure = true
-	proxyClient, err := proxy.New("https://proxy.golang.org")
+	proxyClient, err := proxy.New("https://proxy.golang.org/cached-only")
 	if err != nil {
 		t.Fatal(err)
 	}

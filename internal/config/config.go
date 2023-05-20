@@ -140,7 +140,7 @@ func Init(ctx context.Context) (_ *Config, err error) {
 		PkgsiteDBName:         GetEnv("GO_ECOSYSTEM_PKGSITE_DB_NAME", "discovery-db"),
 		PkgsiteDBUser:         GetEnv("GO_ECOSYSTEM_PKGSITE_DB_USER", "postgres"),
 		PkgsiteDBSecret:       os.Getenv("GO_ECOSYSTEM_PKGSITE_DB_SECRET"),
-		ProxyURL:              GetEnv("GO_MODULE_PROXY_URL", "https://proxy.golang.org"),
+		ProxyURL:              GetEnv("GO_MODULE_PROXY_URL", "https://proxy.golang.org/cached-only"),
 		VulnDBURL:             GetEnv("GO_VULNDB_URL", "https://vuln.go.dev"),
 	}
 	if OnCloudRun() {

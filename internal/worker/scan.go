@@ -233,9 +233,8 @@ func prepareModule(ctx context.Context, modulePath, version, dir string, proxyCl
 		// Download all dependencies, using the given directory for the Go module cache
 		// if it is non-empty.
 		opts := &goCommandOptions{
-			dir:       dir,
-			insecure:  insecure,
-			proxyAddr: "https://proxy.golang.org",
+			dir:      dir,
+			insecure: insecure,
 		}
 		return runGoCommand(ctx, modulePath, version, opts, "mod", "download")
 	}
@@ -257,20 +256,16 @@ func goModInit(ctx context.Context, modulePath, version, dir, name string, insec
 
 // goModTidy runs "go mod tidy" on a module in dir.
 func goModTidy(ctx context.Context, modulePath, version, dir string, insecure bool) error {
-	s := proxy.ServeDisablingFetch()
-	defer s.Close()
 	opts := &goCommandOptions{
-		dir:       dir,
-		insecure:  insecure,
-		proxyAddr: s.URL,
+		dir:      dir,
+		insecure: insecure,
 	}
 	return runGoCommand(ctx, modulePath, version, opts, "mod", "tidy")
 }
 
 type goCommandOptions struct {
-	dir       string
-	proxyAddr string
-	insecure  bool
+	dir      string
+	insecure bool
 }
 
 // runGoModCommand runs the command `go args...`.
@@ -286,9 +281,7 @@ func runGoCommand(ctx context.Context, modulePath, version string, opts *goComma
 	cmd := exec.Command("go", args...)
 	cmd.Dir = opts.dir
 	cmd.Env = cmd.Environ()
-	if opts.proxyAddr != "" {
-		cmd.Env = append(cmd.Env, fmt.Sprintf("GOPROXY=%s", opts.proxyAddr))
-	}
+	cmd.Env = append(cmd.Env, "GOPROXY=https://proxy.golang.org/cached-only")
 	if !opts.insecure {
 		// Use sandbox mod cache.
 		cmd.Env = append(cmd.Env, "GOMODCACHE="+filepath.Join(sandboxRoot, sandboxGoModCache))
