@@ -8,6 +8,7 @@ require (
 	cloud.google.com/go/cloudtasks v1.8.0
 	cloud.google.com/go/errorreporting v0.3.0
 	cloud.google.com/go/firestore v1.9.0
+	cloud.google.com/go/iam v0.11.0
 	cloud.google.com/go/logging v1.7.0
 	cloud.google.com/go/secretmanager v1.9.0
 	cloud.google.com/go/storage v1.28.1
@@ -39,7 +40,6 @@ require (
 require (
 	cloud.google.com/go/compute v1.18.0 // indirect
 	cloud.google.com/go/compute/metadata v0.2.3 // indirect
-	cloud.google.com/go/iam v0.11.0 // indirect
 	cloud.google.com/go/longrunning v0.3.0 // indirect
 	cloud.google.com/go/monitoring v1.8.0 // indirect
 	cloud.google.com/go/trace v1.4.0 // indirect
