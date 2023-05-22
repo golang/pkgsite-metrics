@@ -6,6 +6,7 @@ package worker
 
 import (
 	"context"
+	"time"
 
 	"golang.org/x/pkgsite-metrics/internal"
 	"golang.org/x/pkgsite-metrics/internal/derrors"
@@ -43,7 +44,7 @@ func (h *GovulncheckServer) getWorkVersion(ctx context.Context) (_ *govulncheck.
 	defer h.mu.Unlock()
 
 	if h.workVersion == nil {
-		lmt, err := h.vulndbClient.LastModifiedTime(ctx)
+		lmt := time.Now() // TODO: Implement this
 		if err != nil {
 			return nil, err
 		}

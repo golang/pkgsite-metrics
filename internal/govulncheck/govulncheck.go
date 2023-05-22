@@ -7,17 +7,28 @@
 package govulncheck
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
 	"net/http"
+	"os/exec"
 	"strings"
+	"syscall"
 	"time"
 
 	"golang.org/x/pkgsite-metrics/internal/bigquery"
 	"golang.org/x/pkgsite-metrics/internal/derrors"
+	"golang.org/x/pkgsite-metrics/internal/govulncheckapi"
 	"golang.org/x/pkgsite-metrics/internal/scan"
-	"golang.org/x/vuln/exp/govulncheck"
+)
+
+const (
+	// ModeBinary runs the govulncheck binary in binary mode.
+	ModeBinary string = "BINARY"
+
+	// ModeGovulncheck runs the govulncheck binary in default (source) mode.
+	ModeGovulncheck = "GOVULNCHECK"
 )
 
 // EnqueueQueryParams for govulncheck/enqueue.
@@ -80,22 +91,22 @@ func ParseRequest(r *http.Request, prefix string) (*Request, error) {
 	}, nil
 }
 
-func ConvertGovulncheckOutput(v *govulncheck.Vuln) (vulns []*Vuln) {
-	for _, module := range v.Modules {
-		for _, pkg := range module.Packages {
-			vuln := &Vuln{
-				ID:          v.OSV.ID,
-				ModulePath:  module.Path,
-				PackagePath: pkg.Path,
-				Version:     module.FoundVersion,
-			}
-			if len(pkg.CallStacks) > 0 {
-				vuln.Called = true
-			}
-			vulns = append(vulns, vuln)
-		}
+// ConvertGovulncheckFinding takes a finding from govulncheck and converts it to
+// a bigquery vuln.
+func ConvertGovulncheckFinding(f *govulncheckapi.Finding) *Vuln {
+	vulnerableFrame := f.Trace[0]
+	vuln := &Vuln{
+		ID:          f.OSV,
+		PackagePath: vulnerableFrame.Package,
+		ModulePath:  vulnerableFrame.Module,
+		Version:     vulnerableFrame.Version,
+		Called:      false,
 	}
-	return vulns
+	if vulnerableFrame.Function != "" {
+		vuln.Called = true
+	}
+
+	return vuln
 }
 
 const TableName = "govulncheck"
@@ -233,8 +244,8 @@ type ScanStats struct {
 // and statistics about memory usage and run time. Used
 // for capturing result of govulncheck run in a sandbox.
 type SandboxResponse struct {
-	Res   govulncheck.Result
-	Stats ScanStats
+	Findings []*govulncheckapi.Finding
+	Stats    ScanStats
 }
 
 func UnmarshalSandboxResponse(output []byte) (*SandboxResponse, error) {
@@ -252,19 +263,34 @@ func UnmarshalSandboxResponse(output []byte) (*SandboxResponse, error) {
 	return &res, nil
 }
 
-func UnmarshalGovulncheckResult(output []byte) (*govulncheck.Result, error) {
-	var e struct {
-		Error string
+func RunGovulncheckCmd(govulncheckPath, mode, modulePath, vulndbDir string, stats *ScanStats) ([]*govulncheckapi.Finding, error) {
+	pattern := "./..."
+	dir := ""
+
+	if mode == ModeBinary {
+		pattern = modulePath
+	} else {
+		dir = modulePath
 	}
-	if err := json.Unmarshal(output, &e); err != nil {
+
+	stdOut := bytes.Buffer{}
+	stdErr := bytes.Buffer{}
+	govulncheckCmd := exec.Command(govulncheckPath, "-json", "-db=file://"+vulndbDir, "-C="+dir, pattern)
+
+	govulncheckCmd.Stdout = &stdOut
+	govulncheckCmd.Stderr = &stdErr
+
+	start := time.Now()
+	if err := govulncheckCmd.Run(); err != nil {
+		return nil, errors.New(stdErr.String())
+	}
+	stats.ScanSeconds = time.Since(start).Seconds()
+	stats.ScanMemory = uint64(govulncheckCmd.ProcessState.SysUsage().(*syscall.Rusage).Maxrss)
+
+	handler := NewMetricsHandler()
+	err := govulncheckapi.HandleJSON(&stdOut, handler)
+	if err != nil {
 		return nil, err
 	}
-	if e.Error != "" {
-		return nil, errors.New(e.Error)
-	}
-	var res govulncheck.Result
-	if err := json.Unmarshal(output, &res); err != nil {
-		return nil, err
-	}
-	return &res, nil
+	return handler.Findings(), nil
 }

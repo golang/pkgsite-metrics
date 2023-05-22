@@ -10,24 +10,20 @@ import (
 	"fmt"
 	"net/http"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"regexp"
 	"strings"
-	"syscall"
-	"time"
 
 	"cloud.google.com/go/storage"
 	"golang.org/x/exp/event"
 	"golang.org/x/pkgsite-metrics/internal/bigquery"
 	"golang.org/x/pkgsite-metrics/internal/derrors"
 	"golang.org/x/pkgsite-metrics/internal/govulncheck"
+	"golang.org/x/pkgsite-metrics/internal/govulncheckapi"
 	"golang.org/x/pkgsite-metrics/internal/log"
 	"golang.org/x/pkgsite-metrics/internal/proxy"
 	"golang.org/x/pkgsite-metrics/internal/sandbox"
 	"golang.org/x/pkgsite-metrics/internal/version"
-	vulnclient "golang.org/x/vuln/client"
-	govulncheckapi "golang.org/x/vuln/exp/govulncheck"
 )
 
 const (
@@ -150,7 +146,6 @@ func (h *GovulncheckServer) readGovulncheckWorkStates(ctx context.Context) error
 // A scanner holds state for scanning modules.
 type scanner struct {
 	proxyClient *proxy.Client
-	dbClient    vulnclient.Client
 	bqClient    *bigquery.Client
 	workVersion *govulncheck.WorkVersion
 	gcsBucket   *storage.BucketHandle
@@ -180,7 +175,6 @@ func newScanner(ctx context.Context, h *GovulncheckServer) (*scanner, error) {
 	return &scanner{
 		proxyClient:     h.proxyClient,
 		bqClient:        h.bqClient,
-		dbClient:        h.vulndbClient,
 		workVersion:     workVersion,
 		gcsBucket:       bucket,
 		insecure:        h.cfg.Insecure,
@@ -228,10 +222,10 @@ func (s *scanner) ScanModule(ctx context.Context, w http.ResponseWriter, sreq *g
 	row.ScanMode = sreq.Mode
 
 	log.Infof(ctx, "running scanner.runScanModule: %s@%s", sreq.Path(), sreq.Version)
-	stats := &scanStats{}
+	stats := &govulncheck.ScanStats{}
 	vulns, err := s.runScanModule(ctx, sreq.Module, info.Version, sreq.Suffix, sreq.Mode, stats)
-	row.ScanSeconds = stats.scanSeconds
-	row.ScanMemory = int64(stats.scanMemory)
+	row.ScanSeconds = stats.ScanSeconds
+	row.ScanMemory = int64(stats.ScanMemory)
 	if err != nil {
 		switch {
 		case isMissingGoMod(err) || isNoModulesSpecified(err):
@@ -310,14 +304,9 @@ func vulnsForMode(vulns []*govulncheck.Vuln, mode string) []*govulncheck.Vuln {
 	return vs
 }
 
-type scanStats struct {
-	scanSeconds float64
-	scanMemory  uint64
-}
-
 // runScanModule fetches the module version from the proxy, and analyzes it for
 // vulnerabilities.
-func (s *scanner) runScanModule(ctx context.Context, modulePath, version, binaryDir, mode string, stats *scanStats) (bvulns []*govulncheck.Vuln, err error) {
+func (s *scanner) runScanModule(ctx context.Context, modulePath, version, binaryDir, mode string, stats *govulncheck.ScanStats) (bvulns []*govulncheck.Vuln, err error) {
 	err = doScan(ctx, modulePath, version, s.insecure, func() (err error) {
 		// In ModeBinary, path is a file path to the input binary.
 		// Otherwise, it is a path to the input module directory.
@@ -332,26 +321,26 @@ func (s *scanner) runScanModule(ctx context.Context, modulePath, version, binary
 			}
 		}
 
-		var vulns []*govulncheckapi.Vuln
+		var findings []*govulncheckapi.Finding
 		if s.insecure {
-			vulns, err = s.runGovulncheckScanInsecure(ctx, modulePath, version, inputPath, mode, stats)
+			findings, err = s.runGovulncheckScanInsecure(ctx, modulePath, version, inputPath, mode, stats)
 		} else {
-			vulns, err = s.runGovulncheckScanSandbox(ctx, modulePath, version, inputPath, mode, stats)
+			findings, err = s.runGovulncheckScanSandbox(ctx, modulePath, version, inputPath, mode, stats)
 		}
 		if err != nil {
 			return err
 		}
-		log.Debugf(ctx, "govulncheck stats: %dkb | %vs", stats.scanMemory, stats.scanSeconds)
+		log.Debugf(ctx, "govulncheck stats: %dkb | %vs", stats.ScanMemory, stats.ScanSeconds)
 
-		for _, v := range vulns {
-			bvulns = append(bvulns, govulncheck.ConvertGovulncheckOutput(v)...)
+		for _, v := range findings {
+			bvulns = append(bvulns, govulncheck.ConvertGovulncheckFinding(v))
 		}
 		return nil
 	})
 	return bvulns, err
 }
 
-func (s *scanner) runGovulncheckScanSandbox(ctx context.Context, modulePath, version, inputPath, mode string, stats *scanStats) (_ []*govulncheckapi.Vuln, err error) {
+func (s *scanner) runGovulncheckScanSandbox(ctx context.Context, modulePath, version, inputPath, mode string, stats *govulncheck.ScanStats) (_ []*govulncheckapi.Finding, err error) {
 	if mode == ModeBinary {
 		return s.runBinaryScanSandbox(ctx, modulePath, version, inputPath, stats)
 	}
@@ -364,12 +353,12 @@ func (s *scanner) runGovulncheckScanSandbox(ctx context.Context, modulePath, ver
 	if err != nil {
 		return nil, err
 	}
-	stats.scanMemory = response.Stats.ScanMemory
-	stats.scanSeconds = response.Stats.ScanSeconds
-	return response.Res.Vulns, nil
+	stats.ScanMemory = response.Stats.ScanMemory
+	stats.ScanSeconds = response.Stats.ScanSeconds
+	return response.Findings, nil
 }
 
-func (s *scanner) runBinaryScanSandbox(ctx context.Context, modulePath, version, binDir string, stats *scanStats) ([]*govulncheckapi.Vuln, error) {
+func (s *scanner) runBinaryScanSandbox(ctx context.Context, modulePath, version, binDir string, stats *govulncheck.ScanStats) ([]*govulncheckapi.Finding, error) {
 	if s.gcsBucket == nil {
 		return nil, errors.New("binary bucket not configured; set GO_ECOSYSTEM_BINARY_BUCKET")
 	}
@@ -400,9 +389,9 @@ func (s *scanner) runBinaryScanSandbox(ctx context.Context, modulePath, version,
 	if err != nil {
 		return nil, err
 	}
-	stats.scanMemory = response.Stats.ScanMemory
-	stats.scanSeconds = response.Stats.ScanSeconds
-	return response.Res.Vulns, nil
+	stats.ScanMemory = response.Stats.ScanMemory
+	stats.ScanSeconds = response.Stats.ScanSeconds
+	return response.Findings, nil
 }
 
 func (s *scanner) runGovulncheckSandbox(ctx context.Context, mode, arg string) (*govulncheck.SandboxResponse, error) {
@@ -422,19 +411,19 @@ func (s *scanner) runGovulncheckSandbox(ctx context.Context, mode, arg string) (
 	return govulncheck.UnmarshalSandboxResponse(stdout)
 }
 
-func (s *scanner) runGovulncheckScanInsecure(ctx context.Context, modulePath, version, inputPath, mode string, stats *scanStats) (_ []*govulncheckapi.Vuln, err error) {
+func (s *scanner) runGovulncheckScanInsecure(ctx context.Context, modulePath, version, inputPath, mode string, stats *govulncheck.ScanStats) (_ []*govulncheckapi.Finding, err error) {
 	if mode == ModeBinary {
 		return s.runBinaryScanInsecure(ctx, modulePath, version, inputPath, os.TempDir(), stats)
 	}
 
-	vulns, err := s.runGovulncheckCmd("./...", inputPath, stats)
+	findings, err := govulncheck.RunGovulncheckCmd(s.govulncheckPath, ModeGovulncheck, inputPath, s.vulnDBDir, stats)
 	if err != nil {
 		return nil, err
 	}
-	return vulns, nil
+	return findings, nil
 }
 
-func (s *scanner) runBinaryScanInsecure(ctx context.Context, modulePath, version, binDir, tempDir string, stats *scanStats) ([]*govulncheckapi.Vuln, error) {
+func (s *scanner) runBinaryScanInsecure(ctx context.Context, modulePath, version, binDir, tempDir string, stats *govulncheck.ScanStats) ([]*govulncheckapi.Finding, error) {
 	if s.gcsBucket == nil {
 		return nil, errors.New("binary bucket not configured; set GO_ECOSYSTEM_BINARY_BUCKET")
 	}
@@ -447,32 +436,11 @@ func (s *scanner) runBinaryScanInsecure(ctx context.Context, modulePath, version
 	if err := copyToLocalFile(localPathname, false, gcsPathname, gcsOpenFileFunc(ctx, s.gcsBucket)); err != nil {
 		return nil, err
 	}
-	vulns, err := s.runGovulncheckCmd(localPathname, "", stats)
+	findings, err := govulncheck.RunGovulncheckCmd(s.govulncheckPath, ModeBinary, localPathname, s.vulnDBDir, stats)
 	if err != nil {
 		return nil, err
 	}
-	return vulns, nil
-}
-
-func (s *scanner) runGovulncheckCmd(pattern, tempDir string, stats *scanStats) ([]*govulncheckapi.Vuln, error) {
-	start := time.Now()
-	govulncheckCmd := exec.Command(s.govulncheckPath, "-json", pattern)
-	govulncheckCmd.Env = append(govulncheckCmd.Environ(), "GOVULNDB=file://"+s.vulnDBDir)
-	govulncheckCmd.Dir = tempDir
-	output, err := govulncheckCmd.CombinedOutput()
-	if err != nil {
-		if e := (&exec.ExitError{}); !errors.As(err, &e) || e.ProcessState.ExitCode() != 3 {
-			return nil, fmt.Errorf("govulncheck error: err=%v out=%s", err, output)
-		}
-	}
-	stats.scanSeconds = time.Since(start).Seconds()
-	stats.scanMemory = uint64(govulncheckCmd.ProcessState.SysUsage().(*syscall.Rusage).Maxrss)
-
-	res, err := govulncheck.UnmarshalGovulncheckResult(output)
-	if err != nil {
-		return nil, err
-	}
-	return res.Vulns, nil
+	return findings, nil
 }
 
 func isNoModulesSpecified(err error) bool {

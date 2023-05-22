@@ -17,8 +17,8 @@ import (
 	"golang.org/x/pkgsite-metrics/internal/buildtest"
 	"golang.org/x/pkgsite-metrics/internal/derrors"
 	"golang.org/x/pkgsite-metrics/internal/govulncheck"
+	"golang.org/x/pkgsite-metrics/internal/govulncheckapi"
 	"golang.org/x/pkgsite-metrics/internal/worker"
-	govulncheckapi "golang.org/x/vuln/exp/govulncheck"
 )
 
 func Test(t *testing.T) {
@@ -31,13 +31,13 @@ func Test(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	checkVuln := func(t *testing.T, res *govulncheckapi.Result) {
+	checkVuln := func(t *testing.T, findings []*govulncheckapi.Finding) {
 		wantID := "GO-2021-0113"
-		i := slices.IndexFunc(res.Vulns, func(v *govulncheckapi.Vuln) bool {
-			return v.OSV.ID == wantID
+		i := slices.IndexFunc(findings, func(f *govulncheckapi.Finding) bool {
+			return f.OSV == wantID
 		})
 		if i < 0 {
-			t.Fatalf("no vuln with ID %s. Result:\n%+v", wantID, res)
+			t.Fatalf("no vuln with ID %s. Result:\n%+v", wantID, findings)
 		}
 	}
 
@@ -56,7 +56,7 @@ func Test(t *testing.T) {
 			t.Fatal(err)
 		}
 
-		checkVuln(t, &resp.Res)
+		checkVuln(t, resp.Findings)
 		if resp.Stats.ScanSeconds <= 0 {
 			t.Errorf("got %f; want >0 scan seconds", resp.Stats.ScanSeconds)
 		}
@@ -78,7 +78,7 @@ func Test(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		checkVuln(t, &resp.Res)
+		checkVuln(t, resp.Findings)
 	})
 
 	// Errors
@@ -94,8 +94,8 @@ func Test(t *testing.T) {
 		},
 		{
 			name: "no vulndb",
-			args: []string{govulncheckPath, worker.ModeGovulncheck, module, "does not exist"},
-			want: "does not exist",
+			args: []string{govulncheckPath, worker.ModeGovulncheck, module, "DNE"},
+			want: "URL missing path",
 		},
 		{
 			name: "no mode",
@@ -105,7 +105,9 @@ func Test(t *testing.T) {
 		{
 			name: "no module",
 			args: []string{govulncheckPath, worker.ModeGovulncheck, "nosuchmodule", vulndb},
-			want: "no such file",
+			// Once govulncheck destinguishes this issue from no .mod file,
+			// update want to reflect govulncheck's new output
+			want: "no go.mod",
 		},
 	} {
 		t.Run(test.name, func(t *testing.T) {

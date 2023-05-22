@@ -118,8 +118,8 @@ func TestRunScanModuleInsecure(t *testing.T) {
 				s.gcsBucket = gcsClient.Bucket("go-ecosystem")
 			}
 
-			stats := &scanStats{}
-			vulns, err := s.runGovulncheckScanInsecure(ctx,
+			stats := &govulncheck.ScanStats{}
+			findings, err := s.runGovulncheckScanInsecure(ctx,
 				"golang.org/vuln", "v0.0.0",
 				tc.input, tc.mode, stats)
 			if err != nil {
@@ -127,19 +127,19 @@ func TestRunScanModuleInsecure(t *testing.T) {
 			}
 			wantID := "GO-2021-0113"
 			found := false
-			for _, v := range vulns {
-				if v.OSV.ID == wantID {
+			for _, v := range findings {
+				if v.OSV == wantID {
 					found = true
 					break
 				}
 			}
 			if !found {
-				t.Errorf("want %s, did not find it in %d vulns", wantID, len(vulns))
+				t.Errorf("want %s, did not find it in %d vulns", wantID, len(findings))
 			}
-			if got := stats.scanSeconds; got <= 0 {
+			if got := stats.ScanSeconds; got <= 0 {
 				t.Errorf("scan time not collected or negative: %v", got)
 			}
-			if got := stats.scanMemory; got <= 0 {
+			if got := stats.ScanMemory; got <= 0 {
 				t.Errorf("scan memory not collected or negative: %v", got)
 			}
 		})

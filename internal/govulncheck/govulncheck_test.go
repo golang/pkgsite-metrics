@@ -12,134 +12,72 @@ import (
 
 	bq "cloud.google.com/go/bigquery"
 	"github.com/google/go-cmp/cmp"
-	"github.com/google/go-cmp/cmp/cmpopts"
 	"golang.org/x/pkgsite-metrics/internal/bigquery"
-	"golang.org/x/pkgsite-metrics/internal/osv"
+	"golang.org/x/pkgsite-metrics/internal/govulncheckapi"
 	test "golang.org/x/pkgsite-metrics/internal/testing"
-	"golang.org/x/vuln/exp/govulncheck"
-	oldOsv "golang.org/x/vuln/osv"
 	"google.golang.org/api/iterator"
 )
 
-func TestConvertGovulncheckOutput(t *testing.T) {
+func TestConvertGovulncheckFinding(t *testing.T) {
 	var (
-		newOsvEntry = &osv.Entry{
-			ID: "GO-YYYY-1234",
-			Affected: []osv.Affected{
+		osvID = "GO-YYYY-XXXX"
+		vuln1 = &govulncheckapi.Finding{
+			OSV: osvID,
+			Trace: []*govulncheckapi.Frame{
 				{
-					Module: osv.Module{
-						Path:      "example.com/repo/module",
-						Ecosystem: "Go",
-					},
-					EcosystemSpecific: osv.EcosystemSpecific{
-						Packages: []osv.Package{
-							{
-								Path: "example.com/repo/module/package",
-								Symbols: []string{
-									"Symbol",
-									"Another",
-								},
-							},
-						},
-					},
-				},
-			},
-		}
-		osvEntry = &oldOsv.Entry{
-			ID: newOsvEntry.ID,
-			Affected: []oldOsv.Affected{
-				{
-					Package: oldOsv.Package{
-						Name:      "example.com/repo/module",
-						Ecosystem: "Go",
-					},
-					EcosystemSpecific: oldOsv.EcosystemSpecific{
-						Imports: []oldOsv.EcosystemSpecificImport{
-							{
-								Path: "example.com/repo/module/package",
-								Symbols: []string{
-									"Symbol",
-									"Another",
-								},
-							},
-						},
-					},
+					Module:   "example.com/repo/module",
+					Version:  "v0.0.1",
+					Package:  "example.com/repo/module/package",
+					Function: "func",
+					Position: &govulncheckapi.Position{},
 				},
 			},
 		}
 
-		vuln1 = &govulncheck.Vuln{
-			OSV: osvEntry,
-			Modules: []*govulncheck.Module{
+		vuln2 = &govulncheckapi.Finding{
+			OSV:          osvID,
+			FixedVersion: "",
+			Trace: []*govulncheckapi.Frame{
 				{
-					FoundVersion: "v0.0.1",
-					Path:         "example.com/repo/module",
-					Packages: []*govulncheck.Package{
-						{
-							Path: "example.com/repo/module/package",
-							CallStacks: []govulncheck.CallStack{
-								{
-									Symbol:  "Symbol",
-									Summary: "example.go:1:1 xyz.func calls pkgPath.Symbol",
-									Frames:  []*govulncheck.StackFrame{},
-								},
-							},
-						},
-					},
-				},
-			},
-		}
-
-		vuln2 = &govulncheck.Vuln{
-			OSV: osvEntry,
-			Modules: []*govulncheck.Module{
-				{
-					FoundVersion: "v1.0.0",
-					Path:         "example.com/repo/module",
-					Packages: []*govulncheck.Package{
-						{
-							Path: "example.com/repo/module/package",
-						},
-					},
+					Module:   "example.com/repo/module",
+					Version:  "v1.0.0",
+					Package:  "example.com/repo/module/package",
+					Position: nil,
 				},
 			},
 		}
 	)
 	tests := []struct {
-		name      string
-		vuln      *govulncheck.Vuln
-		wantVulns []*Vuln
+		name     string
+		vuln     *govulncheckapi.Finding
+		wantVuln *Vuln
 	}{
 		{
-			name: "call one symbol but not all",
+			name: "called",
 			vuln: vuln1,
-			wantVulns: []*Vuln{
-				{
-					ID:          "GO-YYYY-1234",
-					PackagePath: "example.com/repo/module/package",
-					ModulePath:  "example.com/repo/module",
-					Version:     "v0.0.1",
-					Called:      true,
-				},
+			wantVuln: &Vuln{
+				ID:          "GO-YYYY-XXXX",
+				PackagePath: "example.com/repo/module/package",
+				ModulePath:  "example.com/repo/module",
+				Version:     "v0.0.1",
+				Called:      true,
 			},
 		},
 		{
-			name: "call no symbols",
+			name: "Not called",
 			vuln: vuln2,
-			wantVulns: []*Vuln{
-				{
-					ID:          "GO-YYYY-1234",
-					PackagePath: "example.com/repo/module/package",
-					ModulePath:  "example.com/repo/module",
-					Version:     "v1.0.0",
-					Called:      false,
-				},
+			wantVuln: &Vuln{
+				ID:          "GO-YYYY-XXXX",
+				PackagePath: "example.com/repo/module/package",
+				ModulePath:  "example.com/repo/module",
+				Version:     "v1.0.0",
+				Called:      false,
 			},
 		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			if diff := cmp.Diff(ConvertGovulncheckOutput(tt.vuln), tt.wantVulns, cmpopts.EquateEmpty(), cmp.AllowUnexported(Vuln{})); diff != "" {
+			if diff := cmp.Diff(ConvertGovulncheckFinding(tt.vuln), tt.wantVuln, cmp.AllowUnexported(Vuln{})); diff != "" {
 				t.Errorf("mismatch (-got, +want): %s", diff)
 			}
 		})

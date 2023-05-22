@@ -17,9 +17,6 @@ import (
 	"fmt"
 	"io"
 	"os"
-	"os/exec"
-	"syscall"
-	"time"
 
 	"golang.org/x/pkgsite-metrics/internal/govulncheck"
 	"golang.org/x/pkgsite-metrics/internal/worker"
@@ -69,34 +66,13 @@ func run(w io.Writer, args []string) {
 }
 
 func runGovulncheck(govulncheckPath, mode, filePath, vulnDBDir string) (*govulncheck.SandboxResponse, error) {
-	pattern := "./..."
-	dir := ""
-
-	if mode == worker.ModeBinary {
-		pattern = filePath
-	} else {
-		dir = filePath
+	response := govulncheck.SandboxResponse{
+		Stats: govulncheck.ScanStats{},
 	}
-
-	govulncheckCmd := exec.Command(govulncheckPath, "-json", pattern)
-	govulncheckCmd.Dir = dir
-	govulncheckCmd.Env = append(govulncheckCmd.Environ(), "GOVULNDB=file://"+vulnDBDir)
-	start := time.Now()
-	output, err := govulncheckCmd.CombinedOutput()
-	if err != nil {
-		// Temporary check because govulncheck currently exits code 3 if any vulns
-		// are found but no other errors occurred.
-		if e := (&exec.ExitError{}); !errors.As(err, &e) || e.ProcessState.ExitCode() != 3 {
-			return nil, fmt.Errorf("govulncheck error: err=%v out=%s", err, output)
-		}
-	}
-	response := govulncheck.SandboxResponse{}
-	response.Stats.ScanSeconds = time.Since(start).Seconds()
-	result, err := govulncheck.UnmarshalGovulncheckResult(output)
+	findings, err := govulncheck.RunGovulncheckCmd(govulncheckPath, mode, filePath, vulnDBDir, &response.Stats)
 	if err != nil {
 		return nil, err
 	}
-	response.Res = *result
-	response.Stats.ScanMemory = uint64(govulncheckCmd.ProcessState.SysUsage().(*syscall.Rusage).Maxrss)
+	response.Findings = findings
 	return &response, nil
 }

@@ -26,17 +26,15 @@ import (
 	"golang.org/x/pkgsite-metrics/internal/observe"
 	"golang.org/x/pkgsite-metrics/internal/proxy"
 	"golang.org/x/pkgsite-metrics/internal/queue"
-	vulnc "golang.org/x/vuln/client"
 )
 
 type Server struct {
-	cfg          *config.Config
-	observer     *observe.Observer
-	bqClient     *bigquery.Client
-	vulndbClient vulnc.Client
-	proxyClient  *proxy.Client
-	queue        queue.Queue
-	jobDB        *jobs.DB
+	cfg         *config.Config
+	observer    *observe.Observer
+	bqClient    *bigquery.Client
+	proxyClient *proxy.Client
+	queue       queue.Queue
+	jobDB       *jobs.DB
 
 	devMode bool
 	mu      sync.Mutex
@@ -66,8 +64,6 @@ func NewServer(ctx context.Context, cfg *config.Config) (_ *Server, err error) {
 	if err != nil {
 		return nil, err
 	}
-	dbClient, err := vulnc.NewClient([]string{cfg.VulnDBURL}, vulnc.Options{})
-	log.Debugf(ctx, "vulnc.NewClient returned err %v", err)
 	if err != nil {
 		return nil, err
 	}
@@ -86,13 +82,12 @@ func NewServer(ctx context.Context, cfg *config.Config) (_ *Server, err error) {
 		}
 	}
 	s := &Server{
-		cfg:          cfg,
-		bqClient:     bq,
-		vulndbClient: dbClient,
-		queue:        q,
-		proxyClient:  proxyClient,
-		devMode:      cfg.DevMode,
-		jobDB:        jdb,
+		cfg:         cfg,
+		bqClient:    bq,
+		queue:       q,
+		proxyClient: proxyClient,
+		devMode:     cfg.DevMode,
+		jobDB:       jdb,
 	}
 
 	if cfg.ProjectID != "" && cfg.ServiceID != "" {

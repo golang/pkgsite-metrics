@@ -25,16 +25,16 @@ require (
 	go.opentelemetry.io/otel/sdk v1.4.0
 	golang.org/x/exp v0.0.0-20230224173230-c95f2b4c22f2
 	golang.org/x/exp/event v0.0.0-20220218215828-6cf2b201936e
-	golang.org/x/mod v0.7.0
-	golang.org/x/net v0.7.0
-	golang.org/x/tools v0.5.1-0.20230117180257-8aba49bb5ea2
-	golang.org/x/vuln v0.0.0-20230201222900-4c848edceff1
+	golang.org/x/mod v0.10.0
+	golang.org/x/net v0.9.0
+	golang.org/x/tools v0.8.1-0.20230421161920-b9619ee54b47
+	golang.org/x/vuln v0.1.1-0.20230519043451-0e42683d7808
 	google.golang.org/api v0.110.0
 	google.golang.org/genproto v0.0.0-20230222225845-10f96fb3dbec
 	google.golang.org/grpc v1.53.0
 	google.golang.org/protobuf v1.28.1
 	honnef.co/go/tools v0.4.3
-	mvdan.cc/unparam v0.0.0-20220926085101-66de63301820
+	mvdan.cc/unparam v0.0.0-20230312165513-e84e2d14e3b8
 )
 
 require (
@@ -59,8 +59,8 @@ require (
 	golang.org/x/exp/typeparams v0.0.0-20221208152030-732eee02a75a // indirect
 	golang.org/x/oauth2 v0.5.0 // indirect
 	golang.org/x/sync v0.1.0 // indirect
-	golang.org/x/sys v0.5.0 // indirect
-	golang.org/x/text v0.7.0 // indirect
+	golang.org/x/sys v0.7.0 // indirect
+	golang.org/x/text v0.9.0 // indirect
 	golang.org/x/time v0.1.0 // indirect
 	golang.org/x/xerrors v0.0.0-20220907171357-04be3eba64a2 // indirect
 	google.golang.org/appengine v1.6.7 // indirect
