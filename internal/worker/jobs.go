@@ -60,10 +60,7 @@ func processJobRequest(ctx context.Context, w io.Writer, path, jobID string, db 
 		if err != nil {
 			return err
 		}
-		enc := json.NewEncoder(w)
-		enc.SetIndent("", "    ")
-		enc.Encode(job)
-		return nil
+		return writeJSON(w, job)
 
 	case "cancel":
 		if jobID == "" {
@@ -75,22 +72,30 @@ func processJobRequest(ctx context.Context, w io.Writer, path, jobID string, db 
 		})
 
 	case "list":
-		var buf bytes.Buffer
-		fmt.Fprintf(&buf, "%-20s\tEnq\tCompl\tCanceled\n", "ID")
+		var joblist []*jobs.Job
 		err := db.ListJobs(ctx, func(j *jobs.Job, _ time.Time) error {
-			_, err := fmt.Fprintf(&buf, "%-20s\t%3d\t%3d\t%t\n",
-				j.ID(), j.NumEnqueued,
-				j.NumSkipped+j.NumFailed+j.NumErrored+j.NumSucceeded,
-				j.Canceled)
-			return err
+			joblist = append(joblist, j)
+			return nil
 		})
 		if err != nil {
 			return err
 		}
-		buf.WriteTo(w)
-		return nil
+		return writeJSON(w, joblist)
 
 	default:
 		return fmt.Errorf("unknown path %q: %w", path, derrors.InvalidArgument)
 	}
+}
+
+// writeJSON JSON-marshals v and writes it to w.
+// Marshal failures do not result in partial writes.
+func writeJSON(w io.Writer, v any) error {
+	var buf bytes.Buffer
+	enc := json.NewEncoder(&buf)
+	enc.SetIndent("", "    ")
+	if err := enc.Encode(v); err != nil {
+		return err
+	}
+	_, err := w.Write(buf.Bytes())
+	return err
 }

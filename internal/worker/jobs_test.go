@@ -58,10 +58,10 @@ func TestJobs(t *testing.T) {
 		t.Fatal(err)
 	}
 	// Don't check for specific output, just make sure there's something
-	// that mentions the job ID.
+	// that mentions the job user.
 	got3 := buf.String()
-	if !strings.Contains(got3, job.ID()) {
-		t.Errorf("got\n%q\nwhich does not contain the job ID %q", got3, job.ID())
+	if !strings.Contains(got3, job.User) {
+		t.Errorf("got\n%q\nwhich does not contain the job user %q", got3, job.User)
 	}
 }
 
