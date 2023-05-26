@@ -6,7 +6,9 @@
 package main
 
 import (
+	"bytes"
 	"context"
+	"crypto/md5"
 	"encoding/json"
 	"errors"
 	"flag"
@@ -14,14 +16,22 @@ import (
 	"io"
 	"net/http"
 	"os"
+	"path"
+	"path/filepath"
 	"reflect"
+	"strconv"
 	"text/tabwriter"
 	"time"
 
 	credsapi "cloud.google.com/go/iam/credentials/apiv1"
 	credspb "cloud.google.com/go/iam/credentials/apiv1/credentialspb"
+	"cloud.google.com/go/storage"
 	"golang.org/x/pkgsite-metrics/internal/jobs"
+	"google.golang.org/api/impersonate"
+	"google.golang.org/api/option"
 )
+
+const projectID = "go-ecosystem"
 
 var env = flag.String("env", "prod", "worker environment (dev or prod)")
 
@@ -30,10 +40,12 @@ var commands = []command{
 		"print an identity token", doPrintToken},
 	{"list", "",
 		"list jobs", doList},
-	{"show", "jobID...",
+	{"show", "JOBID...",
 		"display information about jobs", doShow},
-	{"cancel", "jobID...",
+	{"cancel", "JOBID...",
 		"cancel the jobs", doCancel},
+	{"start", "BINARY [MIN_IMPORTERS]",
+		"start a job", doStart},
 }
 
 type command struct {
@@ -155,6 +167,136 @@ func doPrintToken(ctx context.Context, _ []string) error {
 	return nil
 }
 
+func doStart(ctx context.Context, args []string) error {
+	// Validate arguments.
+	if len(args) < 1 || len(args) > 2 {
+		return errors.New("wrong number of args: want BINARY [MIN_IMPORTERS]")
+	}
+	min := -1
+	if len(args) > 1 {
+		m, err := strconv.Atoi(args[1])
+		if err != nil {
+			return err
+		}
+		if m < 0 {
+			return errors.New("MIN_IMPORTERS cannot be negative")
+		}
+		min = m
+	}
+	binaryFile := args[0]
+	if fi, err := os.Stat(binaryFile); err != nil {
+		if errors.Is(err, os.ErrNotExist) {
+			return fmt.Errorf("%s does not exist", binaryFile)
+		}
+		return err
+	} else if fi.IsDir() {
+		return fmt.Errorf("%s is a directory, not a file", binaryFile)
+	}
+
+	// Copy binary to GCS if it's not already there.
+	if err := uploadAnalysisBinary(ctx, binaryFile); err != nil {
+		return err
+	}
+
+	// Ask the server to enqueue scan tasks.
+	idtoken, err := requestImpersonateIdentityToken(ctx)
+	if err != nil {
+		return err
+	}
+	url := fmt.Sprintf("%s/analysis/enqueue?binary=%s&user=%s", workerURL, filepath.Base(binaryFile), os.Getenv("USER"))
+	if min >= 0 {
+		url += fmt.Sprintf("&min=%d", min)
+	}
+	body, err := httpGet(ctx, url, idtoken)
+	if err != nil {
+		return err
+	}
+	fmt.Printf("%s\n", body)
+	return nil
+}
+
+// uploadAnalysisBinary copies binaryFile to the GCS location used for
+// analysis binaries.
+// As an optimization, it skips the upload if the file is already on GCS
+// and has the same checksum as the local file.
+func uploadAnalysisBinary(ctx context.Context, binaryFile string) error {
+	var upload bool
+	const bucketName = projectID
+	binaryName := filepath.Base(binaryFile)
+	objectName := path.Join("analysis-binaries", binaryName)
+
+	ts, err := impersonate.CredentialsTokenSource(ctx, impersonate.CredentialsConfig{
+		TargetPrincipal: fmt.Sprintf("impersonate@%s.iam.gserviceaccount.com", projectID),
+		Scopes:          []string{"https://www.googleapis.com/auth/cloud-platform"},
+	})
+	if err != nil {
+		return err
+	}
+
+	c, err := storage.NewClient(ctx, option.WithTokenSource(ts))
+	if err != nil {
+		return err
+	}
+	defer c.Close()
+	bucket := c.Bucket(bucketName)
+	object := bucket.Object(objectName)
+	attrs, err := object.Attrs(ctx)
+	if errors.Is(err, storage.ErrObjectNotExist) {
+		fmt.Printf("%s does not exist, uploading\n", object.ObjectName())
+		upload = true
+	} else if err != nil {
+		return err
+	} else if g, w := len(attrs.MD5), md5.Size; g != w {
+		return fmt.Errorf("len(attrs.MD5) = %d, wanted %d", g, w)
+	} else {
+		localMD5, err := fileMD5(binaryFile)
+		if err != nil {
+			return err
+		}
+		upload = !bytes.Equal(localMD5, attrs.MD5)
+		if upload {
+			fmt.Printf("binary %s exists on GCS but hashes don't match; uploading\n", binaryName)
+		} else {
+			fmt.Printf("%s already on GCS with same checksum; not uploading\n", binaryFile)
+		}
+	}
+	if upload {
+		if err := copyToGCS(ctx, object, binaryFile); err != nil {
+			return err
+		}
+		fmt.Printf("copied %s to %s\n", binaryFile, object.ObjectName())
+	}
+	return nil
+}
+
+// fileMD5 computes the MD5 checksum of the given file.
+func fileMD5(filename string) ([]byte, error) {
+	f, err := os.Open(filename)
+	if err != nil {
+		return nil, err
+	}
+	defer f.Close()
+	hash := md5.New()
+	if _, err := io.Copy(hash, f); err != nil {
+		return nil, err
+	}
+	return hash.Sum(nil)[:], nil
+}
+
+// copyToLocalFile copies the filename to the GCS object.
+func copyToGCS(ctx context.Context, object *storage.ObjectHandle, filename string) error {
+	src, err := os.Open(filename)
+	if err != nil {
+		return err
+	}
+	defer src.Close()
+	dest := object.NewWriter(ctx)
+	if _, err := io.Copy(dest, src); err != nil {
+		return err
+	}
+	return dest.Close()
+}
+
 // requestJSON requests the path from the worker, then reads the returned body
 // and unmarshals it as JSON.
 func requestJSON[T any](ctx context.Context, path, token string) (*T, error) {
@@ -201,7 +343,7 @@ func requestImpersonateIdentityToken(ctx context.Context) (string, error) {
 		return "", err
 	}
 	defer c.Close()
-	serviceAccountEmail := "impersonate@go-ecosystem.iam.gserviceaccount.com"
+	serviceAccountEmail := fmt.Sprintf("impersonate@%s.iam.gserviceaccount.com", projectID)
 	req := &credspb.GenerateIdTokenRequest{
 		Name:         "projects/-/serviceAccounts/" + serviceAccountEmail,
 		Audience:     workerURL,
