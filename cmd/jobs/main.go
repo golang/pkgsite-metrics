@@ -15,6 +15,8 @@ import (
 	"net/http"
 	"os"
 	"reflect"
+	"text/tabwriter"
+	"time"
 
 	credsapi "cloud.google.com/go/iam/credentials/apiv1"
 	credspb "cloud.google.com/go/iam/credentials/apiv1/credentialspb"
@@ -113,12 +115,21 @@ func doList(ctx context.Context, _ []string) error {
 	if err != nil {
 		return err
 	}
-	body, err := httpGet(ctx, workerURL+"/jobs/list", token)
+	joblist, err := requestJSON[[]jobs.Job](ctx, "jobs/list", token)
 	if err != nil {
 		return err
 	}
-	fmt.Printf("%s\n", body)
-	return nil
+	tw := tabwriter.NewWriter(os.Stdout, 2, 8, 1, ' ', 0)
+	fmt.Fprintf(tw, "ID\tUser\tStart Time\tStarted\tFinished\tTotal\tCanceled\n")
+	for _, j := range *joblist {
+		fmt.Fprintf(tw, "%s\t%s\t%s\t%d\t%d\t%d\t%t\n",
+			j.ID(), j.User, j.StartedAt.Format(time.RFC3339),
+			j.NumStarted,
+			j.NumSkipped+j.NumFailed+j.NumErrored+j.NumSucceeded,
+			j.NumEnqueued,
+			j.Canceled)
+	}
+	return tw.Flush()
 }
 
 func doCancel(ctx context.Context, args []string) error {
