@@ -23,9 +23,8 @@ import (
 	"text/tabwriter"
 	"time"
 
-	credsapi "cloud.google.com/go/iam/credentials/apiv1"
-	credspb "cloud.google.com/go/iam/credentials/apiv1/credentialspb"
 	"cloud.google.com/go/storage"
+	"golang.org/x/oauth2"
 	"golang.org/x/pkgsite-metrics/internal/jobs"
 	"google.golang.org/api/impersonate"
 	"google.golang.org/api/option"
@@ -36,8 +35,6 @@ const projectID = "go-ecosystem"
 var env = flag.String("env", "prod", "worker environment (dev or prod)")
 
 var commands = []command{
-	{"print-identity-token", "",
-		"print an identity token", doPrintToken},
 	{"list", "",
 		"list jobs", doList},
 	{"show", "JOBID...",
@@ -93,20 +90,20 @@ func run(ctx context.Context) error {
 }
 
 func doShow(ctx context.Context, args []string) error {
-	token, err := requestImpersonateIdentityToken(ctx)
+	ts, err := identityTokenSource(ctx)
 	if err != nil {
 		return err
 	}
 	for _, jobID := range args {
-		if err := showJob(ctx, jobID, token); err != nil {
+		if err := showJob(ctx, jobID, ts); err != nil {
 			return err
 		}
 	}
 	return nil
 }
 
-func showJob(ctx context.Context, jobID, token string) error {
-	job, err := requestJSON[jobs.Job](ctx, "jobs/describe?jobid="+jobID, token)
+func showJob(ctx context.Context, jobID string, ts oauth2.TokenSource) error {
+	job, err := requestJSON[jobs.Job](ctx, "jobs/describe?jobid="+jobID, ts)
 	if err != nil {
 		return err
 	}
@@ -123,11 +120,11 @@ func showJob(ctx context.Context, jobID, token string) error {
 }
 
 func doList(ctx context.Context, _ []string) error {
-	token, err := requestImpersonateIdentityToken(ctx)
+	ts, err := identityTokenSource(ctx)
 	if err != nil {
 		return err
 	}
-	joblist, err := requestJSON[[]jobs.Job](ctx, "jobs/list", token)
+	joblist, err := requestJSON[[]jobs.Job](ctx, "jobs/list", ts)
 	if err != nil {
 		return err
 	}
@@ -145,25 +142,15 @@ func doList(ctx context.Context, _ []string) error {
 }
 
 func doCancel(ctx context.Context, args []string) error {
-	token, err := requestImpersonateIdentityToken(ctx)
+	ts, err := identityTokenSource(ctx)
 	if err != nil {
 		return err
 	}
 	for _, jobID := range args {
-		if _, err := httpGet(ctx, workerURL+"/jobs/cancel?jobid="+jobID, token); err != nil {
+		if _, err := httpGet(ctx, workerURL+"/jobs/cancel?jobid="+jobID, ts); err != nil {
 			return fmt.Errorf("canceling %q: %w", jobID, err)
 		}
 	}
-	return nil
-}
-
-// For testing. Can be used in place of `gcloud auth print-identity-token`.
-func doPrintToken(ctx context.Context, _ []string) error {
-	token, err := requestImpersonateIdentityToken(ctx)
-	if err != nil {
-		return err
-	}
-	fmt.Println(token)
 	return nil
 }
 
@@ -199,7 +186,7 @@ func doStart(ctx context.Context, args []string) error {
 	}
 
 	// Ask the server to enqueue scan tasks.
-	idtoken, err := requestImpersonateIdentityToken(ctx)
+	its, err := identityTokenSource(ctx)
 	if err != nil {
 		return err
 	}
@@ -207,7 +194,7 @@ func doStart(ctx context.Context, args []string) error {
 	if min >= 0 {
 		url += fmt.Sprintf("&min=%d", min)
 	}
-	body, err := httpGet(ctx, url, idtoken)
+	body, err := httpGet(ctx, url, its)
 	if err != nil {
 		return err
 	}
@@ -225,14 +212,10 @@ func uploadAnalysisBinary(ctx context.Context, binaryFile string) error {
 	binaryName := filepath.Base(binaryFile)
 	objectName := path.Join("analysis-binaries", binaryName)
 
-	ts, err := impersonate.CredentialsTokenSource(ctx, impersonate.CredentialsConfig{
-		TargetPrincipal: fmt.Sprintf("impersonate@%s.iam.gserviceaccount.com", projectID),
-		Scopes:          []string{"https://www.googleapis.com/auth/cloud-platform"},
-	})
+	ts, err := accessTokenSource(ctx)
 	if err != nil {
 		return err
 	}
-
 	c, err := storage.NewClient(ctx, option.WithTokenSource(ts))
 	if err != nil {
 		return err
@@ -299,8 +282,8 @@ func copyToGCS(ctx context.Context, object *storage.ObjectHandle, filename strin
 
 // requestJSON requests the path from the worker, then reads the returned body
 // and unmarshals it as JSON.
-func requestJSON[T any](ctx context.Context, path, token string) (*T, error) {
-	body, err := httpGet(ctx, workerURL+"/"+path, token)
+func requestJSON[T any](ctx context.Context, path string, ts oauth2.TokenSource) (*T, error) {
+	body, err := httpGet(ctx, workerURL+"/"+path, ts)
 	if err != nil {
 		return nil, err
 	}
@@ -313,12 +296,16 @@ func requestJSON[T any](ctx context.Context, path, token string) (*T, error) {
 
 // httpGet makes a GET request to the given URL with the given identity token.
 // It reads the body and returns the HTTP response and the body.
-func httpGet(ctx context.Context, url, token string) (body []byte, err error) {
+func httpGet(ctx context.Context, url string, ts oauth2.TokenSource) (body []byte, err error) {
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
 	if err != nil {
 		return nil, err
 	}
-	req.Header.Add("Authorization", "Bearer "+token)
+	token, err := ts.Token()
+	if err != nil {
+		return nil, err
+	}
+	token.SetAuthHeader(req)
 	res, err := http.DefaultClient.Do(req)
 	if err != nil {
 		return nil, err
@@ -334,24 +321,19 @@ func httpGet(ctx context.Context, url, token string) (body []byte, err error) {
 	return body, nil
 }
 
-// requestImpersonateIdentityToken requests an identity token for a service
-// account to impersonate from the iamcredentials service.
-// See https://cloud.google.com/iam/docs/reference/credentials/rest.
-func requestImpersonateIdentityToken(ctx context.Context) (string, error) {
-	c, err := credsapi.NewIamCredentialsClient(ctx)
-	if err != nil {
-		return "", err
-	}
-	defer c.Close()
-	serviceAccountEmail := fmt.Sprintf("impersonate@%s.iam.gserviceaccount.com", projectID)
-	req := &credspb.GenerateIdTokenRequest{
-		Name:         "projects/-/serviceAccounts/" + serviceAccountEmail,
-		Audience:     workerURL,
-		IncludeEmail: true,
-	}
-	res, err := c.GenerateIdToken(ctx, req)
-	if err != nil {
-		return "", fmt.Errorf("GenerateIdToken: %w", err)
-	}
-	return res.Token, nil
+var serviceAccountEmail = fmt.Sprintf("impersonate@%s.iam.gserviceaccount.com", projectID)
+
+func accessTokenSource(ctx context.Context) (oauth2.TokenSource, error) {
+	return impersonate.CredentialsTokenSource(ctx, impersonate.CredentialsConfig{
+		TargetPrincipal: serviceAccountEmail,
+		Scopes:          []string{"https://www.googleapis.com/auth/cloud-platform"},
+	})
+}
+
+func identityTokenSource(ctx context.Context) (oauth2.TokenSource, error) {
+	return impersonate.IDTokenSource(ctx, impersonate.IDTokenConfig{
+		TargetPrincipal: serviceAccountEmail,
+		Audience:        workerURL,
+		IncludeEmail:    true,
+	})
 }
