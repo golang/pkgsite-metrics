@@ -207,7 +207,6 @@ func doStart(ctx context.Context, args []string) error {
 // As an optimization, it skips the upload if the file is already on GCS
 // and has the same checksum as the local file.
 func uploadAnalysisBinary(ctx context.Context, binaryFile string) error {
-	var upload bool
 	const bucketName = projectID
 	binaryName := filepath.Base(binaryFile)
 	objectName := path.Join("analysis-binaries", binaryName)
@@ -226,7 +225,6 @@ func uploadAnalysisBinary(ctx context.Context, binaryFile string) error {
 	attrs, err := object.Attrs(ctx)
 	if errors.Is(err, storage.ErrObjectNotExist) {
 		fmt.Printf("%s does not exist, uploading\n", object.ObjectName())
-		upload = true
 	} else if err != nil {
 		return err
 	} else if g, w := len(attrs.MD5), md5.Size; g != w {
@@ -236,20 +234,15 @@ func uploadAnalysisBinary(ctx context.Context, binaryFile string) error {
 		if err != nil {
 			return err
 		}
-		upload = !bytes.Equal(localMD5, attrs.MD5)
-		if upload {
-			fmt.Printf("binary %s exists on GCS but hashes don't match; uploading\n", binaryName)
-		} else {
+		if bytes.Equal(localMD5, attrs.MD5) {
 			fmt.Printf("%s already on GCS with same checksum; not uploading\n", binaryFile)
+			return nil
+		} else {
+			fmt.Printf("binary %s exists on GCS but hashes don't match; uploading\n", binaryName)
 		}
 	}
-	if upload {
-		if err := copyToGCS(ctx, object, binaryFile); err != nil {
-			return err
-		}
-		fmt.Printf("copied %s to %s\n", binaryFile, object.ObjectName())
-	}
-	return nil
+	fmt.Printf("copying %s to %s\n", binaryFile, object.ObjectName())
+	return copyToGCS(ctx, object, binaryFile)
 }
 
 // fileMD5 computes the MD5 checksum of the given file.
