@@ -2,7 +2,7 @@
 // Use of this source code is governed by a BSD-style
 // license that can be found in the LICENSE file.
 
-// Command jobs supports jobs on ecosystem-metrics.
+// Command ejobs supports jobs on ecosystem-metrics.
 package main
 
 import (
@@ -57,7 +57,7 @@ func main() {
 		out := flag.CommandLine.Output()
 		fmt.Fprintln(out, "usage:")
 		for _, cmd := range commands {
-			fmt.Fprintf(out, "  job %s %s\n", cmd.name, cmd.argdoc)
+			fmt.Fprintf(out, "  ejobs %s %s\n", cmd.name, cmd.argdoc)
 			fmt.Fprintf(out, "\t%s\n", cmd.desc)
 		}
 		fmt.Fprintln(out, "\ncommon flags:")
