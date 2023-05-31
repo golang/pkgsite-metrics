@@ -8,7 +8,6 @@ require (
 	cloud.google.com/go/cloudtasks v1.8.0
 	cloud.google.com/go/errorreporting v0.3.0
 	cloud.google.com/go/firestore v1.9.0
-	cloud.google.com/go/iam v0.11.0
 	cloud.google.com/go/logging v1.7.0
 	cloud.google.com/go/secretmanager v1.9.0
 	cloud.google.com/go/storage v1.28.1
@@ -27,6 +26,7 @@ require (
 	golang.org/x/exp/event v0.0.0-20220218215828-6cf2b201936e
 	golang.org/x/mod v0.10.0
 	golang.org/x/net v0.9.0
+	golang.org/x/oauth2 v0.5.0
 	golang.org/x/tools v0.8.1-0.20230421161920-b9619ee54b47
 	golang.org/x/vuln v0.1.1-0.20230519043451-0e42683d7808
 	google.golang.org/api v0.110.0
@@ -40,6 +40,7 @@ require (
 require (
 	cloud.google.com/go/compute v1.18.0 // indirect
 	cloud.google.com/go/compute/metadata v0.2.3 // indirect
+	cloud.google.com/go/iam v0.11.0 // indirect
 	cloud.google.com/go/longrunning v0.3.0 // indirect
 	cloud.google.com/go/monitoring v1.8.0 // indirect
 	cloud.google.com/go/trace v1.4.0 // indirect
@@ -57,7 +58,6 @@ require (
 	go.opentelemetry.io/otel/sdk/metric v0.26.0 // indirect
 	go.opentelemetry.io/otel/trace v1.11.2 // indirect
 	golang.org/x/exp/typeparams v0.0.0-20221208152030-732eee02a75a // indirect
-	golang.org/x/oauth2 v0.5.0 // indirect
 	golang.org/x/sync v0.1.0 // indirect
 	golang.org/x/sys v0.7.0 // indirect
 	golang.org/x/text v0.9.0 // indirect
