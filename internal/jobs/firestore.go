@@ -88,7 +88,8 @@ func (d *DB) UpdateJob(ctx context.Context, id string, f func(*Job) error) (err 
 			return err
 		}
 		return tx.Set(docref, j)
-	})
+	},
+		firestore.MaxAttempts(firestore.DefaultTransactionMaxAttempts*5))
 }
 
 // ListJobs calls f on each job in the DB, most recently started first.
