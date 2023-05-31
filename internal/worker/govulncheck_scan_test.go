@@ -100,9 +100,9 @@ func TestRunScanModuleInsecure(t *testing.T) {
 		input string
 		mode  string
 	}{
-		{"govulncheck", "../testdata/module", ModeGovulncheck},
+		{"source", "../testdata/module", ModeGovulncheck},
 		// test_vuln binary on gcs is built from ../testdata/module.
-		{"govulncheck", "test_vuln", ModeBinary},
+		{"binary", "test_vuln", ModeBinary},
 	} {
 		tc := tc
 		t.Run(tc.name, func(t *testing.T) {

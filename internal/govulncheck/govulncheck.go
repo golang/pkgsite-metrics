@@ -267,15 +267,19 @@ func RunGovulncheckCmd(govulncheckPath, mode, modulePath, vulndbDir string, stat
 	pattern := "./..."
 	dir := ""
 
+	var modeFlag string
 	if mode == ModeBinary {
 		pattern = modulePath
+		modeFlag = "binary"
 	} else {
 		dir = modulePath
+		modeFlag = "source"
 	}
 
 	stdOut := bytes.Buffer{}
 	stdErr := bytes.Buffer{}
-	govulncheckCmd := exec.Command(govulncheckPath, "-json", "-db=file://"+vulndbDir, "-C="+dir, pattern)
+	govulncheckCmd := exec.Command(govulncheckPath, "-mode", modeFlag,
+		"-json", "-db=file://"+vulndbDir, "-C="+dir, pattern)
 
 	govulncheckCmd.Stdout = &stdOut
 	govulncheckCmd.Stderr = &stdErr
