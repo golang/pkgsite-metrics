@@ -38,7 +38,7 @@ var commands = []command{
 	{"list", "",
 		"list jobs", doList},
 	{"show", "JOBID...",
-		"display information about jobs", doShow},
+		"display information about jobs in the last 7 days", doShow},
 	{"cancel", "JOBID...",
 		"cancel the jobs", doCancel},
 	{"start", "BINARY [MIN_IMPORTERS]",
@@ -128,15 +128,20 @@ func doList(ctx context.Context, _ []string) error {
 	if err != nil {
 		return err
 	}
+
+	d7 := -time.Hour * 24 * 7
+	weekBefore := time.Now().Add(d7)
 	tw := tabwriter.NewWriter(os.Stdout, 2, 8, 1, ' ', 0)
 	fmt.Fprintf(tw, "ID\tUser\tStart Time\tStarted\tFinished\tTotal\tCanceled\n")
 	for _, j := range *joblist {
-		fmt.Fprintf(tw, "%s\t%s\t%s\t%d\t%d\t%d\t%t\n",
-			j.ID(), j.User, j.StartedAt.Format(time.RFC3339),
-			j.NumStarted,
-			j.NumSkipped+j.NumFailed+j.NumErrored+j.NumSucceeded,
-			j.NumEnqueued,
-			j.Canceled)
+		if j.StartedAt.After(weekBefore) {
+			fmt.Fprintf(tw, "%s\t%s\t%s\t%d\t%d\t%d\t%t\n",
+				j.ID(), j.User, j.StartedAt.Format(time.RFC3339),
+				j.NumStarted,
+				j.NumSkipped+j.NumFailed+j.NumErrored+j.NumSucceeded,
+				j.NumEnqueued,
+				j.Canceled)
+		}
 	}
 	return tw.Flush()
 }
