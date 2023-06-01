@@ -52,8 +52,9 @@ func (d *DB) CreateJob(ctx context.Context, j *Job) (err error) {
 	return err
 }
 
-// DeleteJob deletes the job with the given ID. It does not return an error if the job doesn't exist.
-func (d *DB) DeleteJob(ctx context.Context, id string) (err error) {
+// deleteJob deletes the job with the given ID. It does not return an error if the job doesn't exist.
+// This function is unexported because the worker never deletes jobs.
+func (d *DB) deleteJob(ctx context.Context, id string) (err error) {
 	defer derrors.Wrap(&err, "job.DB.DeleteJob(%s)", id)
 	_, err = d.jobRef(id).Delete(ctx)
 	return err

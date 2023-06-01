@@ -9,8 +9,6 @@
 // TODO:
 // jobs/list					list all jobs
 // jobs/cancel?jobid=xxx		cancel a job
-// jobs/delete?jobid=xxx		delete a job
-// jobs/deleteOlder?dur=xxx		delete jobs older than a duration
 
 package worker
 
@@ -43,7 +41,6 @@ func (s *Server) handleJobs(w http.ResponseWriter, r *http.Request) (err error) 
 
 type jobDB interface {
 	CreateJob(ctx context.Context, j *jobs.Job) error
-	DeleteJob(ctx context.Context, id string) error
 	GetJob(ctx context.Context, id string) (*jobs.Job, error)
 	UpdateJob(ctx context.Context, id string, f func(*jobs.Job) error) error
 	ListJobs(context.Context, func(*jobs.Job, time.Time) error) error
