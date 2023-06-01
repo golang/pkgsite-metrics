@@ -11,6 +11,7 @@ import (
 	"crypto/hmac"
 	"crypto/sha256"
 	"encoding/hex"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -21,6 +22,7 @@ import (
 	"golang.org/x/exp/maps"
 	"golang.org/x/exp/slices"
 	"golang.org/x/pkgsite-metrics/internal/bigquery"
+	"golang.org/x/pkgsite-metrics/internal/derrors"
 	"golang.org/x/pkgsite-metrics/internal/log"
 	"google.golang.org/api/iterator"
 )
@@ -182,6 +184,32 @@ func Compute(ctx context.Context, vulndbBucketProjectID string, fromDate, toDate
 		ircs = append(ircs, &IPRequestCount{Date: k.date, IP: k.ip, Count: counts[k]})
 	}
 	return ircs, nil
+}
+
+type logEntry struct {
+	Timestamp   time.Time `json:"timestamp"`
+	HTTPRequest struct {
+		RemoteIP string `json:"remoteIp"`
+	} `json:"httpRequest"`
+}
+
+// readJSONLogEntries reads the contents of r, which must consist of a sequence
+// of JSON objects each of which has the fields of a logEntry.
+// For each entry, after obfuscating the IP using hmacKey, it calls fn on the entry.
+func readJSONLogEntries(r io.Reader, hmacKey []byte, fn func(e *logEntry) error) (err error) {
+	defer derrors.Wrap(&err, "readJSONLogEntries")
+	dec := json.NewDecoder(r)
+	for dec.More() {
+		var e logEntry
+		if err := dec.Decode(&e); err != nil {
+			return err
+		}
+		e.HTTPRequest.RemoteIP = obfuscate(e.HTTPRequest.RemoteIP, hmacKey)
+		if err := fn(&e); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 func obfuscate(ip string, hmacKey []byte) string {
