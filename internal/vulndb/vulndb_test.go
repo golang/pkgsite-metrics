@@ -47,7 +47,7 @@ func TestReadMostRecentDB(t *testing.T) {
 	ctx := context.Background()
 	const projectID = "go-ecosystem"
 
-	client, err := bigquery.NewClientForTesting(ctx, projectID)
+	client, err := bigquery.NewClientForTesting(ctx, projectID, "read_recent_db")
 	if err != nil {
 		t.Fatal(err)
 	}

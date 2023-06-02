@@ -30,7 +30,7 @@ func TestBigQuery(t *testing.T) {
 	ctx := context.Background()
 	const projectID = "go-ecosystem"
 
-	client, err := bigquery.NewClientForTesting(ctx, projectID)
+	client, err := bigquery.NewClientForTesting(ctx, projectID, "bigquery")
 	if err != nil {
 		t.Fatal(err)
 	}

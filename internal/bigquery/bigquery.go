@@ -58,14 +58,14 @@ func NewClientCreate(ctx context.Context, projectID, datasetID string) (_ *Clien
 
 func (c *Client) Close() (err error) {
 	if c.deleteDatasetOnClose {
-		err = c.dataset.Delete(context.Background())
+		err = c.dataset.DeleteWithContents(context.Background())
 	}
 	return errors.Join(err, c.client.Close())
 }
 
 // NewClientForTesting creates a client with a new, unique dataset. Closing the client deletes the dataset.
-func NewClientForTesting(ctx context.Context, projectID string) (*Client, error) {
-	dsID := fmt.Sprintf("test_%s", time.Now().Format("20060102T030405"))
+func NewClientForTesting(ctx context.Context, projectID, testID string) (*Client, error) {
+	dsID := fmt.Sprintf("test_%s_%s", testID, time.Now().Format("20060102T030405"))
 	c, err := NewClientCreate(ctx, projectID, dsID)
 	if err != nil {
 		return nil, err
