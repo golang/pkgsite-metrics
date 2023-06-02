@@ -19,6 +19,7 @@ import (
 
 	"cloud.google.com/go/civil"
 	"cloud.google.com/go/logging/logadmin"
+	"cloud.google.com/go/storage"
 	"golang.org/x/exp/maps"
 	"golang.org/x/exp/slices"
 	"golang.org/x/pkgsite-metrics/internal/bigquery"
@@ -184,6 +185,63 @@ func Compute(ctx context.Context, vulndbBucketProjectID string, fromDate, toDate
 		ircs = append(ircs, &IPRequestCount{Date: k.date, IP: k.ip, Count: counts[k]})
 	}
 	return ircs, nil
+}
+
+// countLogsForObjects reads the JSON log files given by objNames from the bucket
+// and sums their entries by date and obfuscated IP.
+func countLogsForObjects(ctx context.Context, bucket *storage.BucketHandle, objNames []string, hmacKey []byte) (
+	byDate map[civil.Date]int, byIP map[string]int, err error) {
+
+	if len(objNames) == 0 {
+		return nil, nil, nil
+	}
+	defer derrors.Wrap(&err, "countLogsForObjects(%q, ...)", objNames[0])
+
+	byDate = map[civil.Date]int{}
+	byIP = map[string]int{}
+	for _, name := range objNames {
+		r, err := bucket.Object(name).NewReader(ctx)
+		if err != nil {
+			return nil, nil, err
+		}
+		defer r.Close()
+		err = readJSONLogEntries(r, hmacKey, func(e *logEntry) error {
+			byDate[civil.DateOf(e.Timestamp)]++
+			byIP[e.HTTPRequest.RemoteIP]++
+			return nil
+		})
+		if err != nil {
+			return nil, nil, err
+		}
+	}
+	return byDate, byIP, nil
+}
+
+// Suffix to append to project name to get the name of the logs bucket.
+const bucketSuffix = "-vulndb-logs"
+
+// objectNamesForDate returns the names of all objects in the bucket
+// corresponding to the logPrefix and date.
+// It assumes that the bucket is organized like a Cloud Logging storage sink for
+// vulndb requests, with all files for a date in the directory
+// logPrefix/YYYY/MM/DD.
+func objectNamesForDate(ctx context.Context, bucket *storage.BucketHandle, logPrefix string, date civil.Date) (names []string, err error) {
+	defer derrors.Wrap(&err, "objectNamesForDate(%q, %s)", logPrefix, date)
+
+	q := &storage.Query{Prefix: fmt.Sprintf("%s/%04d/%02d/%02d/", logPrefix, date.Year, date.Month, date.Day)}
+	q.SetAttrSelection([]string{"Name"}) // Retrieve only the name of the JSON file.
+	iter := bucket.Objects(ctx, q)
+	for {
+		attrs, err := iter.Next()
+		if err == iterator.Done {
+			break
+		}
+		if err != nil {
+			return nil, err
+		}
+		names = append(names, attrs.Name)
+	}
+	return names, nil
 }
 
 type logEntry struct {
