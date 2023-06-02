@@ -25,7 +25,6 @@ import (
 var (
 	limit    = flag.Int("limit", 0, "max log entries to compute")
 	fromDate = flag.String("from", "", "start date for compute")
-	toDate   = flag.String("to", "", "end date for compute")
 )
 
 func main() {
@@ -101,12 +100,7 @@ func doCompute(ctx context.Context, projectID string, hmacKey []byte) error {
 		return err
 	}
 	from = from.AddDays(-1)
-	to, err := civil.ParseDate(*toDate)
-	if err != nil {
-		return err
-	}
-	to = to.AddDays(1)
-	rcs, err := vulndbreqs.Compute(ctx, projectID, from, to, *limit, hmacKey)
+	rcs, err := vulndbreqs.Compute(ctx, projectID, from, *limit, hmacKey)
 	if err != nil {
 		return err
 	}

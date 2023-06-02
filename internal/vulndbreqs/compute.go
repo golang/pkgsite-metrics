@@ -20,8 +20,6 @@ import (
 	"cloud.google.com/go/civil"
 	"cloud.google.com/go/logging/logadmin"
 	"cloud.google.com/go/storage"
-	"golang.org/x/exp/maps"
-	"golang.org/x/exp/slices"
 	"golang.org/x/pkgsite-metrics/internal/bigquery"
 	"golang.org/x/pkgsite-metrics/internal/derrors"
 	"golang.org/x/pkgsite-metrics/internal/log"
@@ -58,19 +56,19 @@ func ComputeAndStore(ctx context.Context, vulndbBucketProjectID string, client *
 // ComputeAndStoreDate computes the request counts for the given date and writes them to BigQuery.
 // It does so even if there is already stored information for that date.
 func ComputeAndStoreDate(ctx context.Context, vulndbBucketProjectID string, client *bigquery.Client, hmacKey []byte, date civil.Date) error {
-	ircs, err := Compute(ctx, vulndbBucketProjectID, date, date, 0, hmacKey)
+	ircs, err := Compute(ctx, vulndbBucketProjectID, date, 0, hmacKey)
 	if err != nil {
 		return err
 	}
 	if len(ircs) == 0 {
 		ircs = []*IPRequestCount{{Date: date, IP: "NONE", Count: 0}}
 	}
-	rcs := sumRequestCounts(ircs)
-	if len(rcs) != 1 {
-		return fmt.Errorf("got %d dates, want 1", len(rcs))
+	count := 0
+	for _, rc := range ircs {
+		count += rc.Count
 	}
-	log.Infof(ctx, "writing request count %d for %s; %d distinct IPs", rcs[0].Count, rcs[0].Date, len(ircs))
-	return writeToBigQuery(ctx, client, rcs, ircs)
+	log.Infof(ctx, "writing request count %d for %s; %d distinct IPs", count, date, len(ircs))
+	return writeToBigQuery(ctx, client, []*RequestCount{{Date: date, Count: count}}, ircs)
 }
 
 func sumRequestCounts(ircs []*IPRequestCount) []*RequestCount {
@@ -86,25 +84,21 @@ func sumRequestCounts(ircs []*IPRequestCount) []*RequestCount {
 }
 
 // Compute queries the vulndb load balancer logs for all
-// vuln DB requests between the given dates, inclusive.
-// It returns request counts for each date, sorted from newest to oldest.
+// vuln DB requests on the given date.
+// It returns request counts for the date.
 // If limit is positive, it reads no more than limit entries from the log (for testing only).
-func Compute(ctx context.Context, vulndbBucketProjectID string, fromDate, toDate civil.Date, limit int, hmacKey []byte) ([]*IPRequestCount, error) {
+func Compute(ctx context.Context, vulndbBucketProjectID string, date civil.Date, limit int, hmacKey []byte) ([]*IPRequestCount, error) {
 	if len(hmacKey) < 16 {
 		return nil, errors.New("HMAC secret must be at least 16 bytes")
 	}
-	log.Infof(ctx, "computing request counts from %s to %s", fromDate, toDate)
+	log.Infof(ctx, "computing request counts for %s", date)
 	client, err := logadmin.NewClient(ctx, vulndbBucketProjectID)
 	if err != nil {
 		return nil, err
 	}
 	defer client.Close()
 
-	type key struct {
-		date civil.Date
-		ip   string
-	}
-	counts := map[key]int{}
+	counts := map[string]int{} // key is obfuscated IP address
 
 	it := newEntryIterator(ctx, client,
 		// This filter has three sections, marked with blank lines. It is more
@@ -137,8 +131,8 @@ func Compute(ctx context.Context, vulndbBucketProjectID string, fromDate, toDate
 		-httpRequest.requestUrl="https://vuln.go.dev/index.json"
 		-httpRequest.requestUrl:"https://vuln.go.dev/ID/"
 
-		timestamp>=`+fromDate.String()+`
-		timestamp<`+toDate.AddDays(1).String())
+		timestamp>=`+date.String()+`
+		timestamp<`+date.AddDays(1).String())
 	// Count each log entry we see, bucketing by date.
 	// The timestamps are in order from oldest to newest
 	// (https://cloud.google.com/logging/docs/reference/v2/rpc/google.logging.v2#google.logging.v2.ListLogEntriesRequest).
@@ -156,33 +150,21 @@ func Compute(ctx context.Context, vulndbBucketProjectID string, fromDate, toDate
 		if r := entry.HTTPRequest; r != nil {
 			ip = obfuscate(r.RemoteIP, hmacKey)
 		}
-		counts[key{civil.DateOf(entry.Timestamp), ip}]++
+		counts[ip]++
 		n++
 		if limit > 0 && n > limit {
 			break
 		}
 	}
+	if logErr != nil {
+		log.Errorf(ctx, logErr, "when reading load balancer logs, no progress")
+		return nil, logErr
+	}
 
 	// Convert the counts map to a slice of IPRequestCounts.
-	keys := maps.Keys(counts)
-	// Sort from newest to oldest.
-	slices.SortFunc(keys, func(k1, k2 key) bool { return k1.date.After(k2.date) })
-	// If we encountered an error, try to make partial progress by returning
-	// at least one day's worth of data.
-	if logErr != nil {
-		if len(keys) > 1 {
-			// The last date may have partial data, so drop it.
-			keys = keys[:len(keys)-1]
-			log.Warnf(ctx, "error when reading load balancer logs, partial progress: %v",
-				logErr)
-		} else {
-			log.Errorf(ctx, logErr, "when reading load balancer logs, no progress")
-			return nil, logErr
-		}
-	}
 	var ircs []*IPRequestCount
-	for _, k := range keys {
-		ircs = append(ircs, &IPRequestCount{Date: k.date, IP: k.ip, Count: counts[k]})
+	for ip, count := range counts {
+		ircs = append(ircs, &IPRequestCount{Date: date, IP: ip, Count: count})
 	}
 	return ircs, nil
 }
