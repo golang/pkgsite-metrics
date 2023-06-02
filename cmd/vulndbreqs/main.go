@@ -22,10 +22,7 @@ import (
 	"golang.org/x/pkgsite-metrics/internal/vulndbreqs"
 )
 
-var (
-	limit    = flag.Int("limit", 0, "max log entries to compute")
-	fromDate = flag.String("from", "", "start date for compute")
-)
+var date = flag.String("date", "", "date for compute")
 
 func main() {
 	flag.Usage = func() {
@@ -95,12 +92,11 @@ func doAdd(ctx context.Context, projectID string, client *bigquery.Client, hmacK
 }
 
 func doCompute(ctx context.Context, projectID string, hmacKey []byte) error {
-	from, err := civil.ParseDate(*fromDate)
+	d, err := civil.ParseDate(*date)
 	if err != nil {
 		return err
 	}
-	from = from.AddDays(-1)
-	rcs, err := vulndbreqs.Compute(ctx, projectID, from, *limit, hmacKey)
+	rcs, err := vulndbreqs.Compute(ctx, projectID, d, hmacKey)
 	if err != nil {
 		return err
 	}

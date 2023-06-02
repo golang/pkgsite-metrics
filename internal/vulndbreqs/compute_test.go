@@ -15,11 +15,13 @@ import (
 	"cloud.google.com/go/civil"
 	"cloud.google.com/go/storage"
 	"github.com/google/go-cmp/cmp"
+	"github.com/google/go-cmp/cmp/cmpopts"
 	"golang.org/x/exp/maps"
+	"golang.org/x/exp/slices"
 	test "golang.org/x/pkgsite-metrics/internal/testing"
 )
 
-func TestCompute(t *testing.T) {
+func TestComputeFromLogs(t *testing.T) {
 	test.NeedsIntegrationEnv(t)
 
 	projID := os.Getenv("GO_ECOSYSTEM_VULNDB_BUCKET_PROJECT")
@@ -30,7 +32,7 @@ func TestCompute(t *testing.T) {
 	// Assume there are more than 10 requests a day.
 	yesterday := civil.DateOf(time.Now()).AddDays(-1)
 	const n = 10
-	igot, err := Compute(context.Background(), projID, yesterday, n, []byte("this-is-a-fake-hmac-key"))
+	igot, err := computeFromLogs(context.Background(), projID, yesterday, testHMACKey, n)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -44,16 +46,39 @@ func TestCompute(t *testing.T) {
 	}
 }
 
+func TestComputeFromStorage(t *testing.T) {
+	test.NeedsIntegrationEnv(t)
+
+	// Compute one day's counts, reading only 1 file.
+	// The file is always the same.
+	got, err := computeFromStorage(context.Background(), testDate, testHMACKey, 1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// The returned slice comes from a map, so sort for determinism.
+	slices.SortFunc(got, func(r1, r2 *IPRequestCount) bool {
+		return r1.Count < r2.Count
+	})
+	want := []*IPRequestCount{
+		{Date: testDate, Count: 30},
+		{Date: testDate, Count: 33},
+		{Date: testDate, Count: 112},
+	}
+	if diff := cmp.Diff(got, want, cmpopts.IgnoreFields(IPRequestCount{}, "IP")); diff != "" {
+		t.Errorf("mismatch (-want, +got)\n%s", diff)
+	}
+}
+
 var (
-	testHMACKey = []byte{0}
+	testHMACKey = []byte("this-is-a-fake-hmac-key")
+
+	testDate = civil.Date{Year: 2023, Month: 5, Day: 30}
 
 	// These reflect the contents of testdata/logfile.json,
 	// which is also stored in the "test" directory of the
 	// vulndb logs bucket.
-	testFileDates = map[civil.Date]int{
-		civil.Date{Year: 2023, Month: 5, Day: 30}: 13,
-	}
-	testFileIPs = map[string]int{
+	testFileDates = map[civil.Date]int{testDate: 13}
+	testFileIPs   = map[string]int{
 		obfuscate("1.2.3.4", testHMACKey):    3,
 		obfuscate("5.6.7.8", testHMACKey):    2,
 		obfuscate("9.10.11.12", testHMACKey): 8,
@@ -93,7 +118,6 @@ func TestCountFiles(t *testing.T) {
 
 	// Files manually copied to the bucket for testing.
 	const testPrefix = "test"
-	testDate := civil.Date{Year: 2023, Month: 5, Day: 30}
 	const wantPrefix = "test/2023/05/30/"
 
 	ctx := context.Background()

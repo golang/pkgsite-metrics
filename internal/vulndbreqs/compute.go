@@ -15,6 +15,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"os"
 	"time"
 
 	"cloud.google.com/go/civil"
@@ -26,7 +27,15 @@ import (
 	"google.golang.org/api/iterator"
 )
 
-var startDate = civil.Date{Year: 2023, Month: time.January, Day: 1}
+var (
+	// First date for which we want log data.
+	startDate = civil.Date{Year: 2023, Month: time.January, Day: 1}
+
+	// First date for which the GCS logs bucket has a full day of data. (There
+	// is a directory for the day before, but doesn't include a whole day's
+	// data.)
+	gcsStartDate = civil.Date{Year: 2023, Month: time.May, Day: 31}
+)
 
 // ComputeAndStore computes Vuln DB request counts from the last date we have
 // data for, and writes them to BigQuery.
@@ -56,7 +65,7 @@ func ComputeAndStore(ctx context.Context, vulndbBucketProjectID string, client *
 // ComputeAndStoreDate computes the request counts for the given date and writes them to BigQuery.
 // It does so even if there is already stored information for that date.
 func ComputeAndStoreDate(ctx context.Context, vulndbBucketProjectID string, client *bigquery.Client, hmacKey []byte, date civil.Date) error {
-	ircs, err := Compute(ctx, vulndbBucketProjectID, date, 0, hmacKey)
+	ircs, err := Compute(ctx, vulndbBucketProjectID, date, hmacKey)
 	if err != nil {
 		return err
 	}
@@ -83,15 +92,23 @@ func sumRequestCounts(ircs []*IPRequestCount) []*RequestCount {
 	return rcs
 }
 
-// Compute queries the vulndb load balancer logs for all
-// vuln DB requests on the given date.
-// It returns request counts for the date.
+// Compute computes counts for all vuln DB requests on the given date.
+// It returns request counts grouped by obfuscated IP address.
+func Compute(ctx context.Context, vulndbBucketProjectID string, date civil.Date, hmacKey []byte) ([]*IPRequestCount, error) {
+	if date.Before(gcsStartDate) {
+		return computeFromLogs(ctx, vulndbBucketProjectID, date, hmacKey, 0)
+	}
+	return computeFromStorage(ctx, date, hmacKey, 0)
+}
+
+// computeFromLogs queries the vulndb load balancer logs for all vuln DB
+// requests on the given date. It returns request counts for the date.
 // If limit is positive, it reads no more than limit entries from the log (for testing only).
-func Compute(ctx context.Context, vulndbBucketProjectID string, date civil.Date, limit int, hmacKey []byte) ([]*IPRequestCount, error) {
+func computeFromLogs(ctx context.Context, vulndbBucketProjectID string, date civil.Date, hmacKey []byte, limit int) ([]*IPRequestCount, error) {
 	if len(hmacKey) < 16 {
 		return nil, errors.New("HMAC secret must be at least 16 bytes")
 	}
-	log.Infof(ctx, "computing request counts for %s", date)
+	log.Infof(ctx, "computing request counts for %s from logs", date)
 	client, err := logadmin.NewClient(ctx, vulndbBucketProjectID)
 	if err != nil {
 		return nil, err
@@ -161,12 +178,51 @@ func Compute(ctx context.Context, vulndbBucketProjectID string, date civil.Date,
 		return nil, logErr
 	}
 
-	// Convert the counts map to a slice of IPRequestCounts.
+	return mapToCountSlice(counts, date), nil
+}
+
+// computeFromStorage counts requests for the given date from the files in the
+// vulndb logs bucket.
+// If maxFiles is positive, only that many files are read (for testing).
+func computeFromStorage(ctx context.Context, date civil.Date, hmacKey []byte, maxFiles int) (_ []*IPRequestCount, err error) {
+	defer derrors.Wrap(&err, "computeFromStorage(%s)", date)
+
+	log.Infof(ctx, "computing request counts for %s from storage bucket", date)
+	client, err := storage.NewClient(ctx)
+	if err != nil {
+		return nil, err
+	}
+	defer client.Close()
+	bucketName := os.Getenv("GOOGLE_CLOUD_PROJECT") + bucketSuffix
+	bucket := client.Bucket(bucketName)
+	names, err := objectNamesForDate(ctx, bucket, logPrefix, date)
+	if err != nil {
+		return nil, err
+	}
+	if maxFiles > 0 && len(names) > maxFiles {
+		names = names[:maxFiles]
+	}
+
+	byDate, byIP, err := countLogsForObjects(ctx, bucket, names, hmacKey)
+	if err != nil {
+		return nil, err
+	}
+	if len(byDate) != 1 {
+		return nil, fmt.Errorf("got %d dates, want 1", len(byDate))
+	}
+	if _, present := byDate[date]; !present {
+		return nil, fmt.Errorf("no data for %s", date)
+	}
+	return mapToCountSlice(byIP, date), nil
+}
+
+// mapToCountSlice Converts the map to a slice of IPRequestCounts.
+func mapToCountSlice(countsByIP map[string]int, date civil.Date) []*IPRequestCount {
 	var ircs []*IPRequestCount
-	for ip, count := range counts {
+	for ip, count := range countsByIP {
 		ircs = append(ircs, &IPRequestCount{Date: date, IP: ip, Count: count})
 	}
-	return ircs, nil
+	return ircs
 }
 
 // countLogsForObjects reads the JSON log files given by objNames from the bucket
@@ -201,6 +257,9 @@ func countLogsForObjects(ctx context.Context, bucket *storage.BucketHandle, objN
 
 // Suffix to append to project name to get the name of the logs bucket.
 const bucketSuffix = "-vulndb-logs"
+
+// Start of object names for vulndb request logs.
+const logPrefix = "requests"
 
 // objectNamesForDate returns the names of all objects in the bucket
 // corresponding to the logPrefix and date.
