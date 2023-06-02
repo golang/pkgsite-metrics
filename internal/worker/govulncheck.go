@@ -7,14 +7,17 @@ package worker
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
 
 	"golang.org/x/pkgsite-metrics/internal"
 	"golang.org/x/pkgsite-metrics/internal/derrors"
 	"golang.org/x/pkgsite-metrics/internal/govulncheck"
 	"golang.org/x/pkgsite-metrics/internal/log"
+	"google.golang.org/api/googleapi"
 )
 
 type GovulncheckServer struct {
@@ -31,6 +34,12 @@ func newGovulncheckServer(ctx context.Context, s *Server) (*GovulncheckServer, e
 	if s.bqClient != nil {
 		swv, err = govulncheck.ReadWorkStates(ctx, s.bqClient)
 		if err != nil {
+			if isReadWorkStatesQuotaError(err) {
+				log.Info(ctx, "hit bigquery list quota when reading work versions, sleeping 1 minute...")
+				// Sleep a minute to allow quota limitations
+				// to clear up.
+				time.Sleep(60 * time.Second)
+			}
 			return nil, err
 		}
 		log.Infof(ctx, "read %d work versions", len(swv))
@@ -39,6 +48,20 @@ func newGovulncheckServer(ctx context.Context, s *Server) (*GovulncheckServer, e
 		Server:           s,
 		storedWorkStates: swv,
 	}, nil
+}
+
+func isReadWorkStatesQuotaError(err error) bool {
+	var gerr *googleapi.Error
+	if !errors.As(err, &gerr) {
+		return false
+	}
+	// BigQuery uses 403 for quota exceeded.
+	if gerr.Code != 403 {
+		return false
+	}
+	// Further validate that this is a quota issue with ReadWorkStates.
+	emsg := gerr.Error()
+	return strings.Contains(emsg, "ReadWorkStates") && strings.Contains(emsg, "quota")
 }
 
 func (h *GovulncheckServer) getWorkVersion(ctx context.Context) (_ *govulncheck.WorkVersion, err error) {
