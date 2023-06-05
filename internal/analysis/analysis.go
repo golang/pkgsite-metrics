@@ -215,7 +215,7 @@ func ReadWorkVersions(ctx context.Context, c *bigquery.Client) (_ map[WorkVersio
 	defer derrors.Wrap(&err, "ReadWorkVersions")
 	m := map[WorkVersionKey]WorkVersion{}
 	query := bigquery.PartitionQuery{
-		Table:       c.FullTableName(TableName),
+		From:        "`" + c.FullTableName(TableName) + "`",
 		Columns:     "module_path, version, binary_name, binary_version, binary_args, worker_version, schema_version",
 		PartitionOn: "module_path, sort_version, binary_name",
 		OrderBy:     "created_at DESC",

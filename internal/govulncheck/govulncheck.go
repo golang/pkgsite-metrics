@@ -11,6 +11,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"net/http"
 	"os/exec"
 	"strings"
@@ -208,17 +209,33 @@ type WorkState struct {
 // together with their accompanying error categories.
 func ReadWorkStates(ctx context.Context, c *bigquery.Client) (_ map[[2]string]*WorkState, err error) {
 	defer derrors.Wrap(&err, "ReadWorkStates")
-	m := map[[2]string]*WorkState{}
-	query := bigquery.PartitionQuery{
-		Table:       c.FullTableName(TableName),
+
+	// Preamble defines an auxiliary table that remembers the
+	// latest version, defined by sort_version, for each module.
+	const preamble = "WITH latest AS ( SELECT module_path AS module, MAX(sort_version) as max_version FROM `%s` GROUP BY module_path)"
+	latest := fmt.Sprintf(preamble, c.FullTableName(TableName))
+	// Partition the table by module and version while only
+	// considering the `latest` version. This is accomplished
+	// by joining govulncheck table with latest.
+	partition := bigquery.PartitionQuery{
+		From:        fmt.Sprintf("`%s` JOIN latest ON module_path=module AND sort_version=max_version", c.FullTableName(TableName)),
 		Columns:     "module_path, version, go_version, worker_version, schema_version, vulndb_last_modified, error_category",
 		PartitionOn: "module_path, sort_version",
 		OrderBy:     "created_at DESC",
 	}.String()
+	// Create the final query that gets only one work version
+	// for each module. The returned work version is the latest
+	// one, defined by max of sort_version. Note that this will
+	// not match the latest version of a module, in the strict Go
+	// sense, if the module has non-linear tagging (which should
+	// not happen too often).
+	query := fmt.Sprintf("%s\n%s", latest, partition)
 	iter, err := c.Query(ctx, query)
 	if err != nil {
 		return nil, err
 	}
+
+	m := map[[2]string]*WorkState{}
 	err = bigquery.ForEachRow(iter, func(r *Result) bool {
 		m[[2]string{r.ModulePath, r.Version}] = &WorkState{
 			WorkVersion:   &r.WorkVersion,

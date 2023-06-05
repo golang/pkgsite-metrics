@@ -75,7 +75,7 @@ func ReadRequestCountsFromBigQuery(ctx context.Context, client *bigquery.Client)
 	defer derrors.Wrap(&err, "readFromBigQuery")
 	// Select the most recently inserted row for each date.
 	q := fmt.Sprintf("(%s) ORDER BY date DESC", bigquery.PartitionQuery{
-		Table:       client.FullTableName(RequestCountTableName),
+		From:        "`" + client.FullTableName(RequestCountTableName) + "`",
 		PartitionOn: "date",
 		OrderBy:     "created_at DESC",
 	})

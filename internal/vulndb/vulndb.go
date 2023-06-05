@@ -123,7 +123,7 @@ func ReadMostRecentDB(ctx context.Context, c *bigquery.Client) (entries []*Entry
 	}
 
 	query := bigquery.PartitionQuery{
-		Table:       c.FullTableName(TableName),
+		From:        "`" + c.FullTableName(TableName) + "`",
 		PartitionOn: "ID",
 		OrderBy:     "modified_time DESC",
 	}.String()

@@ -340,7 +340,7 @@ func TableSchema(tableID string) bq.Schema {
 // (BigQuery SQL has no DISTINCT ON feature and doesn't allow columns of type RECORD
 // in queries with DISTINCT, so we have to take this approach.)
 type PartitionQuery struct {
-	Table       string // full table name
+	From        string // should use full table name
 	Columns     string // comma-separated columns to select, or "*" ("" => "*")
 	PartitionOn string // comma-separated columns defining the partition
 	OrderBy     string // text after ORDER BY: comma-separated columns, each
@@ -369,7 +369,7 @@ func (q PartitionQuery) String() string {
 	if cols == "" {
 		cols = "*"
 	}
-	return fmt.Sprintf(qf, cols, q.PartitionOn, q.OrderBy, "`"+q.Table+"`")
+	return fmt.Sprintf(qf, cols, q.PartitionOn, q.OrderBy, q.From)
 }
 
 // InferSchema is a copy of cloud.google.com/go/bigquery.InferSchema so
