@@ -89,7 +89,7 @@ func (s *analysisServer) handleScan(w http.ResponseWriter, r *http.Request) (err
 	// If there is an error, it logs it instead of failing.
 	incrementJob := func(name string) {
 		if req.JobID != "" && s.jobDB != nil {
-			if err := s.jobDB.Increment(ctx, req.JobID, name); err != nil {
+			if err := s.jobDB.Increment(ctx, req.JobID, name, 1); err != nil {
 				log.Errorf(ctx, err, "failed to update job for id %q", req.JobID)
 			}
 		}
@@ -345,30 +345,30 @@ func (s *analysisServer) handleEnqueue(w http.ResponseWriter, r *http.Request) (
 		return err
 	}
 
-	var (
-		job   *jobs.Job
-		jobID string
-	)
 	// If a user was provided, create a Job.
+	var jobID string
+	sj := ""
 	if params.User != "" {
-		job = jobs.NewJob(params.User, time.Now(), r.URL.String())
+		job := jobs.NewJob(params.User, time.Now(), r.URL.String())
 		jobID = job.ID()
+		if err := s.jobDB.CreateJob(ctx, job); err != nil {
+			sj = fmt.Sprintf(", but could not create job: %v", err)
+		} else {
+			sj = ", job ID is " + jobID
+		}
 	}
 
 	tasks := createAnalysisQueueTasks(params, jobID, mods)
 	err = enqueueTasks(ctx, tasks, s.queue,
 		&queue.Options{Namespace: "analysis", TaskNameSuffix: params.Suffix})
 	if err != nil {
+		if err := s.jobDB.DeleteJob(ctx, jobID); err != nil {
+			log.Errorf(ctx, err, "failed to delete job upon unsuccessful enqueuing")
+		}
 		return fmt.Errorf("enequeue failed: %w", err)
 	}
-	sj := ""
-	if job != nil {
-		job.NumEnqueued = len(tasks)
-		if err := s.jobDB.CreateJob(ctx, job); err != nil {
-			sj = fmt.Sprintf(", but could not create job: %v", err)
-		} else {
-			sj = ", job ID is " + job.ID()
-		}
+	if jobID != "" {
+		s.jobDB.Increment(ctx, jobID, "NumEnqueued", len(tasks))
 	}
 	// Communicate enqueue status for better usability.
 	fmt.Fprintf(w, "enqueued %d analysis tasks successfully%s\n", len(tasks), sj)

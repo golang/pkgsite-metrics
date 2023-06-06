@@ -39,7 +39,7 @@ func TestDB(t *testing.T) {
 
 	// Make sure the job doesn't exist. Delete doesn't fail
 	// in that case.
-	must(db.deleteJob(ctx, job.ID()))
+	must(db.DeleteJob(ctx, job.ID()))
 
 	// Create a new job.
 	must(db.CreateJob(ctx, job))
@@ -72,7 +72,7 @@ func TestDB(t *testing.T) {
 
 	// Create another job, then list both.
 	job2 := NewJob("user2", tm.Add(24*time.Hour), "url2")
-	must(db.deleteJob(ctx, job2.ID()))
+	must(db.DeleteJob(ctx, job2.ID()))
 	must(db.CreateJob(ctx, job2))
 
 	var got2 []*Job

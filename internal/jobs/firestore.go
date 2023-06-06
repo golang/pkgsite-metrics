@@ -52,9 +52,8 @@ func (d *DB) CreateJob(ctx context.Context, j *Job) (err error) {
 	return err
 }
 
-// deleteJob deletes the job with the given ID. It does not return an error if the job doesn't exist.
-// This function is unexported because the worker never deletes jobs.
-func (d *DB) deleteJob(ctx context.Context, id string) (err error) {
+// DeleteJob deletes the job with the given ID. It does not return an error if the job doesn't exist.
+func (d *DB) DeleteJob(ctx context.Context, id string) (err error) {
 	defer derrors.Wrap(&err, "job.DB.DeleteJob(%s)", id)
 	_, err = d.jobRef(id).Delete(ctx)
 	return err
@@ -93,12 +92,12 @@ func (d *DB) UpdateJob(ctx context.Context, id string, f func(*Job) error) (err 
 		firestore.MaxAttempts(firestore.DefaultTransactionMaxAttempts*5))
 }
 
-// Increment value named name by 1.
-func (d *DB) Increment(ctx context.Context, id, name string) (err error) {
+// Increment value named name by n.
+func (d *DB) Increment(ctx context.Context, id, name string, n int) (err error) {
 	defer derrors.Wrap(&err, "job.DB.Increment(%s)", id)
 	docref := d.jobRef(id)
 	_, err = docref.Update(ctx, []firestore.Update{
-		{Path: name, Value: firestore.Increment(1)}, // name will incremented by 1.
+		{Path: name, Value: firestore.Increment(n)}, // name will incremented by n
 	})
 	return err
 }
