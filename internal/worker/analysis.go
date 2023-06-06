@@ -85,26 +85,22 @@ func (s *analysisServer) handleScan(w http.ResponseWriter, r *http.Request) (err
 		}
 	}
 
-	// updateJob updates the job for this request if there is one.
+	// incrementJob increments name value by 1 for the current job.
 	// If there is an error, it logs it instead of failing.
-	updateJob := func(f func(*jobs.Job)) {
+	incrementJob := func(name string) {
 		if req.JobID != "" && s.jobDB != nil {
-			err := s.jobDB.UpdateJob(ctx, req.JobID, func(j *jobs.Job) error {
-				f(j)
-				return nil
-			})
-			if err != nil {
+			if err := s.jobDB.Increment(ctx, req.JobID, name); err != nil {
 				log.Errorf(ctx, err, "failed to update job for id %q", req.JobID)
 			}
 		}
 	}
 
-	updateJob(func(j *jobs.Job) { j.NumStarted++ })
+	incrementJob("NumStarted")
 
 	// Handle errors here.
 	defer func() {
 		if err != nil {
-			updateJob(func(j *jobs.Job) { j.NumFailed++ })
+			incrementJob("NumFailed")
 		}
 	}()
 
@@ -138,20 +134,18 @@ func (s *analysisServer) handleScan(w http.ResponseWriter, r *http.Request) (err
 	key := analysis.WorkVersionKey{Module: req.Module, Version: req.Version, Binary: req.Binary}
 	if wv == s.storedWorkVersions[key] {
 		log.Infof(ctx, "skipping (work version unchanged): %+v", key)
-		updateJob(func(j *jobs.Job) { j.NumSkipped++ })
+		incrementJob("NumSkipped")
 		return nil
 	}
 	row := s.scan(ctx, req, localBinaryPath, wv)
 	if err := writeResult(ctx, req.Serve, w, s.bqClient, analysis.TableName, row); err != nil {
 		return err
 	}
-	updateJob(func(j *jobs.Job) {
-		if row.Error != "" {
-			j.NumErrored++
-		} else {
-			j.NumSucceeded++
-		}
-	})
+	if row.Error != "" {
+		incrementJob("NumErrored")
+	} else {
+		incrementJob("NumSucceeded")
+	}
 	return nil
 }
 

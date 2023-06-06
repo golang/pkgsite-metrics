@@ -93,6 +93,16 @@ func (d *DB) UpdateJob(ctx context.Context, id string, f func(*Job) error) (err 
 		firestore.MaxAttempts(firestore.DefaultTransactionMaxAttempts*5))
 }
 
+// Increment value named name by 1.
+func (d *DB) Increment(ctx context.Context, id, name string) (err error) {
+	defer derrors.Wrap(&err, "job.DB.Increment(%s)", id)
+	docref := d.jobRef(id)
+	_, err = docref.Update(ctx, []firestore.Update{
+		{Path: name, Value: firestore.Increment(1)}, // name will incremented by 1.
+	})
+	return err
+}
+
 // ListJobs calls f on each job in the DB, most recently started first.
 // f is also passed the time that the job was last updated.
 // If f returns a non-nil error, the iteration stops and returns that error.
