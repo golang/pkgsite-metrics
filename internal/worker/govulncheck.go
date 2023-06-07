@@ -10,7 +10,6 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
-	"strings"
 	"time"
 
 	"golang.org/x/pkgsite-metrics/internal"
@@ -56,12 +55,7 @@ func isReadWorkStatesQuotaError(err error) bool {
 		return false
 	}
 	// BigQuery uses 403 for quota exceeded.
-	if gerr.Code != 403 {
-		return false
-	}
-	// Further validate that this is a quota issue with ReadWorkStates.
-	emsg := gerr.Error()
-	return strings.Contains(emsg, "ReadWorkStates") && strings.Contains(emsg, "quota")
+	return gerr.Code == 403
 }
 
 func (h *GovulncheckServer) getWorkVersion(ctx context.Context) (_ *govulncheck.WorkVersion, err error) {
