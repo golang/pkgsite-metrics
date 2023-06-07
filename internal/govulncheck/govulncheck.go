@@ -212,7 +212,7 @@ func ReadWorkStates(ctx context.Context, c *bigquery.Client) (_ map[[2]string]*W
 
 	// Preamble defines an auxiliary table that remembers the
 	// latest version, defined by sort_version, for each module.
-	const preamble = "WITH latest AS ( SELECT module_path AS module, MAX(sort_version) as max_version FROM `%s` GROUP BY module_path)"
+	const preamble = "WITH latest AS (SELECT module_path AS module, MAX(sort_version) as max_version FROM `%s` GROUP BY module_path)"
 	latest := fmt.Sprintf(preamble, c.FullTableName(TableName))
 	// Partition the table by module and version while only
 	// considering the `latest` version. This is accomplished

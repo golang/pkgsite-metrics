@@ -9,6 +9,7 @@ package analysis
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"sort"
 	"strings"
@@ -213,17 +214,33 @@ type WorkVersionKey struct {
 // ReadWorkVersions reads the most recent WorkVersions in the analysis table.
 func ReadWorkVersions(ctx context.Context, c *bigquery.Client) (_ map[WorkVersionKey]WorkVersion, err error) {
 	defer derrors.Wrap(&err, "ReadWorkVersions")
-	m := map[WorkVersionKey]WorkVersion{}
-	query := bigquery.PartitionQuery{
-		From:        "`" + c.FullTableName(TableName) + "`",
+
+	// Preamble defines an auxiliary table that remembers the
+	// latest version, defined by sort_version, for each module
+	// and analysis.
+	const preamble = "WITH latest AS (SELECT module_path AS module, binary_name as binary, MAX(sort_version) as max_version FROM `%s` GROUP BY module_path, binary_name)"
+	latest := fmt.Sprintf(preamble, c.FullTableName(TableName))
+	// Partition the table by module, analysis, and version while
+	// only considering the `latest` version. This is accomplished
+	// by joining govulncheck table with latest.
+	partition := bigquery.PartitionQuery{
+		From:        fmt.Sprintf("`%s` JOIN latest ON module_path=module AND sort_version=max_version AND binary_name=binary", c.FullTableName(TableName)),
 		Columns:     "module_path, version, binary_name, binary_version, binary_args, worker_version, schema_version",
 		PartitionOn: "module_path, sort_version, binary_name",
 		OrderBy:     "created_at DESC",
 	}.String()
+	// Create the final query that gets only one work version
+	// for each module and analysis. The returned work version is
+	// the latest one, defined by max of sort_version. Note that
+	// this will not match the latest version of a module, in the
+	// strict Go sense, if the module has non-linear tagging (which
+	// should not happen too often).
+	query := fmt.Sprintf("%s\n%s", latest, partition)
 	iter, err := c.Query(ctx, query)
 	if err != nil {
 		return nil, err
 	}
+	m := map[WorkVersionKey]WorkVersion{}
 	err = bigquery.ForEachRow(iter, func(r *Result) bool {
 		m[WorkVersionKey{r.ModulePath, r.Version, r.BinaryName}] = r.WorkVersion
 		return true
