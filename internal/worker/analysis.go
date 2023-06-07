@@ -178,9 +178,9 @@ func (s *analysisServer) scan(ctx context.Context, req *analysis.ScanRequest, lo
 	if err != nil {
 		switch {
 		case isNoModulesSpecified(err):
-			// We currently run `go mod download` before running the sandbox
-			// and hence implicitly require that the project under analysis
-			// is a module. Projects working in GOPATH mode are not supported.
+			// We try to turn every non-module project into a module, so this
+			// branch should never be reached. We keep this for sanity and to
+			// catch any errors during the conversion.
 			err = fmt.Errorf("%v: %w", err, derrors.LoadPackagesNoGoModError)
 		case isNoRequiredModule(err):
 			err = fmt.Errorf("%v: %w", err, derrors.LoadPackagesNoRequiredModuleError)
