@@ -231,6 +231,8 @@ func (s *scanner) ScanModule(ctx context.Context, w http.ResponseWriter, sreq *g
 		case isMissingGoMod(err) || isNoModulesSpecified(err):
 			// Covers the missing go.mod file cases when running govulncheck in the sandbox
 			err = fmt.Errorf("%v: %w", err, derrors.LoadPackagesNoGoModError)
+		case isLoadError(err):
+			err = fmt.Errorf("%v: %w", err, derrors.LoadPackagesError)
 		case isNoRequiredModule(err):
 			err = fmt.Errorf("%v: %w", err, derrors.LoadPackagesNoRequiredModuleError)
 		case isTooManyFiles(err):
@@ -471,4 +473,8 @@ func isReplacingWithLocalPath(err error) bool {
 	errStr := err.Error()
 	matched, err := regexp.MatchString(`replaced by .{0,2}/`, errStr)
 	return err == nil && matched && strings.Contains(errStr, "go.mod: no such file")
+}
+
+func isLoadError(err error) bool {
+	return strings.Contains(err.Error(), "govulncheck: loading packages:")
 }
