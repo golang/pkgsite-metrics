@@ -191,7 +191,7 @@ func (s *analysisServer) scan(ctx context.Context, req *analysis.ScanRequest, lo
 		case isReplacingWithLocalPath(err):
 			err = fmt.Errorf("%v: %w", err, derrors.LoadPackagesImportedLocalError)
 		case isModVendor(err):
-			err = fmt.Errorf("%v: %w", err, derrors.VendorError)
+			err = fmt.Errorf("%v: %w", err, derrors.LoadVendorError)
 		default:
 		}
 		row.AddError(err)

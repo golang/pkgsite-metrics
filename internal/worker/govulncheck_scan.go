@@ -117,12 +117,12 @@ func (h *GovulncheckServer) canSkip(ctx context.Context, sreq *govulncheck.Reque
 }
 
 // unrecoverableError returns true iff errorCategory encodes that
-// the project is not a module or it requires local dependencies.
+// the project has an error that is unrecoverable from the perspective
+// of govulncheck. Examples are build issues and the lack of go.mod file.
 func unrecoverableError(errorCategory string) bool {
 	switch errorCategory {
 	case derrors.CategorizeError(derrors.LoadPackagesNoGoModError),
-		derrors.CategorizeError(derrors.LoadPackagesNoRequiredModuleError),
-		derrors.CategorizeError(derrors.LoadPackagesImportedLocalError):
+		derrors.CategorizeError(derrors.LoadPackagesError): // We model build usses as a general load error.
 		return true
 	default:
 		return false
@@ -234,15 +234,23 @@ func (s *scanner) ScanModule(ctx context.Context, w http.ResponseWriter, sreq *g
 		case isLoadError(err):
 			err = fmt.Errorf("%v: %w", err, derrors.LoadPackagesError)
 		case isNoRequiredModule(err):
+			// Should be subsumed by LoadPackagesError, kept for sanity
+			// and to catch unexpected changes in govulncheck output.
 			err = fmt.Errorf("%v: %w", err, derrors.LoadPackagesNoRequiredModuleError)
-		case isTooManyFiles(err):
-			err = fmt.Errorf("%v: %w", err, derrors.ScanModuleTooManyOpenFiles)
 		case isMissingGoSumEntry(err):
+			// Should be subsumed by LoadPackagesError, kept for sanity.
+			// and to catch unexpected changes in govulncheck output.
 			err = fmt.Errorf("%v: %w", err, derrors.LoadPackagesMissingGoSumEntryError)
 		case isReplacingWithLocalPath(err):
+			// Should be subsumed by LoadPackagesError, kept for sanity.
+			// and to catch unexpected changes in govulncheck output.
 			err = fmt.Errorf("%v: %w", err, derrors.LoadPackagesImportedLocalError)
 		case isModVendor(err):
-			err = fmt.Errorf("%v: %w", err, derrors.VendorError)
+			// Should be subsumed by LoadPackagesError, kept for sanity.
+			// and to catch unexpected changes in govulncheck output.
+			err = fmt.Errorf("%v: %w", err, derrors.LoadVendorError)
+		case isTooManyFiles(err):
+			err = fmt.Errorf("%v: %w", err, derrors.ScanModuleTooManyOpenFiles)
 		default:
 			err = fmt.Errorf("%v: %w", err, derrors.ScanModuleGovulncheckError)
 		}

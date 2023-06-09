@@ -67,9 +67,7 @@ func TestUnrecoverableError(t *testing.T) {
 		ec   string
 		want bool
 	}{
-		{"LOAD - NO GO.MOD", true},
-		{"LOAD - NO REQUIRED MODULE", true},
-		{"LOAD - GO.MOD REPLACES WITH A LOCAL PATH", true},
+		{"LOAD", true},
 		{"MISC", false},
 		{"BIGQUERY", false},
 	} {

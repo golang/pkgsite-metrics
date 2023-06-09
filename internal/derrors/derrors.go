@@ -84,8 +84,8 @@ var (
 	// with govulncheck and is likely happening due to outdated go.sum file.
 	LoadPackagesMissingGoSumEntryError = errors.New("scan module load packages error: missing go.sum entry")
 
-	// VendorError occurs when loading a package fails because of a vendor directory.
-	VendorError = errors.New("scan module load packages error: -mod=vendor mode")
+	// LoadVendorError occurs when loading a package fails because of a vendor directory.
+	LoadVendorError = errors.New("scan module load packages error: -mod=vendor mode")
 
 	// LoadPackagesImportedLocalError occurs when packages use a replace directive
 	// with a local directory in their go.mod file. This is not an error with govulncheck.
@@ -201,7 +201,7 @@ func CategorizeError(err error) string {
 		return "LOAD - NO GO.SUM ENTRY"
 	case errors.Is(err, LoadPackagesImportedLocalError):
 		return "LOAD - GO.MOD REPLACES WITH A LOCAL PATH"
-	case errors.Is(err, VendorError):
+	case errors.Is(err, LoadVendorError):
 		return "VENDOR"
 	case errors.Is(err, ScanModuleOSError):
 		return "OS"
