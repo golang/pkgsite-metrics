@@ -115,9 +115,7 @@ func NewServer(ctx context.Context, cfg *config.Config) (_ *Server, err error) {
 	if err := ensureTable(ctx, bq, govulncheck.TableName); err != nil {
 		return nil, err
 	}
-	if err := s.registerGovulncheckHandlers(ctx); err != nil {
-		return nil, err
-	}
+	s.registerGovulncheckHandlers()
 	if err := ensureTable(ctx, bq, analysis.TableName); err != nil {
 		return nil, err
 	}
@@ -183,16 +181,11 @@ func (s *Server) handle(pattern string, handler handlerFunc) {
 	http.Handle(pattern, s.observer.Observe(h))
 }
 
-func (s *Server) registerGovulncheckHandlers(ctx context.Context) error {
-	h, err := newGovulncheckServer(ctx, s)
-	if err != nil {
-		return err
-	}
-
+func (s *Server) registerGovulncheckHandlers() {
+	h := newGovulncheckServer(s)
 	s.handle("/govulncheck/enqueueall", h.handleEnqueueAll)
 	s.handle("/govulncheck/enqueue", h.handleEnqueue)
 	s.handle("/govulncheck/scan/", h.handleScan)
-	return nil
 }
 
 func (s *Server) registerAnalysisHandlers(ctx context.Context) error {

@@ -13,6 +13,7 @@ import (
 	"path/filepath"
 	"regexp"
 	"strings"
+	"time"
 
 	"cloud.google.com/go/storage"
 	"golang.org/x/exp/event"
@@ -24,6 +25,7 @@ import (
 	"golang.org/x/pkgsite-metrics/internal/proxy"
 	"golang.org/x/pkgsite-metrics/internal/sandbox"
 	"golang.org/x/pkgsite-metrics/internal/version"
+	"google.golang.org/api/googleapi"
 )
 
 const (
@@ -97,7 +99,7 @@ func (h *GovulncheckServer) handleScan(w http.ResponseWriter, r *http.Request) (
 }
 
 func (h *GovulncheckServer) canSkip(ctx context.Context, sreq *govulncheck.Request, scanner *scanner) (bool, error) {
-	if err := h.readGovulncheckWorkStates(ctx); err != nil {
+	if err := h.readGovulncheckWorkState(ctx, sreq.Module, sreq.Version); err != nil {
 		return false, err
 	}
 	wve := h.storedWorkStates[[2]string{sreq.Module, sreq.Version}]
@@ -110,9 +112,8 @@ func (h *GovulncheckServer) canSkip(ctx context.Context, sreq *govulncheck.Reque
 		// If the work version has not changed, skip analyzing the module
 		return true, nil
 	}
-	// Otherwise, skip if the error is not recoverable
-	// TODO: should we perhaps do this at enqueueall point
-	// as well? Would that introduce more savings?
+	// Otherwise, skip if the error is not recoverable. The version of the
+	// module has not changed, so we'll get the same error anyhow.
 	return unrecoverableError(wve.ErrorCategory), nil
 }
 
@@ -129,18 +130,39 @@ func unrecoverableError(errorCategory string) bool {
 	}
 }
 
-func (h *GovulncheckServer) readGovulncheckWorkStates(ctx context.Context) error {
+func (h *GovulncheckServer) readGovulncheckWorkState(ctx context.Context, module_path, version string) error {
 	h.mu.Lock()
 	defer h.mu.Unlock()
-	if h.storedWorkStates != nil {
+	// Don't read work state for module_path@version if an entry in the cache already exists.
+	if _, ok := h.storedWorkStates[[2]string{module_path, version}]; ok {
 		return nil
 	}
 	if h.bqClient == nil {
 		return nil
 	}
-	var err error
-	h.storedWorkStates, err = govulncheck.ReadWorkStates(ctx, h.bqClient)
-	return err
+	ws, err := govulncheck.ReadWorkState(ctx, h.bqClient, module_path, version)
+	if err != nil {
+		if isReadWorkStatesQuotaError(err) {
+			log.Info(ctx, "hit bigquery list quota when reading work version, sleeping 1 minute...")
+			// Sleep a minute to allow quota limitations to clear up.
+			time.Sleep(60 * time.Second)
+		}
+		return err
+	}
+	if ws != nil {
+		h.storedWorkStates[[2]string{module_path, version}] = ws
+	}
+	log.Infof(ctx, "read work version for %s@%s", module_path, version)
+	return nil
+}
+
+func isReadWorkStatesQuotaError(err error) bool {
+	var gerr *googleapi.Error
+	if !errors.As(err, &gerr) {
+		return false
+	}
+	// BigQuery uses 403 for quota exceeded.
+	return gerr.Code == 403
 }
 
 // A scanner holds state for scanning modules.
