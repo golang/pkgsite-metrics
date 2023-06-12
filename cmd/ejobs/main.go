@@ -20,6 +20,7 @@ import (
 	"path/filepath"
 	"reflect"
 	"strconv"
+	"strings"
 	"text/tabwriter"
 	"time"
 
@@ -107,13 +108,15 @@ func showJob(ctx context.Context, jobID string, ts oauth2.TokenSource) error {
 	if err != nil {
 		return err
 	}
+
 	rj := reflect.ValueOf(job).Elem()
 	rt := rj.Type()
 	for i := 0; i < rt.NumField(); i++ {
 		f := rt.Field(i)
 		if f.IsExported() {
 			v := rj.FieldByIndex(f.Index)
-			fmt.Printf("%s: %v\n", f.Name, v.Interface())
+			name, _ := strings.CutPrefix(f.Name, "Num")
+			fmt.Printf("%s: %v\n", name, v.Interface())
 		}
 	}
 	return nil
