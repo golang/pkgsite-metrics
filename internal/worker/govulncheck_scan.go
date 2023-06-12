@@ -25,7 +25,6 @@ import (
 	"golang.org/x/pkgsite-metrics/internal/proxy"
 	"golang.org/x/pkgsite-metrics/internal/sandbox"
 	"golang.org/x/pkgsite-metrics/internal/version"
-	"google.golang.org/api/googleapi"
 )
 
 const (
@@ -142,7 +141,7 @@ func (h *GovulncheckServer) readGovulncheckWorkState(ctx context.Context, module
 	}
 	ws, err := govulncheck.ReadWorkState(ctx, h.bqClient, module_path, version)
 	if err != nil {
-		if isReadWorkStatesQuotaError(err) {
+		if isReadPreviousWorkQuotaError(err) {
 			log.Info(ctx, "hit bigquery list quota when reading work version, sleeping 1 minute...")
 			// Sleep a minute to allow quota limitations to clear up.
 			time.Sleep(60 * time.Second)
@@ -154,15 +153,6 @@ func (h *GovulncheckServer) readGovulncheckWorkState(ctx context.Context, module
 	}
 	log.Infof(ctx, "read work version for %s@%s", module_path, version)
 	return nil
-}
-
-func isReadWorkStatesQuotaError(err error) bool {
-	var gerr *googleapi.Error
-	if !errors.As(err, &gerr) {
-		return false
-	}
-	// BigQuery uses 403 for quota exceeded.
-	return gerr.Code == 403
 }
 
 // A scanner holds state for scanning modules.

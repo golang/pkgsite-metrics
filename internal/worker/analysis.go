@@ -49,18 +49,10 @@ func newAnalysisServer(ctx context.Context, s *Server) (*analysisServer, error) 
 		return nil, err
 	}
 	bucket := c.Bucket(s.cfg.BinaryBucket)
-	var wvs map[analysis.WorkVersionKey]analysis.WorkVersion
-	if s.bqClient != nil {
-		wvs, err = analysis.ReadWorkVersions(ctx, s.bqClient)
-		if err != nil {
-			return nil, err
-		}
-		log.Infof(ctx, "read %d work versions", len(wvs))
-	}
 	return &analysisServer{
 		Server:             s,
 		openFile:           gcsOpenFileFunc(ctx, bucket),
-		storedWorkVersions: wvs,
+		storedWorkVersions: make(map[analysis.WorkVersionKey]analysis.WorkVersion),
 	}, nil
 }
 
@@ -132,12 +124,17 @@ func (s *analysisServer) handleScan(w http.ResponseWriter, r *http.Request) (err
 		SchemaVersion: analysis.SchemaVersion,
 		BinaryVersion: hex.EncodeToString(binaryHash),
 	}
+
+	if err := s.readWorkVersion(ctx, req.Module, req.Version, req.Binary); err != nil {
+		return err
+	}
 	key := analysis.WorkVersionKey{Module: req.Module, Version: req.Version, Binary: req.Binary}
 	if wv == s.storedWorkVersions[key] {
 		log.Infof(ctx, "skipping (work version unchanged): %+v", key)
 		incrementJob("NumSkipped")
 		return nil
 	}
+
 	row := s.scan(ctx, req, localBinaryPath, wv)
 	if err := writeResult(ctx, req.Serve, w, s.bqClient, analysis.TableName, row); err != nil {
 		return err
@@ -146,6 +143,31 @@ func (s *analysisServer) handleScan(w http.ResponseWriter, r *http.Request) (err
 		incrementJob("NumErrored")
 	} else {
 		incrementJob("NumSucceeded")
+	}
+	return nil
+}
+
+func (s *analysisServer) readWorkVersion(ctx context.Context, module_path, version, binary string) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	key := analysis.WorkVersionKey{Module: module_path, Version: version, Binary: binary}
+	if _, ok := s.storedWorkVersions[key]; ok {
+		return nil
+	}
+	if s.bqClient == nil {
+		return nil
+	}
+	wv, err := analysis.ReadWorkVersion(ctx, s.bqClient, module_path, version, binary)
+	if err != nil {
+		if isReadPreviousWorkQuotaError(err) {
+			log.Info(ctx, "hit bigquery list quota when reading work version, sleeping 1 minute...")
+			// Sleep a minute to allow quota limitations to clear up.
+			time.Sleep(60 * time.Second)
+		}
+		return err
+	}
+	if wv != nil {
+		s.storedWorkVersions[key] = *wv
 	}
 	return nil
 }
