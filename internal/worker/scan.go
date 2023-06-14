@@ -298,3 +298,10 @@ func fileExists(filename string) bool {
 	_, err := os.Stat(filename)
 	return err == nil
 }
+
+// isSyntheticLoad checks if err is about load issue
+// of a synthetic module, i.e., a non-module that we
+// converted into a module.
+func isSyntheticLoad(err error) bool {
+	return strings.Contains(err.Error(), "synthetic")
+}

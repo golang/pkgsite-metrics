@@ -87,6 +87,10 @@ var (
 	// LoadVendorError occurs when loading a package fails because of a vendor directory.
 	LoadVendorError = errors.New("scan module load packages error: -mod=vendor mode")
 
+	// LoadPackagesSyntheticError is like LoadPackagesError, but when the target
+	// packages are from a synthetic module, i.e., non-module we converted into a module.
+	LoadPackagesSyntheticError = errors.New("scan synthetic module error")
+
 	// LoadPackagesImportedLocalError occurs when packages use a replace directive
 	// with a local directory in their go.mod file. This is not an error with govulncheck.
 	LoadPackagesImportedLocalError = errors.New("scan module load packages error: package replaces an import with a local file/directory")
@@ -189,6 +193,8 @@ func CategorizeError(err error) string {
 		return "VULNCHECK - DB CONNECTION"
 	case errors.Is(err, LoadPackagesError):
 		return "LOAD"
+	case errors.Is(err, LoadPackagesSyntheticError):
+		return "LOAD - SYNTHETIC MODULE"
 	case errors.Is(err, LoadPackagesGoVersionError):
 		return "LOAD - WRONG GO VERSION"
 	case errors.Is(err, LoadPackagesNoGoModError):

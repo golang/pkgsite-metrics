@@ -17,6 +17,7 @@ import (
 	"os"
 	"os/exec"
 	"path"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"time"
@@ -156,11 +157,14 @@ func (s *analysisServer) scan(ctx context.Context, req *analysis.ScanRequest, lo
 		BinaryName:  req.Binary,
 		WorkVersion: wv,
 	}
+	hasGoMod := true
 	err := doScan(ctx, req.Module, req.Version, req.Insecure, func() (err error) {
 		// Create a module directory. scanInternal will write the module contents there,
 		// and both the analysis binary and addSource will read them.
 		mdir := moduleDir(req.Module, req.Version)
 		defer derrors.Cleanup(&err, func() error { return os.RemoveAll(mdir) })
+
+		hasGoMod = fileExists(filepath.Join(mdir, "go.mod")) // for precise error breakdown
 
 		jsonTree, err := s.scanInternal(ctx, req, localBinaryPath, mdir)
 		if err != nil {
@@ -192,6 +196,8 @@ func (s *analysisServer) scan(ctx context.Context, req *analysis.ScanRequest, lo
 			err = fmt.Errorf("%v: %w", err, derrors.LoadPackagesImportedLocalError)
 		case isModVendor(err):
 			err = fmt.Errorf("%v: %w", err, derrors.LoadVendorError)
+		case !hasGoMod && isSyntheticLoad(err):
+			err = fmt.Errorf("%v: %w", err, derrors.LoadPackagesSyntheticError)
 		default:
 		}
 		row.AddError(err)
