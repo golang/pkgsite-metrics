@@ -13,7 +13,6 @@ import (
 	"path/filepath"
 	"regexp"
 	"strings"
-	"time"
 
 	"cloud.google.com/go/storage"
 	"golang.org/x/exp/event"
@@ -141,11 +140,6 @@ func (h *GovulncheckServer) readGovulncheckWorkState(ctx context.Context, module
 	}
 	ws, err := govulncheck.ReadWorkState(ctx, h.bqClient, module_path, version)
 	if err != nil {
-		if isReadPreviousWorkQuotaError(err) {
-			log.Info(ctx, "hit bigquery list quota when reading work version, sleeping 1 minute...")
-			// Sleep a minute to allow quota limitations to clear up.
-			time.Sleep(60 * time.Second)
-		}
 		return err
 	}
 	if ws != nil {

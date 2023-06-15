@@ -26,7 +26,6 @@ import (
 	"golang.org/x/pkgsite-metrics/internal/log"
 	"golang.org/x/pkgsite-metrics/internal/modules"
 	"golang.org/x/pkgsite-metrics/internal/proxy"
-	"google.golang.org/api/googleapi"
 )
 
 const (
@@ -305,13 +304,4 @@ func fileExists(filename string) bool {
 // converted into a module.
 func isSyntheticLoad(err error) bool {
 	return strings.Contains(err.Error(), "synthetic")
-}
-
-func isReadPreviousWorkQuotaError(err error) bool {
-	var gerr *googleapi.Error
-	if !errors.As(err, &gerr) {
-		return false
-	}
-	// BigQuery uses 403 for quota exceeded.
-	return gerr.Code == 403
 }

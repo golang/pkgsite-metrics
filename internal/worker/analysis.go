@@ -159,11 +159,6 @@ func (s *analysisServer) readWorkVersion(ctx context.Context, module_path, versi
 	}
 	wv, err := analysis.ReadWorkVersion(ctx, s.bqClient, module_path, version, binary)
 	if err != nil {
-		if isReadPreviousWorkQuotaError(err) {
-			log.Info(ctx, "hit bigquery list quota when reading work version, sleeping 1 minute...")
-			// Sleep a minute to allow quota limitations to clear up.
-			time.Sleep(60 * time.Second)
-		}
 		return err
 	}
 	if wv != nil {
