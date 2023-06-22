@@ -33,7 +33,7 @@ func NewJob(user string, start time.Time, url string) *Job {
 	}
 }
 
-const startTimeFormat = "060102-030405" // YYMMDD-HHMMSS, UTC
+const startTimeFormat = "060102-150405" // YYMMDD-HHMMSS, UTC
 
 // ID returns a unique identifier for a job which can serve as a database key.
 func (j *Job) ID() string {
