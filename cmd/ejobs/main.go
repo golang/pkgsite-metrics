@@ -34,8 +34,11 @@ import (
 
 const projectID = "go-ecosystem"
 
-var env = flag.String("env", "prod", "worker environment (dev or prod)")
-
+// Common flags
+var (
+	env    = flag.String("env", "prod", "worker environment (dev or prod)")
+	dryRun = flag.Bool("n", false, "print actions but do not execute them")
+)
 var commands = []command{
 	{"list", "",
 		"list jobs", doList},
@@ -109,7 +112,9 @@ func showJob(ctx context.Context, jobID string, ts oauth2.TokenSource) error {
 	if err != nil {
 		return err
 	}
-
+	if *dryRun {
+		return nil
+	}
 	rj := reflect.ValueOf(job).Elem()
 	rt := rj.Type()
 	for i := 0; i < rt.NumField(); i++ {
@@ -132,7 +137,9 @@ func doList(ctx context.Context, _ []string) error {
 	if err != nil {
 		return err
 	}
-
+	if *dryRun {
+		return nil
+	}
 	d7 := -time.Hour * 24 * 7
 	weekBefore := time.Now().Add(d7)
 	tw := tabwriter.NewWriter(os.Stdout, 2, 8, 1, ' ', 0)
@@ -156,7 +163,12 @@ func doCancel(ctx context.Context, args []string) error {
 		return err
 	}
 	for _, jobID := range args {
-		if _, err := httpGet(ctx, workerURL+"/jobs/cancel?jobid="+jobID, ts); err != nil {
+		url := workerURL + "/jobs/cancel?jobid=" + jobID
+		if *dryRun {
+			fmt.Printf("dryrun: GET %s\n", url)
+			continue
+		}
+		if _, err := httpGet(ctx, url, ts); err != nil {
 			return fmt.Errorf("canceling %q: %w", jobID, err)
 		}
 	}
@@ -205,6 +217,10 @@ func doStart(ctx context.Context, args []string) error {
 	if min >= 0 {
 		url += fmt.Sprintf("&min=%d", min)
 	}
+	if *dryRun {
+		fmt.Printf("dryrun: GET %s\n", url)
+		return nil
+	}
 	body, err := httpGet(ctx, url, its)
 	if err != nil {
 		return err
@@ -248,6 +264,10 @@ func checkIsLinuxAmd64(binaryFile string) error {
 // As an optimization, it skips the upload if the file is already on GCS
 // and has the same checksum as the local file.
 func uploadAnalysisBinary(ctx context.Context, binaryFile string) error {
+	if *dryRun {
+		fmt.Printf("dryrun: upload analysis binary %s\n", binaryFile)
+		return nil
+	}
 	const bucketName = projectID
 	binaryName := filepath.Base(binaryFile)
 	objectName := path.Join("analysis-binaries", binaryName)
@@ -317,7 +337,12 @@ func copyToGCS(ctx context.Context, object *storage.ObjectHandle, filename strin
 // requestJSON requests the path from the worker, then reads the returned body
 // and unmarshals it as JSON.
 func requestJSON[T any](ctx context.Context, path string, ts oauth2.TokenSource) (*T, error) {
-	body, err := httpGet(ctx, workerURL+"/"+path, ts)
+	url := workerURL + "/" + path
+	if *dryRun {
+		fmt.Printf("GET %s\n", url)
+		return nil, nil
+	}
+	body, err := httpGet(ctx, url, ts)
 	if err != nil {
 		return nil, err
 	}
