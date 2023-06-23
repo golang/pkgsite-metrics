@@ -194,7 +194,7 @@ func (s *analysisServer) scan(ctx context.Context, req *analysis.ScanRequest, lo
 		row.Version = info.Version
 		row.CommitTime = info.Time
 		row.Diagnostics = analysis.JSONTreeToDiagnostics(jsonTree)
-		return addSource(row.Diagnostics, 1)
+		return addSource(ctx, row.Diagnostics, 1)
 	})
 	if err != nil {
 		switch {
@@ -281,7 +281,7 @@ func runBinaryInDir(sbox *sandbox.Sandbox, path string, args []string, dir strin
 // Each diagnostic's position includes a full file path and line number.
 // addSource reads the file at the line, and includes nContext lines from above
 // and below.
-func addSource(ds []*analysis.Diagnostic, nContext int) error {
+func addSource(ctx context.Context, ds []*analysis.Diagnostic, nContext int) error {
 	for _, d := range ds {
 		if d.Position == "" {
 			// some binaries might collect basic stats, such
@@ -300,6 +300,13 @@ func addSource(ds []*analysis.Diagnostic, nContext int) error {
 			return fmt.Errorf("reading %s:%d: %w", file, line, err)
 		}
 		d.Source = bq.NullString{StringVal: source, Valid: true}
+
+		if url, err := sourceURL(d.Position, line); err == nil {
+			d.Position = url
+		} else {
+			// URL creation failure should not result in an error of the analysis run.
+			log.Errorf(ctx, err, "url creation failed for position %s", d.Position)
+		}
 	}
 	return nil
 }
@@ -326,6 +333,23 @@ func parsePosition(pos string) (file string, line, col int, err error) {
 		return "", 0, 0, err
 	}
 	return pos[:i], line, col, nil
+}
+
+// sourceURL creates a URL showing the code corresponding to
+// position pos and highlighting line.
+func sourceURL(pos string, line int) (string, error) {
+	// Trim /tmp/modules/ from the position string.
+	relPos := strings.TrimPrefix(pos, modulesDir+"/")
+	if relPos == pos {
+		return "", errors.New("unexpected prefix")
+	}
+	i := strings.IndexByte(relPos, ':')
+	if i < 0 {
+		return "", errors.New("missing colon in position")
+	}
+	path := relPos[:i]
+	return fmt.Sprintf("https://go-mod-viewer.appspot.com/%s#L%d", path, line), nil
+
 }
 
 // readSource returns the given line (1-based) from the file, along with
