@@ -9,6 +9,7 @@ import (
 	"bytes"
 	"context"
 	"crypto/md5"
+	"debug/buildinfo"
 	"encoding/json"
 	"errors"
 	"flag"
@@ -43,7 +44,7 @@ var commands = []command{
 	{"cancel", "JOBID...",
 		"cancel the jobs", doCancel},
 	{"start", "BINARY [MIN_IMPORTERS]",
-		"start a job", doStart},
+		"start a job for a linux/amd64 binary", doStart},
 }
 
 type command struct {
@@ -67,7 +68,7 @@ func main() {
 
 	flag.Parse()
 	if err := run(context.Background()); err != nil {
-		fmt.Fprintf(os.Stderr, "%v\n", err)
+		fmt.Fprintf(os.Stderr, "%v\n\n", err)
 		flag.Usage()
 		os.Exit(2)
 	}
@@ -186,6 +187,8 @@ func doStart(ctx context.Context, args []string) error {
 		return err
 	} else if fi.IsDir() {
 		return fmt.Errorf("%s is a directory, not a file", binaryFile)
+	} else if err := checkIsLinuxAmd64(binaryFile); err != nil {
+		return err
 	}
 
 	// Copy binary to GCS if it's not already there.
@@ -207,6 +210,36 @@ func doStart(ctx context.Context, args []string) error {
 		return err
 	}
 	fmt.Printf("%s\n", body)
+	return nil
+}
+
+// checkIsLinuxAmd64 checks if binaryFile is a linux/amd64 Go
+// binary. If not, returns an error with appropriate message.
+// Otherwise, returns nil.
+func checkIsLinuxAmd64(binaryFile string) error {
+	bin, err := os.Open(binaryFile)
+	if err != nil {
+		return err
+	}
+	defer bin.Close()
+
+	bi, err := buildinfo.Read(bin)
+	if err != nil {
+		return err
+	}
+
+	var goos, goarch string
+	for _, setting := range bi.Settings {
+		if setting.Key == "GOOS" {
+			goos = setting.Value
+		} else if setting.Key == "GOARCH" {
+			goarch = setting.Value
+		}
+	}
+
+	if goos != "linux" || goarch != "amd64" {
+		return fmt.Errorf("binary not built for linux/amd64: GOOS=%s GOARCH=%s", goos, goarch)
+	}
 	return nil
 }
 
