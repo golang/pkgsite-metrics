@@ -16,14 +16,15 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
 	"os"
 	"path"
 	"path/filepath"
 	"reflect"
-	"strconv"
 	"strings"
 	"text/tabwriter"
 	"time"
+	"unicode"
 
 	"cloud.google.com/go/storage"
 	"golang.org/x/oauth2"
@@ -39,15 +40,25 @@ var (
 	env    = flag.String("env", "prod", "worker environment (dev or prod)")
 	dryRun = flag.Bool("n", false, "print actions but do not execute them")
 )
+
+var (
+	startFlagSet = flag.NewFlagSet("start", flag.ContinueOnError)
+	minImporters = startFlagSet.Int("min", -1, "run on modules with at least this many importers (<0: use server default of 10)")
+)
+
 var commands = []command{
 	{"list", "",
-		"list jobs", doList},
+		"list jobs",
+		doList, nil},
 	{"show", "JOBID...",
-		"display information about jobs in the last 7 days", doShow},
+		"display information about jobs in the last 7 days",
+		doShow, nil},
 	{"cancel", "JOBID...",
-		"cancel the jobs", doCancel},
-	{"start", "BINARY [MIN_IMPORTERS]",
-		"start a job for a linux/amd64 binary", doStart},
+		"cancel the jobs",
+		doCancel, nil},
+	{"start", "-min [MIN_IMPORTERS] BINARY ARGS...",
+		"start a job",
+		doStart, startFlagSet},
 }
 
 type command struct {
@@ -55,6 +66,7 @@ type command struct {
 	argdoc string
 	desc   string
 	run    func(context.Context, []string) error
+	flags  *flag.FlagSet
 }
 
 func main() {
@@ -177,21 +189,13 @@ func doCancel(ctx context.Context, args []string) error {
 
 func doStart(ctx context.Context, args []string) error {
 	// Validate arguments.
-	if len(args) < 1 || len(args) > 2 {
-		return errors.New("wrong number of args: want BINARY [MIN_IMPORTERS]")
+	if err := startFlagSet.Parse(args); err != nil {
+		return err
 	}
-	min := -1
-	if len(args) > 1 {
-		m, err := strconv.Atoi(args[1])
-		if err != nil {
-			return err
-		}
-		if m < 0 {
-			return errors.New("MIN_IMPORTERS cannot be negative")
-		}
-		min = m
+	if startFlagSet.NArg() == 0 {
+		return errors.New("wrong number of args: want [-min N] BINARY [ARG1 ARG2 ...]")
 	}
-	binaryFile := args[0]
+	binaryFile := startFlagSet.Arg(0)
 	if fi, err := os.Stat(binaryFile); err != nil {
 		if errors.Is(err, os.ErrNotExist) {
 			return fmt.Errorf("%s does not exist", binaryFile)
@@ -202,7 +206,14 @@ func doStart(ctx context.Context, args []string) error {
 	} else if err := checkIsLinuxAmd64(binaryFile); err != nil {
 		return err
 	}
+	// Check args to binary for whitespace, which we don't support.
 
+	binaryArgs := startFlagSet.Args()[1:]
+	for _, arg := range binaryArgs {
+		if strings.IndexFunc(arg, unicode.IsSpace) >= 0 {
+			return fmt.Errorf("arg %q contains whitespace: not supported", arg)
+		}
+	}
 	// Copy binary to GCS if it's not already there.
 	if err := uploadAnalysisBinary(ctx, binaryFile); err != nil {
 		return err
@@ -213,15 +224,18 @@ func doStart(ctx context.Context, args []string) error {
 	if err != nil {
 		return err
 	}
-	url := fmt.Sprintf("%s/analysis/enqueue?binary=%s&user=%s", workerURL, filepath.Base(binaryFile), os.Getenv("USER"))
-	if min >= 0 {
-		url += fmt.Sprintf("&min=%d", min)
+	u := fmt.Sprintf("%s/analysis/enqueue?binary=%s&user=%s", workerURL, filepath.Base(binaryFile), os.Getenv("USER"))
+	if len(binaryArgs) > 0 {
+		u += fmt.Sprintf("&args=%s", url.QueryEscape(strings.Join(binaryArgs, " ")))
+	}
+	if *minImporters >= 0 {
+		u += fmt.Sprintf("&min=%d", *minImporters)
 	}
 	if *dryRun {
-		fmt.Printf("dryrun: GET %s\n", url)
+		fmt.Printf("dryrun: GET %s\n", u)
 		return nil
 	}
-	body, err := httpGet(ctx, url, its)
+	body, err := httpGet(ctx, u, its)
 	if err != nil {
 		return err
 	}
