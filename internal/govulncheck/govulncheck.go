@@ -14,8 +14,9 @@ import (
 	"fmt"
 	"net/http"
 	"os/exec"
+	"path/filepath"
+	"runtime"
 	"strings"
-	"syscall"
 	"time"
 
 	"golang.org/x/pkgsite-metrics/internal/bigquery"
@@ -280,8 +281,12 @@ func RunGovulncheckCmd(govulncheckPath, mode, modulePath, vulndbDir string, stat
 
 	stdOut := bytes.Buffer{}
 	stdErr := bytes.Buffer{}
+	uri := "file://" + vulndbDir
+	if runtime.GOOS == "windows" {
+		uri = "file:///" + filepath.ToSlash(vulndbDir)
+	}
 	govulncheckCmd := exec.Command(govulncheckPath, "-mode", modeFlag,
-		"-json", "-db=file://"+vulndbDir, "-C="+dir, pattern)
+		"-json", "-db="+uri, "-C="+dir, pattern)
 
 	govulncheckCmd.Stdout = &stdOut
 	govulncheckCmd.Stderr = &stdErr
@@ -291,7 +296,7 @@ func RunGovulncheckCmd(govulncheckPath, mode, modulePath, vulndbDir string, stat
 		return nil, errors.New(stdErr.String())
 	}
 	stats.ScanSeconds = time.Since(start).Seconds()
-	stats.ScanMemory = uint64(govulncheckCmd.ProcessState.SysUsage().(*syscall.Rusage).Maxrss)
+	stats.ScanMemory = getMemoryUsage(govulncheckCmd)
 
 	handler := NewMetricsHandler()
 	err := govulncheckapi.HandleJSON(&stdOut, handler)
@@ -299,4 +304,9 @@ func RunGovulncheckCmd(govulncheckPath, mode, modulePath, vulndbDir string, stat
 		return nil, err
 	}
 	return handler.Findings(), nil
+}
+
+// getMemoryUsage is overridden with a Unix-specific function on Linux.
+var getMemoryUsage = func(c *exec.Cmd) uint64 {
+	return 0
 }

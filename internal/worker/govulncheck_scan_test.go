@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"io"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 
@@ -137,7 +138,7 @@ func TestRunScanModuleInsecure(t *testing.T) {
 			if got := stats.ScanSeconds; got <= 0 {
 				t.Errorf("scan time not collected or negative: %v", got)
 			}
-			if got := stats.ScanMemory; got <= 0 {
+			if got := stats.ScanMemory; got <= 0 && runtime.GOOS == "linux" {
 				t.Errorf("scan memory not collected or negative: %v", got)
 			}
 		})

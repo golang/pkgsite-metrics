@@ -172,6 +172,11 @@ func G() {}
 	if i := strings.LastIndexByte(got.Error, ':'); i > 0 {
 		got.Error = got.Error[i+2:]
 	}
+	// And the platform-specific part.
+	if i := strings.LastIndex(got.Error, "not found in"); i > 0 {
+		got.Error = got.Error[:i+len("not found in")]
+	}
+
 	want = &analysis.Result{
 		ModulePath:    modulePath,
 		Version:       version,
@@ -179,7 +184,7 @@ func G() {}
 		BinaryName:    "bad",
 		WorkVersion:   wv,
 		ErrorCategory: "MISC",
-		Error:         "executable file not found in $PATH",
+		Error:         "executable file not found in",
 	}
 	diff(want, got)
 }
