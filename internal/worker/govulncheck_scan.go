@@ -432,7 +432,7 @@ func (s *scanner) runGovulncheckScanInsecure(ctx context.Context, modulePath, ve
 		return s.runBinaryScanInsecure(ctx, modulePath, version, inputPath, os.TempDir(), stats)
 	}
 
-	findings, err := govulncheck.RunGovulncheckCmd(s.govulncheckPath, ModeGovulncheck, inputPath, s.vulnDBDir, stats)
+	findings, err := govulncheck.RunGovulncheckCmd(s.govulncheckPath, govulncheck.FlagSource, "./...", inputPath, s.vulnDBDir, stats)
 	if err != nil {
 		return nil, err
 	}
@@ -452,7 +452,7 @@ func (s *scanner) runBinaryScanInsecure(ctx context.Context, modulePath, version
 	if err := copyToLocalFile(localPathname, false, gcsPathname, gcsOpenFileFunc(ctx, s.gcsBucket)); err != nil {
 		return nil, err
 	}
-	findings, err := govulncheck.RunGovulncheckCmd(s.govulncheckPath, ModeBinary, localPathname, s.vulnDBDir, stats)
+	findings, err := govulncheck.RunGovulncheckCmd(s.govulncheckPath, govulncheck.FlagBinary, localPathname, "", s.vulnDBDir, stats)
 	if err != nil {
 		return nil, err
 	}
@@ -490,5 +490,6 @@ func isReplacingWithLocalPath(err error) bool {
 }
 
 func isLoadError(err error) bool {
-	return strings.Contains(err.Error(), "govulncheck: loading packages:")
+	return strings.Contains(err.Error(), "govulncheck: loading packages:") ||
+		strings.Contains(err.Error(), "FindAndBuildBinaries")
 }

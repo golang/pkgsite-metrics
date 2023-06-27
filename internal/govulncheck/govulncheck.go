@@ -31,6 +31,12 @@ const (
 
 	// ModeGovulncheck runs the govulncheck binary in default (source) mode.
 	ModeGovulncheck = "GOVULNCHECK"
+
+	// FlagBinary is the flag passed to govulncheck to run in binary mode.
+	FlagBinary = "binary"
+
+	// FlagSource is the flag passed to govulncheck to run in source mode.
+	FlagSource = "source"
 )
 
 // EnqueueQueryParams for govulncheck/enqueue.
@@ -266,27 +272,19 @@ func UnmarshalSandboxResponse(output []byte) (*SandboxResponse, error) {
 	return &res, nil
 }
 
-func RunGovulncheckCmd(govulncheckPath, mode, modulePath, vulndbDir string, stats *ScanStats) ([]*govulncheckapi.Finding, error) {
-	pattern := "./..."
-	dir := ""
-
-	var modeFlag string
-	if mode == ModeBinary {
-		pattern = modulePath
-		modeFlag = "binary"
-	} else {
-		dir = modulePath
-		modeFlag = "source"
-	}
-
+func RunGovulncheckCmd(govulncheckPath, modeFlag, pattern, moduleDir, vulndbDir string, stats *ScanStats) ([]*govulncheckapi.Finding, error) {
 	stdOut := bytes.Buffer{}
 	stdErr := bytes.Buffer{}
 	uri := "file://" + vulndbDir
 	if runtime.GOOS == "windows" {
 		uri = "file:///" + filepath.ToSlash(vulndbDir)
 	}
-	govulncheckCmd := exec.Command(govulncheckPath, "-mode", modeFlag,
-		"-json", "-db="+uri, "-C="+dir, pattern)
+	args := []string{"-mode", modeFlag, "-json", "-db", uri}
+	if moduleDir != "" {
+		args = append(args, "-C", moduleDir)
+	}
+	args = append(args, pattern)
+	govulncheckCmd := exec.Command(govulncheckPath, args...)
 
 	govulncheckCmd.Stdout = &stdOut
 	govulncheckCmd.Stderr = &stdErr

@@ -69,7 +69,17 @@ func runGovulncheck(govulncheckPath, mode, filePath, vulnDBDir string) (*govulnc
 	response := govulncheck.SandboxResponse{
 		Stats: govulncheck.ScanStats{},
 	}
-	findings, err := govulncheck.RunGovulncheckCmd(govulncheckPath, mode, filePath, vulnDBDir, &response.Stats)
+	var modeFlag, pattern string
+	switch mode {
+	case govulncheck.ModeBinary:
+		modeFlag = govulncheck.FlagBinary
+		pattern = filePath
+	case govulncheck.ModeGovulncheck:
+		modeFlag = govulncheck.FlagSource
+		pattern = "./..."
+	}
+
+	findings, err := govulncheck.RunGovulncheckCmd(govulncheckPath, modeFlag, pattern, filePath, vulnDBDir, &response.Stats)
 	if err != nil {
 		return nil, err
 	}
