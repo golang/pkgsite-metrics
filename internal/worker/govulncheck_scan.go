@@ -291,10 +291,10 @@ func (s *scanner) ScanModule(ctx context.Context, w http.ResponseWriter, sreq *g
 // a particular mode.
 //
 // For ModeGovulncheck, these are all vulns that are actually
-// called (CallSink!=0). For modeImports, these are all vulns
-// modified to have CallSink=0. For ModeBinary, these are
-// exactly the input vulns since binary analysis does not
-// distinguish between called and imported vulnerabilities.
+// called. For modeImports, these are all vulns, called or just
+// imported. For ModeBinary, these are exactly all the vulns
+// since binary analysis does not distinguish between called
+// and imported vulnerabilities.
 func vulnsForMode(vulns []*govulncheck.Vuln, mode string) []*govulncheck.Vuln {
 	if mode == ModeBinary {
 		return vulns
