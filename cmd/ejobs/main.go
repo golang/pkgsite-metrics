@@ -33,7 +33,10 @@ import (
 	"google.golang.org/api/option"
 )
 
-const projectID = "go-ecosystem"
+const (
+	projectID           = "go-ecosystem"
+	uploaderMetadataKey = "uploader"
+)
 
 // Common flags
 var (
@@ -215,10 +218,11 @@ func doStart(ctx context.Context, args []string) error {
 		}
 	}
 	// Copy binary to GCS if it's not already there.
-	if err := uploadAnalysisBinary(ctx, binaryFile); err != nil {
+	if canceled, err := uploadAnalysisBinary(ctx, binaryFile); err != nil {
 		return err
+	} else if canceled {
+		return nil
 	}
-
 	// Ask the server to enqueue scan tasks.
 	its, err := identityTokenSource(ctx)
 	if err != nil {
@@ -274,13 +278,16 @@ func checkIsLinuxAmd64(binaryFile string) error {
 }
 
 // uploadAnalysisBinary copies binaryFile to the GCS location used for
-// analysis binaries.
-// As an optimization, it skips the upload if the file is already on GCS
-// and has the same checksum as the local file.
-func uploadAnalysisBinary(ctx context.Context, binaryFile string) error {
+// analysis binaries. The user can cancel the upload if the file with
+// the same name is already on GCS, upon which true is returned. Otherwise,
+// false is returned.
+//
+// As an optimization, it skips the upload if the file on GCS has the
+// same checksum as the local file.
+func uploadAnalysisBinary(ctx context.Context, binaryFile string) (bool, error) {
 	if *dryRun {
 		fmt.Printf("dryrun: upload analysis binary %s\n", binaryFile)
-		return nil
+		return false, nil
 	}
 	const bucketName = projectID
 	binaryName := filepath.Base(binaryFile)
@@ -288,36 +295,64 @@ func uploadAnalysisBinary(ctx context.Context, binaryFile string) error {
 
 	ts, err := accessTokenSource(ctx)
 	if err != nil {
-		return err
+		return false, err
 	}
 	c, err := storage.NewClient(ctx, option.WithTokenSource(ts))
 	if err != nil {
-		return err
+		return false, err
 	}
 	defer c.Close()
 	bucket := c.Bucket(bucketName)
 	object := bucket.Object(objectName)
 	attrs, err := object.Attrs(ctx)
 	if errors.Is(err, storage.ErrObjectNotExist) {
-		fmt.Printf("%s does not exist, uploading\n", object.ObjectName())
+		fmt.Printf("%s binary does not exist on GCS: uploading\n", binaryName)
 	} else if err != nil {
-		return err
+		return false, err
 	} else if g, w := len(attrs.MD5), md5.Size; g != w {
-		return fmt.Errorf("len(attrs.MD5) = %d, wanted %d", g, w)
+		return false, fmt.Errorf("len(attrs.MD5) = %d, wanted %d", g, w)
 	} else {
+		// Ask the users if they want to overwrite the existing binary
+		// while providing more info to help them with their decision.
+		local, _ := time.LoadLocation("Local")
+		updated := attrs.Updated.In(local).Format(time.RFC1123) // use local time zone
+		fmt.Printf("%s binary already exists on GCS. It was last uploaded on %s.\n", binaryName, updated)
+		if uploader := attrs.Metadata[uploaderMetadataKey]; uploader != "" {
+			// Communicate uploader info if available.
+			fmt.Printf("The last known uploader is %s. ", uploader)
+		}
+		fmt.Println("Do you wish to overwrite it? [y/n]")
+		var response string
+		fmt.Scanln(&response)
+		if r := strings.TrimSpace(response); r != "y" && r != "Y" {
+			// Accept "Y" and "y" as confirmation.
+			return true, nil
+		}
+
 		localMD5, err := fileMD5(binaryFile)
 		if err != nil {
-			return err
+			return false, err
 		}
 		if bytes.Equal(localMD5, attrs.MD5) {
-			fmt.Printf("%s already on GCS with same checksum; not uploading\n", binaryFile)
-			return nil
+			fmt.Printf("%s on GCS has the same checksum: not uploading\n", binaryName)
+			return false, nil
 		} else {
-			fmt.Printf("binary %s exists on GCS but hashes don't match; uploading\n", binaryName)
+			fmt.Printf("%s on GCS has a different checksum: uploading\n", binaryName)
 		}
 	}
-	fmt.Printf("copying %s to %s\n", binaryFile, object.ObjectName())
-	return copyToGCS(ctx, object, binaryFile)
+
+	if err := copyToGCS(ctx, object, binaryFile); err != nil {
+		return false, err
+	}
+
+	// Add the uploader information for better messaging in the future.
+	toUpdate := storage.ObjectAttrsToUpdate{
+		Metadata: map[string]string{uploaderMetadataKey: os.Getenv("USER")},
+	}
+	// Refetch the object, otherwise attribute uploading won't have effect.
+	object = bucket.Object(objectName)
+	object.Update(ctx, toUpdate) // disregard errors
+	return false, nil
 }
 
 // fileMD5 computes the MD5 checksum of the given file.
