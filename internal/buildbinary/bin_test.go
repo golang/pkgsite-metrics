@@ -5,10 +5,16 @@
 package buildbinary
 
 import (
+	"os"
+	"path/filepath"
 	"testing"
 
 	"github.com/google/go-cmp/cmp"
 	"github.com/google/go-cmp/cmp/cmpopts"
+)
+
+const (
+	localTestData = "../testdata"
 )
 
 func less(a, b string) bool {
@@ -24,7 +30,7 @@ func TestFindBinaries(t *testing.T) {
 	}{
 		{
 			name:    "local test",
-			dir:     "../testdata/module",
+			dir:     filepath.Join(localTestData, "module"),
 			want:    []string{"golang.org/vuln"},
 			wantErr: false,
 		},
@@ -39,6 +45,47 @@ func TestFindBinaries(t *testing.T) {
 
 			if diff := cmp.Diff(tt.want, got, cmpopts.SortSlices(less)); diff != "" {
 				t.Errorf("mismatch (-want, +got):%s", diff)
+			}
+		})
+	}
+}
+
+func TestRunBuild(t *testing.T) {
+	tests := []struct {
+		name       string
+		modulePath string
+		importPath string
+		want       string
+		wantErr    bool
+	}{
+		{
+			name:       "local test",
+			modulePath: filepath.Join(localTestData, "module"),
+			importPath: "golang.org/vuln",
+			want:       filepath.Join(localTestData, "module", "bin1"),
+		},
+		{
+			name:       "multiple binaries",
+			modulePath: filepath.Join(localTestData, "multipleBinModule"),
+			importPath: "example.com/test/multipleBinModule",
+			want:       filepath.Join(localTestData, "multipleBinModule", "bin1"),
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, err := runBuild(tt.modulePath, tt.importPath, 1)
+			defer os.Remove(got)
+			if (err != nil) != tt.wantErr {
+				t.Errorf("runBuild() error = %v, wantErr %v", err, tt.wantErr)
+				return
+			}
+
+			if diff := cmp.Diff(tt.want, got); diff != "" {
+				t.Errorf("mismatch (-want, +got):%s", diff)
+			}
+			_, err = os.Stat(got)
+			if err != nil && os.IsNotExist(err) {
+				t.Errorf("runBuild did not produce the expected binary")
 			}
 		})
 	}
