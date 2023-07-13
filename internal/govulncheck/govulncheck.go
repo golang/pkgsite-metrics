@@ -272,6 +272,31 @@ func UnmarshalSandboxResponse(output []byte) (*SandboxResponse, error) {
 	return &res, nil
 }
 
+type CompareResponse struct {
+	// Map from package import path to pair of binary & source mode findings
+	FindingsForMod map[string]*ComparePair
+}
+
+type ComparePair struct {
+	BinaryResults SandboxResponse
+	SourceResults SandboxResponse
+}
+
+func UnmarshalCompareResponse(output []byte) (*CompareResponse, error) {
+	var e struct{ Error string }
+	if err := json.Unmarshal(output, &e); err != nil {
+		return nil, err
+	}
+	if e.Error != "" {
+		return nil, errors.New(e.Error)
+	}
+	var res CompareResponse
+	if err := json.Unmarshal(output, &res); err != nil {
+		return nil, err
+	}
+	return &res, nil
+}
+
 func RunGovulncheckCmd(govulncheckPath, modeFlag, pattern, moduleDir, vulndbDir string, stats *ScanStats) ([]*govulncheckapi.Finding, error) {
 	stdOut := bytes.Buffer{}
 	stdErr := bytes.Buffer{}

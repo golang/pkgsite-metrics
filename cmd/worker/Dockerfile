@@ -95,6 +95,9 @@ RUN go build -o $BINARY_DIR golang.org/x/vuln/cmd/govulncheck
 # Build the program that runs govulncheck inside the sandbox.
 RUN go build -mod=readonly -o $BINARY_DIR/govulncheck_sandbox ./cmd/govulncheck_sandbox
 
+# Build the program that runs govulncheck comparisons inside the sandbox
+RUN go build -mod=readonly -o $BINARY_DIR/govulncheck_compare ./cmd/govulncheck_compare
+
 # Build the sandbox runner program and put it in the bundle root.
 RUN go build -mod=readonly -o /bundle/rootfs/runner ./internal/sandbox/runner.go
 
