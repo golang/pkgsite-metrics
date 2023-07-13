@@ -39,6 +39,10 @@ const (
 	// ModeGovulncheck runs the govulncheck binary in default (source) mode.
 	ModeGovulncheck = "GOVULNCHECK"
 
+	// ModeCompare finds compilable binaries and runs govulncheck in both source
+	// and binary mode.
+	ModeCompare = "COMPARE"
+
 	// sandboxGoCache is the location of the Go cache inside the sandbox. The
 	// user is root and their $HOME directory is /root. The Go cache resides
 	// in its default location, $HOME/.cache/go-build.
@@ -203,6 +207,69 @@ func (s scanError) Unwrap() error {
 	return s.err
 }
 
+func (s *scanner) CompareModule(ctx context.Context, w http.ResponseWriter, sreq *govulncheck.Request, info *proxy.VersionInfo, baseRow *govulncheck.Result) (err error) {
+	inputPath := moduleDir(baseRow.ModulePath, info.Version)
+	defer derrors.Cleanup(&err, func() error { return os.RemoveAll(inputPath) })
+	const init = false
+	if err := prepareModule(ctx, baseRow.ModulePath, info.Version, inputPath, s.proxyClient, s.insecure, init); err != nil {
+		return err
+	}
+
+	smdir := strings.TrimPrefix(inputPath, sandboxRoot)
+	err = s.sbox.Validate()
+	log.Debugf(ctx, "sandbox Validate returned %v", err)
+
+	response, err := s.runGovulncheckCompareSandbox(ctx, smdir)
+	if err != nil {
+		return err
+	}
+	log.Infof(ctx, "scanner.runGovulncheckCompare found %d compilable binaries in %s:", len(response.FindingsForMod), sreq.Path())
+	for pkg, results := range response.FindingsForMod {
+		binRow := createComparisonRow(pkg, &results.BinaryResults, baseRow, ModeBinary)
+		srcRow := createComparisonRow(pkg, &results.SourceResults, baseRow, ModeGovulncheck)
+
+		log.Infof(ctx, "found %d vulns in binary mode and %d vulns in source mode for package %s (module: %s)", len(binRow.Vulns), len(srcRow.Vulns), pkg, sreq.Path())
+
+		if err := writeResult(ctx, sreq.Serve, w, s.bqClient, govulncheck.TableName, binRow); err != nil {
+			return err
+		}
+		if err := writeResult(ctx, sreq.Serve, w, s.bqClient, govulncheck.TableName, srcRow); err != nil {
+			return err
+		}
+	}
+
+	return nil
+}
+
+func createComparisonRow(pkg string, result *govulncheck.SandboxResponse, baseRow *govulncheck.Result, mode string) (row *govulncheck.Result) {
+	row = &govulncheck.Result{
+		CreatedAt:   baseRow.CreatedAt,
+		Suffix:      pkg,
+		ModulePath:  baseRow.ModulePath,
+		Version:     baseRow.Version,
+		SortVersion: baseRow.SortVersion,
+		ImportedBy:  baseRow.ImportedBy,
+		CommitTime:  baseRow.CommitTime,
+		WorkVersion: baseRow.WorkVersion,
+	}
+	if mode == ModeBinary {
+		row.ScanMode = "COMPARE - BINARY"
+	} else {
+		row.ScanMode = "COMPARE - SOURCE"
+	}
+
+	vulns := []*govulncheck.Vuln{}
+	for _, finding := range result.Findings {
+		vulns = append(vulns, govulncheck.ConvertGovulncheckFinding(finding))
+	}
+	row.Vulns = vulnsForMode(vulns, mode)
+
+	row.ScanMemory = int64(result.Stats.ScanMemory)
+	row.ScanSeconds = result.Stats.ScanSeconds
+
+	return row
+}
+
 func (s *scanner) ScanModule(ctx context.Context, w http.ResponseWriter, sreq *govulncheck.Request) error {
 	if sreq.Module == "std" {
 		return nil // ignore the standard library
@@ -226,6 +293,10 @@ func (s *scanner) ScanModule(ctx context.Context, w http.ResponseWriter, sreq *g
 	row.ImportedBy = sreq.ImportedBy
 	row.VulnDBLastModified = s.workVersion.VulnDBLastModified
 	row.ScanMode = sreq.Mode
+
+	if sreq.Mode == ModeCompare {
+		return s.CompareModule(ctx, w, sreq, info, row)
+	}
 
 	log.Infof(ctx, "running scanner.runScanModule: %s@%s", sreq.Path(), sreq.Version)
 	stats := &govulncheck.ScanStats{}
@@ -425,6 +496,17 @@ func (s *scanner) runGovulncheckSandbox(ctx context.Context, mode, arg string) (
 		return nil, errors.New(derrors.IncludeStderr(err))
 	}
 	return govulncheck.UnmarshalSandboxResponse(stdout)
+}
+
+func (s *scanner) runGovulncheckCompareSandbox(ctx context.Context, arg string) (*govulncheck.CompareResponse, error) {
+	cmd := s.sbox.Command(filepath.Join(s.binaryDir, "govulncheck_compare"), s.govulncheckPath, arg, s.vulnDBDir)
+	log.Infof(ctx, "running govulncheck_compare: arg %q", arg)
+	stdout, err := cmd.Output()
+	log.Infof(ctx, "govulncheck_compare in sandbox finished with err=%v", err)
+	if err != nil {
+		return nil, errors.New(derrors.IncludeStderr(err))
+	}
+	return govulncheck.UnmarshalCompareResponse(stdout)
 }
 
 func (s *scanner) runGovulncheckScanInsecure(ctx context.Context, modulePath, version, inputPath, mode string, stats *govulncheck.ScanStats) (_ []*govulncheckapi.Finding, err error) {
