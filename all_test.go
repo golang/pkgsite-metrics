@@ -18,6 +18,9 @@ func Test(t *testing.T) {
 		t.Log("warning: running go test ./... will skip checking integration tests")
 	}
 
+	if testing.Short() {
+		t.Skip("skipping test that uses internet in short mode")
+	}
 	bash, err := exec.LookPath("bash")
 	if err != nil {
 		t.Skipf("skipping: %v", err)

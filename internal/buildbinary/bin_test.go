@@ -51,6 +51,10 @@ func TestFindBinaries(t *testing.T) {
 }
 
 func TestRunBuild(t *testing.T) {
+	if testing.Short() {
+		t.Skip("skipping test that uses internet in short mode")
+	}
+
 	tests := []struct {
 		name       string
 		modulePath string

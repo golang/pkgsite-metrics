@@ -83,6 +83,10 @@ func TestUnrecoverableError(t *testing.T) {
 // left here is checking that runsc is initiated properly. It is
 // not clear how to do that here nor is it necessary.
 func TestRunScanModuleInsecure(t *testing.T) {
+	if testing.Short() {
+		t.Skip("skipping test that uses internet in short mode")
+	}
+
 	govulncheckPath, err := buildtest.BuildGovulncheck(t.TempDir())
 	if err != nil {
 		t.Fatal(err)
