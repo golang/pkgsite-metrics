@@ -62,6 +62,9 @@ var commands = []command{
 	{"start", "-min [MIN_IMPORTERS] BINARY ARGS...",
 		"start a job",
 		doStart, startFlagSet},
+	{"wait", "JOBID",
+		"do not exit until JOBID is done",
+		doWait, nil},
 }
 
 type command struct {
@@ -187,6 +190,27 @@ func doCancel(ctx context.Context, args []string) error {
 			return fmt.Errorf("canceling %q: %w", jobID, err)
 		}
 	}
+	return nil
+}
+
+func doWait(ctx context.Context, args []string) error {
+	ts, err := identityTokenSource(ctx)
+	if err != nil {
+		return err
+	}
+	jobID := args[0]
+	for {
+		job, err := requestJSON[jobs.Job](ctx, "jobs/describe?jobid="+jobID, ts)
+		if err != nil {
+			return err
+		}
+		done := job.NumSkipped + job.NumFailed + job.NumErrored + job.NumSucceeded
+		if done >= job.NumEnqueued {
+			break
+		}
+		time.Sleep(time.Second)
+	}
+	fmt.Printf("Job %s finished.\n", jobID)
 	return nil
 }
 
