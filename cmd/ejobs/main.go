@@ -321,11 +321,12 @@ func uploadAnalysisBinary(ctx context.Context, binaryFile string) (bool, error) 
 			// Communicate uploader info if available.
 			fmt.Printf("The last known uploader is %s. ", uploader)
 		}
-		fmt.Println("Do you wish to overwrite it? [y/n]")
+		fmt.Print("Do you wish to overwrite it? [y/n] ")
 		var response string
 		fmt.Scanln(&response)
 		if r := strings.TrimSpace(response); r != "y" && r != "Y" {
 			// Accept "Y" and "y" as confirmation.
+			fmt.Println("cancelling.")
 			return true, nil
 		}
 
