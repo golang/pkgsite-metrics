@@ -24,7 +24,7 @@ func TestJobs(t *testing.T) {
 	ctx := context.Background()
 	db := &testJobDB{map[string]*jobs.Job{}}
 	tm := time.Date(2023, 3, 11, 1, 2, 3, 0, time.UTC)
-	job := jobs.NewJob("user", tm, "url")
+	job := jobs.NewJob("user", tm, "url", "bin", "<hash>", "args go here")
 	if err := db.CreateJob(ctx, job); err != nil {
 		t.Fatal(err)
 	}

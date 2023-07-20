@@ -35,7 +35,7 @@ func TestDB(t *testing.T) {
 	}
 
 	tm := time.Date(2001, 02, 03, 4, 5, 6, 0, time.UTC)
-	job := NewJob("user", tm, "analysis/enqueue?min=10")
+	job := NewJob("user", tm, "analysis/enqueue?min=10", "bin", "<hash>", "no args")
 
 	// Make sure the job doesn't exist. Delete doesn't fail
 	// in that case.
@@ -71,7 +71,7 @@ func TestDB(t *testing.T) {
 	}
 
 	// Create another job, then list both.
-	job2 := NewJob("user2", tm.Add(24*time.Hour), "url2")
+	job2 := NewJob("user2", tm.Add(24*time.Hour), "url2", "bin", "<hash>", "xxx")
 	must(db.DeleteJob(ctx, job2.ID()))
 	must(db.CreateJob(ctx, job2))
 

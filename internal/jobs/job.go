@@ -11,10 +11,13 @@ import (
 
 // A Job is a set of related scan tasks enqueued at the same time.
 type Job struct {
-	User      string
-	StartedAt time.Time
-	URL       string // The URL that initiated the job.
-	Canceled  bool   // The job was canceled.
+	User          string
+	StartedAt     time.Time
+	URL           string // The URL that initiated the job.
+	Binary        string // Name of binary.
+	BinaryVersion string // Hex-encoded hash of binary.
+	BinaryArgs    string // The args to the binary.
+	Canceled      bool   // The job was canceled.
 	// Counts of tasks.
 	NumEnqueued  int // Written by enqueue endpoint.
 	NumStarted   int // Incremented at the start of a scan.
@@ -25,11 +28,14 @@ type Job struct {
 }
 
 // NewJob creates a new Job.
-func NewJob(user string, start time.Time, url string) *Job {
+func NewJob(user string, start time.Time, url, binaryName, binaryVersion, binaryArgs string) *Job {
 	return &Job{
-		User:      user,
-		StartedAt: start,
-		URL:       url,
+		User:          user,
+		StartedAt:     start,
+		URL:           url,
+		Binary:        binaryName,
+		BinaryVersion: binaryVersion,
+		BinaryArgs:    binaryArgs,
 	}
 }
 

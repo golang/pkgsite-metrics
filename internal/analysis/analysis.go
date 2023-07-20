@@ -29,12 +29,13 @@ type ScanRequest struct {
 }
 
 type ScanParams struct {
-	Binary     string // name of analysis binary to run
-	Args       string // command-line arguments to binary; split on whitespace
-	ImportedBy int    // imported-by count of module in path
-	Insecure   bool   // if true, run outside sandbox
-	Serve      bool   // serve results back to client instead of writing them to BigQuery
-	JobID      string // ID of job, if non-empty
+	Binary        string // name of analysis binary to run
+	BinaryVersion string // hex-encoded binary hash
+	Args          string // command-line arguments to binary; split on whitespace
+	ImportedBy    int    // imported-by count of module in path
+	Insecure      bool   // if true, run outside sandbox
+	Serve         bool   // serve results back to client instead of writing them to BigQuery
+	JobID         string // ID of job, if non-empty
 }
 
 type EnqueueParams struct {

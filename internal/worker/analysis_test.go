@@ -74,17 +74,29 @@ func TestCreateAnalysisQueueTasks(t *testing.T) {
 		Args:     "args",
 		Insecure: true,
 		Suffix:   "suff",
-	}, "", mods)
+	}, "jobID", "binVersion", mods)
 	want := []queue.Task{
 		&analysis.ScanRequest{
 			ModuleURLPath: scan.ModuleURLPath{Module: "a.com/a", Version: "v1.2.3"},
-			ScanParams: analysis.ScanParams{Binary: "bin", Args: "args",
-				ImportedBy: 1, Insecure: true},
+			ScanParams: analysis.ScanParams{
+				Binary:        "bin",
+				BinaryVersion: "binVersion",
+				Args:          "args",
+				ImportedBy:    1,
+				Insecure:      true,
+				JobID:         "jobID",
+			},
 		},
 		&analysis.ScanRequest{
 			ModuleURLPath: scan.ModuleURLPath{Module: "b.com/b", Version: "v1.0.0"},
-			ScanParams: analysis.ScanParams{Binary: "bin", Args: "args",
-				ImportedBy: 2, Insecure: true},
+			ScanParams: analysis.ScanParams{
+				Binary:        "bin",
+				BinaryVersion: "binVersion",
+				Args:          "args",
+				ImportedBy:    2,
+				Insecure:      true,
+				JobID:         "jobID",
+			},
 		},
 	}
 	if diff := cmp.Diff(want, got); diff != "" {

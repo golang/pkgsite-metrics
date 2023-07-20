@@ -118,11 +118,15 @@ func (s *analysisServer) handleScan(w http.ResponseWriter, r *http.Request) (err
 	if err != nil {
 		return err
 	}
+	if binaryHash != req.BinaryVersion {
+		return fmt.Errorf("%w: analysis: for binary %s, hash of download file %s does not match hash in request %s",
+			derrors.InvalidArgument, req.Binary, binaryHash, req.BinaryVersion)
+	}
 	wv := analysis.WorkVersion{
 		BinaryArgs:    req.Args,
 		WorkerVersion: s.cfg.VersionID,
 		SchemaVersion: analysis.SchemaVersion,
-		BinaryVersion: hex.EncodeToString(binaryHash),
+		BinaryVersion: binaryHash,
 	}
 
 	if err := s.readWorkVersion(ctx, req.Module, req.Version, req.Binary); err != nil {
@@ -236,18 +240,22 @@ func (s *analysisServer) scanInternal(ctx context.Context, req *analysis.ScanReq
 	return runAnalysisBinary(sbox, binaryPath, req.Args, moduleDir)
 }
 
-func hashFile(filename string) (_ []byte, err error) {
+func hashFile(filename string) (_ string, err error) {
 	defer derrors.Wrap(&err, "hashFile(%q)", filename)
 	f, err := os.Open(filename)
 	if err != nil {
-		return nil, err
+		return "", err
 	}
 	defer f.Close()
+	return hashReader(f)
+}
+
+func hashReader(r io.Reader) (string, error) {
 	h := sha256.New()
-	if _, err := io.Copy(h, f); err != nil {
-		return nil, err
+	if _, err := io.Copy(h, r); err != nil {
+		return "", err
 	}
-	return h.Sum(nil), nil
+	return hex.EncodeToString(h.Sum(nil)), nil
 }
 
 // runAnalysisBinary runs the binary on the module.
@@ -387,6 +395,22 @@ func (s *analysisServer) handleEnqueue(w http.ResponseWriter, r *http.Request) (
 	if err := scan.ParseParams(r, params); err != nil {
 		return fmt.Errorf("%w: %v", derrors.InvalidArgument, err)
 	}
+	if params.Binary == "" {
+		return fmt.Errorf("%w: analysis: missing binary", derrors.InvalidArgument)
+	}
+	if params.Binary != path.Base(params.Binary) {
+		return fmt.Errorf("%w: analysis: binary name contains slashes (must be a basename)", derrors.InvalidArgument)
+	}
+	srcPath := path.Join(analysisBinariesBucketDir, params.Binary)
+	rc, err := s.openFile(srcPath)
+	if err != nil {
+		return err
+	}
+	defer rc.Close()
+	binaryHash, err := hashReader(rc)
+	if err != nil {
+		return err
+	}
 	mods, err := readModules(ctx, s.cfg, params.File, params.Min)
 	if err != nil {
 		return err
@@ -396,7 +420,7 @@ func (s *analysisServer) handleEnqueue(w http.ResponseWriter, r *http.Request) (
 	var jobID string
 	sj := ""
 	if params.User != "" {
-		job := jobs.NewJob(params.User, time.Now(), r.URL.String())
+		job := jobs.NewJob(params.User, time.Now(), r.URL.String(), params.Binary, binaryHash, params.Args)
 		jobID = job.ID()
 		if err := s.jobDB.CreateJob(ctx, job); err != nil {
 			sj = fmt.Sprintf(", but could not create job: %v", err)
@@ -405,7 +429,7 @@ func (s *analysisServer) handleEnqueue(w http.ResponseWriter, r *http.Request) (
 		}
 	}
 
-	tasks := createAnalysisQueueTasks(params, jobID, mods)
+	tasks := createAnalysisQueueTasks(params, jobID, binaryHash, mods)
 	err = enqueueTasks(ctx, tasks, s.queue,
 		&queue.Options{Namespace: "analysis", TaskNameSuffix: params.Suffix})
 	if err != nil {
@@ -422,7 +446,7 @@ func (s *analysisServer) handleEnqueue(w http.ResponseWriter, r *http.Request) (
 	return nil
 }
 
-func createAnalysisQueueTasks(params *analysis.EnqueueParams, jobID string, mods []scan.ModuleSpec) []queue.Task {
+func createAnalysisQueueTasks(params *analysis.EnqueueParams, jobID string, binaryVersion string, mods []scan.ModuleSpec) []queue.Task {
 	var tasks []queue.Task
 	for _, mod := range mods {
 		tasks = append(tasks, &analysis.ScanRequest{
@@ -431,11 +455,12 @@ func createAnalysisQueueTasks(params *analysis.EnqueueParams, jobID string, mods
 				Version: mod.Version,
 			},
 			ScanParams: analysis.ScanParams{
-				Binary:     params.Binary,
-				Args:       params.Args,
-				ImportedBy: mod.ImportedBy,
-				Insecure:   params.Insecure,
-				JobID:      jobID,
+				Binary:        params.Binary,
+				BinaryVersion: binaryVersion,
+				Args:          params.Args,
+				ImportedBy:    mod.ImportedBy,
+				Insecure:      params.Insecure,
+				JobID:         jobID,
 			},
 		})
 	}
