@@ -308,7 +308,7 @@ func checkIsLinuxAmd64(binaryFile string) error {
 //
 // As an optimization, it skips the upload if the file on GCS has the
 // same checksum as the local file.
-func uploadAnalysisBinary(ctx context.Context, binaryFile string) (bool, error) {
+func uploadAnalysisBinary(ctx context.Context, binaryFile string) (canceled bool, err error) {
 	if *dryRun {
 		fmt.Printf("dryrun: upload analysis binary %s\n", binaryFile)
 		return false, nil
@@ -335,37 +335,36 @@ func uploadAnalysisBinary(ctx context.Context, binaryFile string) (bool, error) 
 		return false, err
 	} else if g, w := len(attrs.MD5), md5.Size; g != w {
 		return false, fmt.Errorf("len(attrs.MD5) = %d, wanted %d", g, w)
-	} else {
-		// Ask the users if they want to overwrite the existing binary
-		// while providing more info to help them with their decision.
-		local, _ := time.LoadLocation("Local")
-		updated := attrs.Updated.In(local).Format(time.RFC1123) // use local time zone
-		fmt.Printf("%s binary already exists on GCS. It was last uploaded on %s.\n", binaryName, updated)
-		if uploader := attrs.Metadata[uploaderMetadataKey]; uploader != "" {
-			// Communicate uploader info if available.
-			fmt.Printf("The last known uploader is %s. ", uploader)
-		}
-		fmt.Print("Do you wish to overwrite it? [y/n] ")
-		var response string
-		fmt.Scanln(&response)
-		if r := strings.TrimSpace(response); r != "y" && r != "Y" {
-			// Accept "Y" and "y" as confirmation.
-			fmt.Println("cancelling.")
-			return true, nil
-		}
 
+	} else {
 		localMD5, err := fileMD5(binaryFile)
 		if err != nil {
 			return false, err
 		}
 		if bytes.Equal(localMD5, attrs.MD5) {
-			fmt.Printf("%s on GCS has the same checksum: not uploading\n", binaryName)
+			fmt.Printf("Binary %q on GCS has the same checksum: not uploading.\n", binaryName)
 			return false, nil
-		} else {
-			fmt.Printf("%s on GCS has a different checksum: uploading\n", binaryName)
+		}
+		// Ask the users if they want to overwrite the existing binary
+		// while providing more info to help them with their decision.
+		updated := attrs.Updated.In(time.Local).Format(time.RFC1123) // use local time zone
+		fmt.Printf("The binary %q already exists on GCS.\n", binaryName)
+		fmt.Printf("It was last uploaded on %s", updated)
+		// Communicate uploader info if available.
+		if uploader := attrs.Metadata[uploaderMetadataKey]; uploader != "" {
+			fmt.Printf(" by %s", uploader)
+		}
+		fmt.Println(".")
+		fmt.Print("Do you wish to overwrite it? [y/n] ")
+		var response string
+		fmt.Scanln(&response)
+		if r := strings.TrimSpace(response); r != "y" && r != "Y" {
+			// Accept "Y" and "y" as confirmation.
+			fmt.Println("Cancelling.")
+			return true, nil
 		}
 	}
-
+	fmt.Printf("Uploading.\n")
 	if err := copyToGCS(ctx, object, binaryFile); err != nil {
 		return false, err
 	}
