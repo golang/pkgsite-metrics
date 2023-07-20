@@ -7,6 +7,8 @@ package jobs
 
 import (
 	"time"
+
+	"golang.org/x/pkgsite-metrics/internal/analysis"
 )
 
 // A Job is a set of related scan tasks enqueued at the same time.
@@ -44,4 +46,15 @@ const startTimeFormat = "060102-150405" // YYMMDD-HHMMSS, UTC
 // ID returns a unique identifier for a job which can serve as a database key.
 func (j *Job) ID() string {
 	return j.User + "-" + j.StartedAt.In(time.UTC).Format(startTimeFormat)
+}
+
+func (j *Job) NumFinished() int {
+	return j.NumSkipped + j.NumFailed + j.NumErrored + j.NumSucceeded
+}
+
+// Results hold the results of a job.
+type Results struct {
+	JobID   string
+	Table   string // bigquery table containing results
+	Results []*analysis.Result
 }

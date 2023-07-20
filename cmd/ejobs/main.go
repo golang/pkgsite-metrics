@@ -50,6 +50,10 @@ var (
 
 	waitFlagSet  = flag.NewFlagSet("wait", flag.ContinueOnError)
 	waitInterval = waitFlagSet.Duration("i", 0, "display updates at this interval")
+
+	resultsFlagSet = flag.NewFlagSet("results", flag.ContinueOnError)
+	force          = resultsFlagSet.Bool("f", false, "download even if unfinished")
+	outfile        = resultsFlagSet.String("o", "", "output filename")
 )
 
 var commands = []command{
@@ -62,12 +66,15 @@ var commands = []command{
 	{"cancel", "JOBID...",
 		"cancel the jobs",
 		doCancel, nil},
-	{"start", "-min [MIN_IMPORTERS] BINARY ARGS...",
+	{"start", "[-min MIN_IMPORTERS] BINARY ARGS...",
 		"start a job",
 		doStart, startFlagSet},
 	{"wait", "JOBID",
 		"do not exit until JOBID is done",
 		doWait, nil},
+	{"results", "[-f] [-o FILE.json] JOBID",
+		"download results as JSON",
+		doResults, nil},
 }
 
 type command struct {
@@ -219,7 +226,7 @@ func doWait(ctx context.Context, args []string) error {
 		if err != nil {
 			return err
 		}
-		done := job.NumSkipped + job.NumFailed + job.NumErrored + job.NumSucceeded
+		done := job.NumFinished()
 		if done >= job.NumEnqueued {
 			break
 		}
@@ -424,6 +431,44 @@ func copyToGCS(ctx context.Context, object *storage.ObjectHandle, filename strin
 		return err
 	}
 	return dest.Close()
+}
+
+func doResults(ctx context.Context, args []string) (err error) {
+	fs := resultsFlagSet
+	if err := fs.Parse(args); err != nil {
+		return err
+	}
+	if fs.NArg() == 0 {
+		return errors.New("wrong number of args: want [-f] [-o FILE.json] JOB_ID")
+	}
+	jobID := fs.Arg(0)
+	ts, err := identityTokenSource(ctx)
+	if err != nil {
+		return err
+	}
+	job, err := requestJSON[jobs.Job](ctx, "jobs/describe?jobid="+jobID, ts)
+	if err != nil {
+		return err
+	}
+	done := job.NumFinished()
+	if !*force && done < job.NumEnqueued {
+		return fmt.Errorf("job not finished (%d/%d completed); use -f for partial results", done, job.NumEnqueued)
+	}
+	results, err := requestJSON[jobs.Results](ctx, "jobs/results?jobid="+jobID, ts)
+	if err != nil {
+		return err
+	}
+	out := os.Stdout
+	if *outfile != "" {
+		out, err = os.Create(*outfile)
+		if err != nil {
+			return err
+		}
+		defer func() { err = errors.Join(err, out.Close()) }()
+	}
+	enc := json.NewEncoder(out)
+	enc.SetIndent("", "\t")
+	return enc.Encode(results)
 }
 
 // requestJSON requests the path from the worker, then reads the returned body

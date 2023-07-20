@@ -321,7 +321,7 @@ func TableSchema(tableID string) bq.Schema {
 }
 
 // PartitionQuery describes a query that returns one row for each distinct value
-// of the partition column in the given table.
+// of the partition columns in the given table.
 //
 // The selected row will be the first one according to the OrderBy clauses.
 //
