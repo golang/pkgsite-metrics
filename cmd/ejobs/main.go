@@ -47,6 +47,9 @@ var (
 var (
 	startFlagSet = flag.NewFlagSet("start", flag.ContinueOnError)
 	minImporters = startFlagSet.Int("min", -1, "run on modules with at least this many importers (<0: use server default of 10)")
+
+	waitFlagSet  = flag.NewFlagSet("wait", flag.ContinueOnError)
+	waitInterval = waitFlagSet.Duration("i", 0, "display updates at this interval")
 )
 
 var commands = []command{
@@ -194,11 +197,23 @@ func doCancel(ctx context.Context, args []string) error {
 }
 
 func doWait(ctx context.Context, args []string) error {
+	if err := waitFlagSet.Parse(args); err != nil {
+		return err
+	}
+	if waitFlagSet.NArg() != 1 {
+		return errors.New("wrong number of args: want [-i DURATION] JOB_ID")
+	}
+	jobID := waitFlagSet.Arg(0)
+	sleepInterval := *waitInterval
+	displayUpdates := sleepInterval != 0
+	if sleepInterval < time.Second {
+		sleepInterval = time.Second
+	}
 	ts, err := identityTokenSource(ctx)
 	if err != nil {
 		return err
 	}
-	jobID := args[0]
+	start := time.Now()
 	for {
 		job, err := requestJSON[jobs.Job](ctx, "jobs/describe?jobid="+jobID, ts)
 		if err != nil {
@@ -208,7 +223,11 @@ func doWait(ctx context.Context, args []string) error {
 		if done >= job.NumEnqueued {
 			break
 		}
-		time.Sleep(time.Second)
+		if displayUpdates {
+			fmt.Printf("%s: %d/%d completed (%d%%)\n",
+				time.Since(start).Round(time.Second), done, job.NumEnqueued, done*100/job.NumEnqueued)
+		}
+		time.Sleep(sleepInterval)
 	}
 	fmt.Printf("Job %s finished.\n", jobID)
 	return nil
