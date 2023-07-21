@@ -343,6 +343,7 @@ type PartitionQuery struct {
 	From        string // should use full table name
 	Columns     string // comma-separated columns to select, or "*" ("" => "*")
 	PartitionOn string // comma-separated columns defining the partition
+	Where       string // WHERE clause
 	OrderBy     string // text after ORDER BY: comma-separated columns, each
 	// optionally followed by DESC or ASC
 }
@@ -363,13 +364,18 @@ func (q PartitionQuery) String() string {
 				ORDER BY %s
 			) AS rownum
 			FROM %s
+			%s
 		) WHERE rownum = 1
 	`
 	cols := q.Columns
 	if cols == "" {
 		cols = "*"
 	}
-	return fmt.Sprintf(qf, cols, q.PartitionOn, q.OrderBy, q.From)
+	where := q.Where
+	if where != "" {
+		where = "WHERE " + where
+	}
+	return fmt.Sprintf(qf, cols, q.PartitionOn, q.OrderBy, q.From, where)
 }
 
 // InferSchema is a copy of cloud.google.com/go/bigquery.InferSchema so

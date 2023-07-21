@@ -28,8 +28,9 @@ func TestJobs(t *testing.T) {
 	if err := db.CreateJob(ctx, job); err != nil {
 		t.Fatal(err)
 	}
+	s := &Server{}
 	var buf bytes.Buffer
-	if err := processJobRequest(ctx, &buf, "/jobs/describe", job.ID(), db); err != nil {
+	if err := s.processJobRequest(ctx, &buf, "/jobs/describe", job.ID(), db); err != nil {
 		t.Fatal(err)
 	}
 
@@ -41,7 +42,7 @@ func TestJobs(t *testing.T) {
 		t.Errorf("got\n%+v\nwant\n%+v", got, job)
 	}
 
-	if err := processJobRequest(ctx, &buf, "/jobs/cancel", job.ID(), db); err != nil {
+	if err := s.processJobRequest(ctx, &buf, "/jobs/cancel", job.ID(), db); err != nil {
 		t.Fatal(err)
 	}
 
@@ -54,7 +55,7 @@ func TestJobs(t *testing.T) {
 	}
 
 	buf.Reset()
-	if err := processJobRequest(ctx, &buf, "/jobs/list", "", db); err != nil {
+	if err := s.processJobRequest(ctx, &buf, "/jobs/list", "", db); err != nil {
 		t.Fatal(err)
 	}
 	// Don't check for specific output, just make sure there's something

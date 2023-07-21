@@ -23,6 +23,7 @@ import (
 	"strings"
 	"time"
 
+	"golang.org/x/pkgsite-metrics/internal/analysis"
 	"golang.org/x/pkgsite-metrics/internal/derrors"
 	"golang.org/x/pkgsite-metrics/internal/jobs"
 )
@@ -36,7 +37,7 @@ func (s *Server) handleJobs(w http.ResponseWriter, r *http.Request) (err error) 
 	}
 
 	jobID := r.FormValue("jobid")
-	return processJobRequest(ctx, w, r.URL.Path, jobID, s.jobDB)
+	return s.processJobRequest(ctx, w, r.URL.Path, jobID, s.jobDB)
 }
 
 type jobDB interface {
@@ -46,7 +47,7 @@ type jobDB interface {
 	ListJobs(context.Context, func(*jobs.Job, time.Time) error) error
 }
 
-func processJobRequest(ctx context.Context, w io.Writer, path, jobID string, db jobDB) error {
+func (s *Server) processJobRequest(ctx context.Context, w io.Writer, path, jobID string, db jobDB) error {
 	path = strings.TrimPrefix(path, "/jobs/")
 	switch path {
 	case "describe": // describe one job
@@ -78,6 +79,23 @@ func processJobRequest(ctx context.Context, w io.Writer, path, jobID string, db 
 			return err
 		}
 		return writeJSON(w, joblist)
+
+	case "results":
+		if jobID == "" {
+			return fmt.Errorf("missing jobid: %w", derrors.InvalidArgument)
+		}
+		job, err := db.GetJob(ctx, jobID)
+		if err != nil {
+			return err
+		}
+		if s.bqClient == nil {
+			return errors.New("bq client is nil")
+		}
+		results, err := analysis.ReadResults(ctx, s.bqClient, job.Binary, job.BinaryVersion, job.BinaryArgs)
+		if err != nil {
+			return err
+		}
+		return writeJSON(w, results)
 
 	default:
 		return fmt.Errorf("unknown path %q: %w", path, derrors.InvalidArgument)

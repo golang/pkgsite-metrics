@@ -39,5 +39,4 @@ func TestJSONTreeToDiagnostics(t *testing.T) {
 	if diff := cmp.Diff(want, got); diff != "" {
 		t.Errorf("mismatch (-want, +got)\n%s", diff)
 	}
-
 }

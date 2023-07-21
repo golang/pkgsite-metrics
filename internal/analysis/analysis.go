@@ -271,3 +271,27 @@ func JSONTreeToDiagnostics(jsonTree JSONTree) []*Diagnostic {
 	}
 	return diags
 }
+
+func ReadResults(ctx context.Context, c *bigquery.Client, binaryName, binaryVersion, binaryArgs string) (_ []*Result, err error) {
+	defer derrors.Wrap(&err, "ReadResults")
+	q := bigquery.PartitionQuery{
+		From:        c.FullTableName(TableName),
+		PartitionOn: "module_path, version",
+		Where: fmt.Sprintf("binary_name='%s' AND binary_version='%s' AND binary_args='%s'",
+			binaryName, binaryVersion, binaryArgs),
+		OrderBy: "created_at DESC",
+	}
+	iter, err := c.Query(ctx, q.String())
+	if err != nil {
+		return nil, err
+	}
+	var res []*Result
+	err = bigquery.ForEachRow(iter, func(r *Result) bool {
+		res = append(res, r)
+		return true
+	})
+	if err != nil {
+		return nil, err
+	}
+	return res, nil
+}

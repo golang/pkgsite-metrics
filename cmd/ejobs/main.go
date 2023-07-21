@@ -28,6 +28,7 @@ import (
 
 	"cloud.google.com/go/storage"
 	"golang.org/x/oauth2"
+	"golang.org/x/pkgsite-metrics/internal/analysis"
 	"golang.org/x/pkgsite-metrics/internal/jobs"
 	"google.golang.org/api/impersonate"
 	"google.golang.org/api/option"
@@ -467,7 +468,7 @@ func doResults(ctx context.Context, args []string) (err error) {
 	if !force && done < job.NumEnqueued {
 		return fmt.Errorf("job not finished (%d/%d completed); use -f for partial results", done, job.NumEnqueued)
 	}
-	results, err := requestJSON[jobs.Results](ctx, "jobs/results?jobid="+jobID, ts)
+	results, err := requestJSON[[]*analysis.Result](ctx, "jobs/results?jobid="+jobID, ts)
 	if err != nil {
 		return err
 	}
