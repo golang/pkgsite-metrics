@@ -12,17 +12,14 @@ import (
 	"runtime"
 	"testing"
 
+	"github.com/google/go-cmp/cmp"
+	"github.com/google/go-cmp/cmp/cmpopts"
 	"golang.org/x/pkgsite-metrics/internal/buildtest"
 	"golang.org/x/pkgsite-metrics/internal/govulncheck"
+	"golang.org/x/pkgsite-metrics/internal/govulncheckapi"
 )
 
 func Test(t *testing.T) {
-	// TODO: Modify test to ensure that govulncheck & the built binaries are all
-	// built with the same version of go. Test currently fails on cloudtop machines
-	// because go versions are different.
-	// govulncheck_compare works in integration testing, as binaries are built in
-	// the sandbox which ensures that the go versions are the same
-	t.Skip("Govulncheck fails on binaries built with Go versions 12.1+, which cloudtop is ran on")
 	if runtime.GOOS == "windows" {
 		t.Skip("cannot run on Windows")
 	}
@@ -33,7 +30,6 @@ func Test(t *testing.T) {
 	}
 
 	testData := "../../internal/testdata"
-	module := filepath.Join(testData, "module")
 
 	// govulncheck binary requires a full path to the vuln db. Otherwise, one
 	// gets "[file://testdata/vulndb], opts): file URL specifies non-local host."
@@ -43,16 +39,36 @@ func Test(t *testing.T) {
 	}
 
 	t.Run("basicComparison", func(t *testing.T) {
-		resp, err := runTest([]string{govulncheckPath, module, vulndb})
+		resp, err := runTest([]string{govulncheckPath, filepath.Join(testData, "module"), vulndb})
 		if err != nil {
 			t.Fatal(err)
 		}
 
-		pair := resp.FindingsForMod["golang.org/vuln"]
-		t.Log(pair)
-		// TODO: concretely test that the results are as expected.
+		compareSameFindings(t, resp)
 	})
 
+	t.Run("multipleComparison", func(t *testing.T) {
+		resp, err := runTest([]string{govulncheckPath, filepath.Join(testData, "multipleBinModule"), vulndb})
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		compareSameFindings(t, resp)
+	})
+}
+
+func compareSameFindings(t *testing.T, resp *govulncheck.CompareResponse) {
+	for path, pair := range resp.FindingsForMod {
+		diff := cmp.Diff(pair.BinaryResults.Findings, pair.SourceResults.Findings, cmpopts.SortSlices(
+			func(x, y *govulncheckapi.Finding) bool {
+				return x.OSV < y.OSV
+			}),
+			cmpopts.IgnoreFields(govulncheckapi.Finding{}, "Trace"),
+		)
+		if diff != "" {
+			t.Errorf("mismatch for %s (-Binary, +Source): %s", path, diff)
+		}
+	}
 }
 
 func runTest(args []string) (*govulncheck.CompareResponse, error) {
