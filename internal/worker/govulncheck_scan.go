@@ -53,6 +53,7 @@ const (
 var modes = map[string]bool{
 	ModeBinary:      true,
 	ModeGovulncheck: true,
+	ModeCompare:     true,
 }
 
 func IsValidGovulncheckMode(mode string) bool {

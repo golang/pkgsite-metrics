@@ -13,7 +13,6 @@ import (
 	"strings"
 
 	"cloud.google.com/go/storage"
-	"golang.org/x/exp/maps"
 	"golang.org/x/pkgsite-metrics/internal/config"
 	"golang.org/x/pkgsite-metrics/internal/derrors"
 	"golang.org/x/pkgsite-metrics/internal/govulncheck"
@@ -56,7 +55,13 @@ func listModes(modeParam string, allModes bool) ([]string, error) {
 		if modeParam != "" {
 			return nil, errors.New("mode query param provided for enqueueAll")
 		}
-		ms := maps.Keys(modes)
+		var ms []string
+		for k := range modes {
+			// Don't add modeCompare to enqueueAll (it's something we only want to run occasionally)
+			if k != ModeCompare {
+				ms = append(ms, k)
+			}
+		}
 		sort.Strings(ms) // make deterministic for testing
 		return ms, nil
 	}
