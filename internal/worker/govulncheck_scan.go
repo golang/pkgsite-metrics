@@ -207,12 +207,16 @@ func (s scanError) Unwrap() error {
 	return s.err
 }
 
+// Govulncheck compare discards all results where there is a failure that isn't directly related
+// to trying to write to bigquery. That means situations where the module is malformed, govulncheck
+// fails, or it is not possible to build a found binary within the module.
 func (s *scanner) CompareModule(ctx context.Context, w http.ResponseWriter, sreq *govulncheck.Request, info *proxy.VersionInfo, baseRow *govulncheck.Result) (err error) {
 	inputPath := moduleDir(baseRow.ModulePath, info.Version)
 	defer derrors.Cleanup(&err, func() error { return os.RemoveAll(inputPath) })
 	const init = false
 	if err := prepareModule(ctx, baseRow.ModulePath, info.Version, inputPath, s.proxyClient, s.insecure, init); err != nil {
-		return err
+		log.Infof(ctx, "Error trying to prepare module %s: %v", baseRow.ModulePath, err)
+		return nil
 	}
 
 	smdir := strings.TrimPrefix(inputPath, sandboxRoot)
@@ -221,7 +225,9 @@ func (s *scanner) CompareModule(ctx context.Context, w http.ResponseWriter, sreq
 
 	response, err := s.runGovulncheckCompareSandbox(ctx, smdir)
 	if err != nil {
-		return err
+		// If govulncheck compare fails, discard the row and error and return nil.
+		log.Infof(ctx, "Error running govulncheckCompare on %s: %v", baseRow.ModulePath, err)
+		return nil
 	}
 	log.Infof(ctx, "scanner.runGovulncheckCompare found %d compilable binaries in %s:", len(response.FindingsForMod), sreq.Path())
 	for pkg, results := range response.FindingsForMod {
