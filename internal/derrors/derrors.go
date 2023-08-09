@@ -103,6 +103,12 @@ var (
 	// govulncheck fails due to an uncategorized error.
 	ScanModuleGovulncheckError = errors.New("scan module govulncheck error")
 
+	// ScanSyntheticModuleError is used to capture general issues where
+	// govulncheck or analysis fails due to an uncategorized error on a
+	// synthetic module. The failure can be due to loading of packages or
+	// due to an issue in the analysis.
+	ScanSyntheticModuleError = errors.New("scan synthetic module error")
+
 	// ScanModuleMemoryLimitExceeded occurs when scanning uses too much memory.
 	ScanModuleMemoryLimitExceeded = errors.New("scan module memory limit exceeded")
 
@@ -221,6 +227,8 @@ func CategorizeError(err error) string {
 		return "PROXY"
 	case errors.Is(err, BigQueryError):
 		return "BIGQUERY"
+	case errors.Is(err, ScanSyntheticModuleError):
+		return "SYNTHETIC - MISC"
 	}
 	return "MISC"
 }

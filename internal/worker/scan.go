@@ -14,6 +14,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
 	"runtime/debug"
 	"strconv"
 	"strings"
@@ -239,7 +240,7 @@ func prepareModule(ctx context.Context, modulePath, version, dir string, proxyCl
 		return runGoCommand(ctx, modulePath, version, opts, "mod", "download")
 	}
 	// Run `go mod init` and `go mod tidy`.
-	if err := goModInit(ctx, modulePath, version, dir, "synthetic", insecure); err != nil {
+	if err := goModInit(ctx, modulePath, version, dir, modulePath, insecure); err != nil {
 		return err
 	}
 	return goModTidy(ctx, modulePath, version, dir, insecure)
@@ -299,9 +300,32 @@ func fileExists(filename string) bool {
 	return err == nil
 }
 
-// isSyntheticLoad checks if err is about load issue
-// of a synthetic module, i.e., a non-module that we
-// converted into a module.
-func isSyntheticLoad(err error) bool {
-	return strings.Contains(err.Error(), "synthetic")
+func isNoModulesSpecified(err error) bool {
+	return strings.Contains(err.Error(), "no modules specified")
+}
+
+func isTooManyFiles(err error) bool {
+	return strings.Contains(err.Error(), "too many open files")
+}
+
+func isNoRequiredModule(err error) bool {
+	return strings.Contains(err.Error(), "no required module")
+}
+
+func isMissingGoSumEntry(err error) bool {
+	return strings.Contains(err.Error(), "missing go.sum entry")
+}
+
+func isMissingGoMod(err error) bool {
+	return strings.Contains(err.Error(), "no go.mod file")
+}
+
+func isModVendor(err error) bool {
+	return strings.Contains(err.Error(), "-mod=vendor")
+}
+
+func isReplacingWithLocalPath(err error) bool {
+	errStr := err.Error()
+	matched, err := regexp.MatchString(`replaced by .{0,2}/`, errStr)
+	return err == nil && matched && strings.Contains(errStr, "go.mod: no such file")
 }

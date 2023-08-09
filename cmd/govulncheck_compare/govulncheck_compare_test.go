@@ -23,6 +23,9 @@ func Test(t *testing.T) {
 	if runtime.GOOS == "windows" {
 		t.Skip("cannot run on Windows")
 	}
+	if testing.Short() {
+		t.Skip("skipping test that uses internet in short mode")
+	}
 
 	govulncheckPath, err := buildtest.BuildGovulncheck(t.TempDir())
 	if err != nil {

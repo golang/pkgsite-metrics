@@ -11,7 +11,6 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
-	"regexp"
 	"strings"
 
 	"cloud.google.com/go/storage"
@@ -540,36 +539,6 @@ func (s *scanner) runBinaryScanInsecure(ctx context.Context, modulePath, version
 		return nil, err
 	}
 	return findings, nil
-}
-
-func isNoModulesSpecified(err error) bool {
-	return strings.Contains(err.Error(), "no modules specified")
-}
-
-func isTooManyFiles(err error) bool {
-	return strings.Contains(err.Error(), "too many open files")
-}
-
-func isNoRequiredModule(err error) bool {
-	return strings.Contains(err.Error(), "no required module")
-}
-
-func isMissingGoSumEntry(err error) bool {
-	return strings.Contains(err.Error(), "missing go.sum entry")
-}
-
-func isMissingGoMod(err error) bool {
-	return strings.Contains(err.Error(), "no go.mod file")
-}
-
-func isModVendor(err error) bool {
-	return strings.Contains(err.Error(), "-mod=vendor")
-}
-
-func isReplacingWithLocalPath(err error) bool {
-	errStr := err.Error()
-	matched, err := regexp.MatchString(`replaced by .{0,2}/`, errStr)
-	return err == nil && matched && strings.Contains(errStr, "go.mod: no such file")
 }
 
 func isLoadError(err error) bool {

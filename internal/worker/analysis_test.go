@@ -180,9 +180,13 @@ func G() {}
 	// Test that errors are put into the Result.
 	req.Binary = "bad"
 	got = s.scan(context.Background(), req, "yyy", wv)
-	// Trim varying part of error.
+	// Trim varying part of error. The error is expected to be of the form
+	// "...executable file not found in $PATH: scan synthetic module error."
 	if i := strings.LastIndexByte(got.Error, ':'); i > 0 {
-		got.Error = got.Error[i+2:]
+		got.Error = got.Error[:i]
+		if i := strings.LastIndexByte(got.Error, ':'); i > 0 {
+			got.Error = got.Error[i+2:]
+		}
 	}
 	// And the platform-specific part.
 	if i := strings.LastIndex(got.Error, "not found in"); i > 0 {
@@ -195,7 +199,7 @@ func G() {}
 		SortVersion:   "1,2,3~",
 		BinaryName:    "bad",
 		WorkVersion:   wv,
-		ErrorCategory: "MISC",
+		ErrorCategory: "SYNTHETIC - MISC",
 		Error:         "executable file not found in",
 	}
 	diff(want, got)

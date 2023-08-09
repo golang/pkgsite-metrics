@@ -217,8 +217,9 @@ func (s *analysisServer) scan(ctx context.Context, req *analysis.ScanRequest, lo
 			err = fmt.Errorf("%v: %w", err, derrors.LoadPackagesImportedLocalError)
 		case isModVendor(err):
 			err = fmt.Errorf("%v: %w", err, derrors.LoadVendorError)
-		case !hasGoMod && isSyntheticLoad(err):
-			err = fmt.Errorf("%v: %w", err, derrors.LoadPackagesSyntheticError)
+		case !hasGoMod:
+			// Classify misc errors on synthetic modules separately.
+			err = fmt.Errorf("%v: %w", err, derrors.ScanSyntheticModuleError)
 		default:
 		}
 		row.AddError(err)
