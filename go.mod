@@ -28,7 +28,7 @@ require (
 	golang.org/x/net v0.9.0
 	golang.org/x/oauth2 v0.5.0
 	golang.org/x/tools v0.8.1-0.20230421161920-b9619ee54b47
-	golang.org/x/vuln v1.0.0
+	golang.org/x/vuln v1.0.1-0.20230810155601-91424c7c0e1c
 	google.golang.org/api v0.110.0
 	google.golang.org/genproto v0.0.0-20230222225845-10f96fb3dbec
 	google.golang.org/grpc v1.53.0
