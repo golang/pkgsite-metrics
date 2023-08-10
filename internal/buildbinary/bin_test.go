@@ -83,7 +83,7 @@ func TestRunBuild(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got, err := runBuild(tt.modulePath, tt.importPath, 1)
+			got, _, err := runBuild(tt.modulePath, tt.importPath, 1)
 			defer os.Remove(got)
 			if (err != nil) != tt.wantErr {
 				t.Errorf("runBuild() error = %v, wantErr %v", err, tt.wantErr)

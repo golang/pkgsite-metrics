@@ -59,7 +59,7 @@ func run(w io.Writer, args []string) {
 
 	for _, binary := range binaries {
 		pair := govulncheck.ComparePair{
-			BinaryResults: govulncheck.SandboxResponse{Stats: govulncheck.ScanStats{}},
+			BinaryResults: govulncheck.SandboxResponse{Stats: govulncheck.ScanStats{BuildTime: binary.BuildTime}},
 			SourceResults: govulncheck.SandboxResponse{Stats: govulncheck.ScanStats{}},
 		}
 

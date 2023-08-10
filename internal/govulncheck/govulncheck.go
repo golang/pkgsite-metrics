@@ -247,6 +247,10 @@ type ScanStats struct {
 	ScanSeconds float64
 	// ScanMemory is the peak (heap) memory used by govulncheck, in kb.
 	ScanMemory uint64
+	// BuildTime is the amount of time it takes to build a given binary
+	// *BEFORE* scanning it with govulncheck.
+	// This is only used in COMPARE - BINARY mode
+	BuildTime time.Duration
 }
 
 // SandboxResponse contains the raw govulncheck result

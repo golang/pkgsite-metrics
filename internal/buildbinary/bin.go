@@ -9,6 +9,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"golang.org/x/pkgsite-metrics/internal/derrors"
 )
@@ -16,6 +17,7 @@ import (
 type BinaryInfo struct {
 	BinaryPath string
 	ImportPath string
+	BuildTime  time.Duration
 }
 
 // FindAndBuildBinaries finds and builds all possible binaries from a given module.
@@ -27,27 +29,30 @@ func FindAndBuildBinaries(modulePath string) (binaries []*BinaryInfo, err error)
 	}
 
 	for i, target := range buildTargets {
-		path, err := runBuild(modulePath, target, i)
+		path, buildTime, err := runBuild(modulePath, target, i)
 		if err != nil {
 			return nil, err
 		}
 		binaries = append(binaries, &BinaryInfo{
 			BinaryPath: path,
 			ImportPath: target,
+			BuildTime:  buildTime,
 		})
 	}
 	return binaries, nil
 }
 
 // runBuild takes a given module and import path and attempts to build a binary
-func runBuild(modulePath, importPath string, i int) (binaryPath string, err error) {
+func runBuild(modulePath, importPath string, i int) (binaryPath string, buildTime time.Duration, err error) {
 	binName := fmt.Sprintf("bin%d", i)
 	cmd := exec.Command("go", "build", "-C", modulePath, "-o", binName, importPath)
+	start := time.Now()
 	if err = cmd.Run(); err != nil {
-		return "", err
+		return "", 0, err
 	}
+	buildTime = time.Since(start)
 	binaryPath = filepath.Join(modulePath, binName)
-	return binaryPath, nil
+	return binaryPath, buildTime, nil
 }
 
 // findBinaries finds all packages that compile to binaries in a given directory
