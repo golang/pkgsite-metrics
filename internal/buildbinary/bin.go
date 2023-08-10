@@ -13,24 +13,28 @@ import (
 	"golang.org/x/pkgsite-metrics/internal/derrors"
 )
 
-// TODO: Consider making struct if we want to pass successful binaries & still
-// be aware if building others failed for some reason.
+type BinaryInfo struct {
+	BinaryPath string
+	ImportPath string
+}
 
 // FindAndBuildBinaries finds and builds all possible binaries from a given module.
-func FindAndBuildBinaries(modulePath string) (binaries map[string]string, err error) {
+func FindAndBuildBinaries(modulePath string) (binaries []*BinaryInfo, err error) {
 	defer derrors.Wrap(&err, "FindAndBuildBinaries")
 	buildTargets, err := findBinaries(modulePath)
 	if err != nil {
 		return nil, err
 	}
-	binaries = make(map[string]string)
 
 	for i, target := range buildTargets {
 		path, err := runBuild(modulePath, target, i)
 		if err != nil {
 			return nil, err
 		}
-		binaries[path] = target
+		binaries = append(binaries, &BinaryInfo{
+			BinaryPath: path,
+			ImportPath: target,
+		})
 	}
 	return binaries, nil
 }

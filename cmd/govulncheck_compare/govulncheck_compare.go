@@ -20,7 +20,6 @@ import (
 	"io"
 	"os"
 
-	"golang.org/x/exp/slices"
 	"golang.org/x/pkgsite-metrics/internal/buildbinary"
 	"golang.org/x/pkgsite-metrics/internal/govulncheck"
 )
@@ -51,40 +50,32 @@ func run(w io.Writer, args []string) {
 		FindingsForMod: make(map[string]*govulncheck.ComparePair),
 	}
 
-	binaryPaths, err := buildbinary.FindAndBuildBinaries(modulePath)
+	binaries, err := buildbinary.FindAndBuildBinaries(modulePath)
 	if err != nil {
 		fail(err)
 		return
 	}
-	defer removeBinaries(binaryPaths)
+	defer removeBinaries(binaries)
 
-	// Sort binaryPath keys so that range is deterministic
-	keys := make([]string, 0, len(binaryPaths))
-	for k := range binaryPaths {
-		keys = append(keys, k)
-	}
-	slices.Sort(keys)
-
-	for _, binaryPath := range keys {
-		importPath := binaryPaths[binaryPath]
+	for _, binary := range binaries {
 		pair := govulncheck.ComparePair{
 			BinaryResults: govulncheck.SandboxResponse{Stats: govulncheck.ScanStats{}},
 			SourceResults: govulncheck.SandboxResponse{Stats: govulncheck.ScanStats{}},
 		}
 
-		pair.SourceResults.Findings, err = govulncheck.RunGovulncheckCmd(govulncheckPath, govulncheck.FlagSource, importPath, modulePath, vulndbPath, &pair.SourceResults.Stats)
+		pair.SourceResults.Findings, err = govulncheck.RunGovulncheckCmd(govulncheckPath, govulncheck.FlagSource, binary.ImportPath, modulePath, vulndbPath, &pair.SourceResults.Stats)
 		if err != nil {
 			fail(err)
 			return
 		}
 
-		pair.BinaryResults.Findings, err = govulncheck.RunGovulncheckCmd(govulncheckPath, govulncheck.FlagBinary, binaryPath, modulePath, vulndbPath, &pair.BinaryResults.Stats)
+		pair.BinaryResults.Findings, err = govulncheck.RunGovulncheckCmd(govulncheckPath, govulncheck.FlagBinary, binary.BinaryPath, modulePath, vulndbPath, &pair.BinaryResults.Stats)
 		if err != nil {
 			fail(err)
 			return
 		}
 
-		response.FindingsForMod[importPath] = &pair
+		response.FindingsForMod[binary.ImportPath] = &pair
 	}
 
 	b, err := json.MarshalIndent(response, "", "\t")
@@ -97,8 +88,8 @@ func run(w io.Writer, args []string) {
 	fmt.Println()
 }
 
-func removeBinaries(binaryPaths map[string]string) {
-	for path := range binaryPaths {
-		os.Remove(path)
+func removeBinaries(binaryPaths []*buildbinary.BinaryInfo) {
+	for _, bin := range binaryPaths {
+		os.Remove(bin.BinaryPath)
 	}
 }
