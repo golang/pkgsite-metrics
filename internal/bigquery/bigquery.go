@@ -254,6 +254,11 @@ func (c *Client) Query(ctx context.Context, q string) (*bq.RowIterator, error) {
 	return c.client.Query(q).Read(ctx)
 }
 
+// NullFloat constructs a bq.NullFloat64
+func NullFloat(f float64) bq.NullFloat64 {
+	return bq.NullFloat64{Float64: f, Valid: true}
+}
+
 // NullString constructs a bq.NullString.
 func NullString(s string) bq.NullString {
 	return bq.NullString{StringVal: s, Valid: true}

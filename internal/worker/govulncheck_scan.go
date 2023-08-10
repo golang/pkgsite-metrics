@@ -260,6 +260,7 @@ func createComparisonRow(pkg string, result *govulncheck.SandboxResponse, baseRo
 	}
 	if mode == ModeBinary {
 		row.ScanMode = "COMPARE - BINARY"
+		row.BinaryBuildSeconds = bigquery.NullFloat(result.Stats.BuildTime.Seconds())
 	} else {
 		row.ScanMode = "COMPARE - SOURCE"
 	}

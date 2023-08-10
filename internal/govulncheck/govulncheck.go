@@ -19,6 +19,8 @@ import (
 	"strings"
 	"time"
 
+	bq "cloud.google.com/go/bigquery"
+
 	"golang.org/x/pkgsite-metrics/internal/bigquery"
 	"golang.org/x/pkgsite-metrics/internal/derrors"
 	"golang.org/x/pkgsite-metrics/internal/govulncheckapi"
@@ -139,10 +141,12 @@ type Result struct {
 	ErrorCategory string    `bigquery:"error_category"`
 	CommitTime    time.Time `bigquery:"commit_time"`
 	ScanSeconds   float64   `bigquery:"scan_seconds"`
-	ScanMemory    int64     `bigquery:"scan_memory"`
-	ScanMode      string    `bigquery:"scan_mode"`
-	WorkVersion             // InferSchema flattens embedded fields
-	Vulns         []*Vuln   `bigquery:"vulns"`
+	// BinaryBuildSeconds is populated only in COMPARE - BINARY mode
+	BinaryBuildSeconds bq.NullFloat64 `bigquery:"build_seconds"`
+	ScanMemory         int64          `bigquery:"scan_memory"`
+	ScanMode           string         `bigquery:"scan_mode"`
+	WorkVersion                       // InferSchema flattens embedded fields
+	Vulns              []*Vuln        `bigquery:"vulns"`
 }
 
 // WorkVersion contains information that can be used to avoid duplicate work.
