@@ -409,7 +409,7 @@ func (s *scanner) runScanModule(ctx context.Context, modulePath, version, binary
 			// In source analysis modes, download the module first.
 			inputPath = moduleDir(modulePath, version)
 			defer derrors.Cleanup(&err, func() error { return os.RemoveAll(inputPath) })
-			const init = false
+			const init = true
 			if err := prepareModule(ctx, modulePath, version, inputPath, s.proxyClient, s.insecure, init); err != nil {
 				return err
 			}
