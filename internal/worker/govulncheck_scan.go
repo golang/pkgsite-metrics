@@ -124,8 +124,7 @@ func (h *GovulncheckServer) canSkip(ctx context.Context, sreq *govulncheck.Reque
 // of govulncheck. Examples are build issues and the lack of go.mod file.
 func unrecoverableError(errorCategory string) bool {
 	switch errorCategory {
-	case derrors.CategorizeError(derrors.LoadPackagesNoGoModError),
-		derrors.CategorizeError(derrors.LoadPackagesError): // We model build usses as a general load error.
+	case derrors.CategorizeError(derrors.LoadPackagesError): // We model build usses as a general load error.
 		return true
 	default:
 		return false
