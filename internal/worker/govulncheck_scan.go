@@ -230,6 +230,13 @@ func (s *scanner) CompareModule(ctx context.Context, w http.ResponseWriter, sreq
 	}
 	log.Infof(ctx, "scanner.runGovulncheckCompare found %d compilable binaries in %s:", len(response.FindingsForMod), sreq.Path())
 	for pkg, results := range response.FindingsForMod {
+		if results.Error != nil {
+			// Just log error if binary failed to build. Otherwise, we'd have
+			// to create bq rows for both binary and source compare modes.
+			log.Errorf(ctx, err, "building binary failed: %s %s", pkg, sreq.Path())
+			continue
+		}
+
 		binRow := createComparisonRow(pkg, &results.BinaryResults, baseRow, ModeBinary)
 		srcRow := createComparisonRow(pkg, &results.SourceResults, baseRow, ModeGovulncheck)
 

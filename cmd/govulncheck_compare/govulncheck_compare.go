@@ -58,9 +58,15 @@ func run(w io.Writer, args []string) {
 	defer removeBinaries(binaries)
 
 	for _, binary := range binaries {
-		pair := govulncheck.ComparePair{
+		pair := &govulncheck.ComparePair{
 			BinaryResults: govulncheck.SandboxResponse{Stats: govulncheck.ScanStats{BuildTime: binary.BuildTime}},
 			SourceResults: govulncheck.SandboxResponse{Stats: govulncheck.ScanStats{}},
+		}
+		response.FindingsForMod[binary.ImportPath] = pair
+
+		if binary.Error != nil {
+			pair.Error = binary.Error
+			continue // there was an error in building the binary
 		}
 
 		pair.SourceResults.Findings, err = govulncheck.RunGovulncheckCmd(govulncheckPath, govulncheck.FlagSource, binary.ImportPath, modulePath, vulndbPath, &pair.SourceResults.Stats)
@@ -74,8 +80,6 @@ func run(w io.Writer, args []string) {
 			fail(err)
 			return
 		}
-
-		response.FindingsForMod[binary.ImportPath] = &pair
 	}
 
 	b, err := json.MarshalIndent(response, "", "\t")

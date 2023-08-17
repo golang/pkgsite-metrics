@@ -40,13 +40,17 @@ func TestFindBinaries(t *testing.T) {
 			want:    []string{"example.com/test", "example.com/test/multipleBinModule", "example.com/test/p1"},
 			wantErr: false,
 		},
+		{
+			name:    "error test",
+			dir:     "non-existing-module",
+			wantErr: true,
+		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			got, err := findBinaries(tt.dir)
 			if (err != nil) != tt.wantErr {
-				t.Errorf("findBinaries() error = %v, wantErr %v", err, tt.wantErr)
-				return
+				t.Fatalf("got error=%v, wantErr=%v", err, tt.wantErr)
 			}
 
 			if diff := cmp.Diff(tt.want, got, cmpopts.SortSlices(less)); diff != "" {
@@ -86,8 +90,7 @@ func TestRunBuild(t *testing.T) {
 			got, _, err := runBuild(tt.modulePath, tt.importPath, 1)
 			defer os.Remove(got)
 			if (err != nil) != tt.wantErr {
-				t.Errorf("runBuild() error = %v, wantErr %v", err, tt.wantErr)
-				return
+				t.Fatalf("got error=%v; wantErr=%v", err, tt.wantErr)
 			}
 
 			if diff := cmp.Diff(tt.want, got); diff != "" {
@@ -95,7 +98,7 @@ func TestRunBuild(t *testing.T) {
 			}
 			_, err = os.Stat(got)
 			if err != nil && os.IsNotExist(err) {
-				t.Errorf("runBuild did not produce the expected binary")
+				t.Errorf("did not produce the expected binary")
 			}
 		})
 	}

@@ -18,6 +18,7 @@ type BinaryInfo struct {
 	BinaryPath string
 	ImportPath string
 	BuildTime  time.Duration
+	Error      error
 }
 
 // FindAndBuildBinaries finds and builds all possible binaries from a given module.
@@ -30,14 +31,15 @@ func FindAndBuildBinaries(modulePath string) (binaries []*BinaryInfo, err error)
 
 	for i, target := range buildTargets {
 		path, buildTime, err := runBuild(modulePath, target, i)
-		if err != nil {
-			return nil, err
-		}
-		binaries = append(binaries, &BinaryInfo{
+		b := &BinaryInfo{
 			BinaryPath: path,
 			ImportPath: target,
 			BuildTime:  buildTime,
-		})
+		}
+		if err != nil {
+			b.Error = err
+		}
+		binaries = append(binaries, b)
 	}
 	return binaries, nil
 }
