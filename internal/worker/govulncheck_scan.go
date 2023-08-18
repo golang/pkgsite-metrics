@@ -229,6 +229,8 @@ func (s *scanner) CompareModule(ctx context.Context, w http.ResponseWriter, sreq
 		return nil
 	}
 	log.Infof(ctx, "scanner.runGovulncheckCompare found %d compilable binaries in %s:", len(response.FindingsForMod), sreq.Path())
+
+	var rows []bigquery.Row
 	for pkg, results := range response.FindingsForMod {
 		if results.Error != nil {
 			// Just log error if binary failed to build. Otherwise, we'd have
@@ -239,17 +241,13 @@ func (s *scanner) CompareModule(ctx context.Context, w http.ResponseWriter, sreq
 
 		binRow := createComparisonRow(pkg, &results.BinaryResults, baseRow, ModeBinary)
 		srcRow := createComparisonRow(pkg, &results.SourceResults, baseRow, ModeGovulncheck)
-
 		log.Infof(ctx, "found %d vulns in binary mode and %d vulns in source mode for package %s (module: %s)", len(binRow.Vulns), len(srcRow.Vulns), pkg, sreq.Path())
-
-		if err := writeResult(ctx, sreq.Serve, w, s.bqClient, govulncheck.TableName, binRow); err != nil {
-			return err
-		}
-		if err := writeResult(ctx, sreq.Serve, w, s.bqClient, govulncheck.TableName, srcRow); err != nil {
-			return err
-		}
+		rows = append(rows, binRow, srcRow)
 	}
 
+	if len(rows) > 0 {
+		return writeResults(ctx, sreq.Serve, w, s.bqClient, govulncheck.TableName, rows)
+	}
 	return nil
 }
 

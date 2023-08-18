@@ -158,16 +158,7 @@ func writeResult(ctx context.Context, serve bool, w http.ResponseWriter, client 
 
 	if serve {
 		// Write the result to the client instead of uploading to BigQuery.
-		log.Infof(ctx, "serving result to client")
-		data, err := json.MarshalIndent(row, "", "    ")
-		if err != nil {
-			return fmt.Errorf("marshaling result: %w", err)
-		}
-		_, err = w.Write(data)
-		if err != nil {
-			log.Errorf(ctx, err, "writing to client")
-		}
-		return nil // No point serving an error, the write already happened.
+		return serveJSON(ctx, row, w)
 	}
 	// Upload to BigQuery.
 	if client == nil {
@@ -175,6 +166,34 @@ func writeResult(ctx context.Context, serve bool, w http.ResponseWriter, client 
 		return nil
 	}
 	return client.Upload(ctx, table, row)
+}
+
+func writeResults(ctx context.Context, serve bool, w http.ResponseWriter, client *bigquery.Client, table string, rows []bigquery.Row) (err error) {
+	defer derrors.Wrap(&err, "writeResults")
+
+	if serve {
+		// Write the results to the client instead of uploading to BigQuery.
+		return serveJSON(ctx, rows, w)
+	}
+	// Upload to BigQuery.
+	if client == nil {
+		log.Infof(ctx, "bigquery disabled, not uploading")
+		return nil
+	}
+	return bigquery.UploadMany(ctx, client, table, rows, 0)
+}
+
+func serveJSON(ctx context.Context, content interface{}, w http.ResponseWriter) error {
+	log.Infof(ctx, "serving result to client")
+	data, err := json.MarshalIndent(content, "", "    ")
+	if err != nil {
+		return fmt.Errorf("marshaling result: %w", err)
+	}
+	_, err = w.Write(data)
+	if err != nil {
+		log.Errorf(ctx, err, "writing to client")
+	}
+	return nil // No point serving an error, the write already happened.
 }
 
 type openFileFunc func(filename string) (io.ReadCloser, error)
