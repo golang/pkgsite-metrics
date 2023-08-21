@@ -210,6 +210,7 @@ func (s scanError) Unwrap() error {
 // to trying to write to bigquery. That means situations where the module is malformed, govulncheck
 // fails, or it is not possible to build a found binary within the module.
 func (s *scanner) CompareModule(ctx context.Context, w http.ResponseWriter, sreq *govulncheck.Request, info *proxy.VersionInfo, baseRow *govulncheck.Result) (err error) {
+	defer derrors.Wrap(&err, "CompareModule")
 	inputPath := moduleDir(baseRow.ModulePath, info.Version)
 	defer derrors.Cleanup(&err, func() error { return os.RemoveAll(inputPath) })
 	const init = false
