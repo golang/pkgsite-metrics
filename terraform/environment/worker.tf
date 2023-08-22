@@ -278,7 +278,7 @@ resource "google_cloud_scheduler_job" "compute_requests" {
 resource "google_cloud_scheduler_job" "enqueueall" {
   count       = var.env == "prod" ? 1 : 0
   name        = "${var.env}-enqueueall"
-  description = "Enqueue modules for all modes."
+  description = "Enqueue modules for all modes that should be run frequently."
   schedule    = "0 8 * * *" # 8 AM daily
   time_zone   = local.tz
   project     = var.project
@@ -293,3 +293,20 @@ resource "google_cloud_scheduler_job" "enqueueall" {
   }
 }
 
+resource "google_cloud_scheduler_job" "enqueuecompare" {
+  count       = var.env == "prod" ? 1 : 0
+  name        = "${var.env}-enqueuecompare"
+  description = "Enqueue modules for compare mode."
+  schedule    = "0 5 * * SUN" # 5 AM every Sunday
+  time_zone   = local.tz
+  project     = var.project
+
+  http_target {
+    http_method = "GET"
+    uri         = "${local.worker_url}/govulncheck/enqueue?mode=compare&min=0"
+    oidc_token {
+      service_account_email = local.worker_service_account
+      audience              = local.worker_url
+    }
+  }
+}
