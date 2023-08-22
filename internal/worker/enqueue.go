@@ -40,7 +40,7 @@ func enqueueTasks(ctx context.Context, tasks []queue.Task, q queue.Queue, opts *
 	defer derrors.Wrap(&err, "enqueueTasks")
 
 	// Enqueue concurrently, because sequentially takes a while.
-	const concurrentEnqueues = 10
+	const concurrentEnqueues = 20
 	var (
 		mu                 sync.Mutex
 		nEnqueued, nErrors int
