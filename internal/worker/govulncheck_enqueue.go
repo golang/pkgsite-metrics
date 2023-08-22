@@ -50,6 +50,9 @@ func (h *GovulncheckServer) enqueue(r *http.Request, allModes bool) error {
 		&queue.Options{Namespace: "govulncheck", TaskNameSuffix: params.Suffix})
 }
 
+// listModes lists all applicable modes depending on who called it. If enqueue did (allModes=false),
+// returns only valid modeParam. If enqueueAll did (allModes=true), returns modes that enqueueAll
+// supports, which are modes/{ModeCompare}.
 func listModes(modeParam string, allModes bool) ([]string, error) {
 	if allModes {
 		if modeParam != "" {
@@ -57,7 +60,7 @@ func listModes(modeParam string, allModes bool) ([]string, error) {
 		}
 		var ms []string
 		for k := range modes {
-			// Don't add modeCompare to enqueueAll (it's something we only want to run occasionally)
+			// Don't add ModeCompare to enqueueAll (it's something we only want to run occasionally)
 			if k != ModeCompare {
 				ms = append(ms, k)
 			}

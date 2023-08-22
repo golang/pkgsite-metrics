@@ -33,6 +33,7 @@ const (
 	modeImports string = "IMPORTS"
 
 	// ModeBinary runs the govulncheck binary in binary mode.
+	// TODO: needed?
 	ModeBinary string = "BINARY"
 
 	// ModeGovulncheck runs the govulncheck binary in default (source) mode.
@@ -48,7 +49,7 @@ const (
 	sandboxGoCache = "root/.cache/go-build"
 )
 
-// modes is a set of supported govulncheck modes.
+// modes is a set of govulncheck modes externally visible.
 var modes = map[string]bool{
 	ModeBinary:      true,
 	ModeGovulncheck: true,
