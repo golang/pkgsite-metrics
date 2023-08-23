@@ -264,6 +264,7 @@ resource "google_cloud_scheduler_job" "compute_requests" {
   time_zone   = local.tz
   project     = var.project
 
+  attempt_deadline = "1800s" # 30 min max deadline for HTTP target
   http_target {
     http_method = "GET"
     uri         = "${local.worker_url}/compute-requests"
@@ -283,6 +284,7 @@ resource "google_cloud_scheduler_job" "enqueueall" {
   time_zone   = local.tz
   project     = var.project
 
+  attempt_deadline = "1800s" # 30 min max deadline for HTTP target
   http_target {
     http_method = "GET"
     uri         = "${local.worker_url}/govulncheck/enqueueall?min=0"
@@ -301,6 +303,7 @@ resource "google_cloud_scheduler_job" "enqueuecompare" {
   time_zone   = local.tz
   project     = var.project
 
+  attempt_deadline = "1800s" # 30 min max deadline for HTTP target
   http_target {
     http_method = "GET"
     uri         = "${local.worker_url}/govulncheck/enqueue?mode=compare&min=0"
