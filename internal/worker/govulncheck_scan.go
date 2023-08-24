@@ -122,10 +122,10 @@ func (h *GovulncheckServer) canSkip(ctx context.Context, sreq *govulncheck.Reque
 
 // unrecoverableError returns true iff errorCategory encodes that
 // the project has an error that is unrecoverable from the perspective
-// of govulncheck. Examples are build issues and the lack of go.mod file.
+// of govulncheck. One example is build issues.
 func unrecoverableError(errorCategory string) bool {
 	switch errorCategory {
-	case derrors.CategorizeError(derrors.LoadPackagesError): // We model build usses as a general load error.
+	case derrors.CategorizeError(derrors.LoadPackagesError): // We model build issues as a general load error.
 		return true
 	default:
 		return false

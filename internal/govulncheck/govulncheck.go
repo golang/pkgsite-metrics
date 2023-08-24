@@ -167,7 +167,7 @@ type WorkVersion struct {
 
 func (v1 *WorkVersion) Equal(v2 *WorkVersion) bool {
 	if v1 == nil || v2 == nil {
-		return v1 == v2
+		return false
 	}
 	return v1.GoVersion == v2.GoVersion &&
 		v1.WorkerVersion == v2.WorkerVersion &&
