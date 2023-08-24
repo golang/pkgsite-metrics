@@ -48,7 +48,7 @@ func main() {
 	}
 	slog.SetDefault(slog.New(h))
 	if err := runServer(ctx); err != nil {
-		log.Error(ctx, "fail", err)
+		log.Error(ctx, "failed to start the server", err)
 		// Give the log message a chance to be captured (?).
 		time.Sleep(5 * time.Second)
 		os.Exit(1)
