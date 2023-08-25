@@ -291,21 +291,23 @@ func (s *scanner) ScanModule(ctx context.Context, w http.ResponseWriter, sreq *g
 		ModulePath:  sreq.Module,
 		Suffix:      sreq.Suffix,
 		WorkVersion: *s.workVersion,
+		ScanMode:    sreq.Mode,
+		ImportedBy:  sreq.ImportedBy,
 	}
+	row.VulnDBLastModified = s.workVersion.VulnDBLastModified
+
 	// Scan the version.
 	log.Debugf(ctx, "fetching proxy info: %s@%s", sreq.Path(), sreq.Version)
 	info, err := s.proxyClient.Info(ctx, sreq.Module, sreq.Version)
 	if err != nil {
 		log.Errorf(ctx, err, "proxy error")
 		row.AddError(fmt.Errorf("%v: %w", err, derrors.ProxyError))
-		return nil
+		// TODO: should we also make a copy for imports mode?
+		return writeResult(ctx, sreq.Serve, w, s.bqClient, govulncheck.TableName, row)
 	}
 	row.Version = info.Version
 	row.SortVersion = version.ForSorting(row.Version)
 	row.CommitTime = info.Time
-	row.ImportedBy = sreq.ImportedBy
-	row.VulnDBLastModified = s.workVersion.VulnDBLastModified
-	row.ScanMode = sreq.Mode
 
 	if sreq.Mode == ModeCompare {
 		return s.CompareModule(ctx, w, sreq, info, row)
