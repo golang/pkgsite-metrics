@@ -201,11 +201,18 @@ func (s *analysisServer) scan(ctx context.Context, req *analysis.ScanRequest, lo
 		return addSource(ctx, row.Diagnostics, 1)
 	})
 	if err != nil {
+		// The errors are classified as to explicitly make a distinction
+		// between misc errors for modules and non-modules. The intended
+		// audience for analysis pipeline will directly look at errors.
+		// Without this distinction, experiments where there are a lot of
+		// misc errors might sway users into thinking that something is
+		// wrong with their analysis, while in fact it can be the case
+		// that synthetic (non-modules) are just outdated.
 		switch {
 		case isNoModulesSpecified(err):
 			// We try to turn every non-module project into a module, so this
 			// branch should never be reached. We keep this for sanity and to
-			// catch any errors during the conversion.
+			// catch any regressions.
 			err = fmt.Errorf("%v: %w", err, derrors.LoadPackagesNoGoModError)
 		case isNoRequiredModule(err):
 			err = fmt.Errorf("%v: %w", err, derrors.LoadPackagesNoRequiredModuleError)
@@ -219,6 +226,8 @@ func (s *analysisServer) scan(ctx context.Context, req *analysis.ScanRequest, lo
 			err = fmt.Errorf("%v: %w", err, derrors.LoadVendorError)
 		case isProxyCacheMiss(err):
 			err = fmt.Errorf("%v: %w", err, derrors.ProxyError)
+		case isBuildIssue(err):
+			err = fmt.Errorf("%v: %w", err, derrors.LoadPackagesError)
 		case !hasGoMod:
 			// Classify misc errors on synthetic modules separately.
 			err = fmt.Errorf("%v: %w", err, derrors.ScanSyntheticModuleError)

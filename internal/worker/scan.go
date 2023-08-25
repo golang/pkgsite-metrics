@@ -353,3 +353,16 @@ func isProxyCacheMiss(err error) bool {
 	errStr := err.Error()
 	return strings.Contains(errStr, "server response") && strings.Contains(errStr, "temporarily unavailable")
 }
+
+// isBuildIssue recognizes general load issues that might not
+// be directly captured by govulncheck or analysis binaries.
+// These errors happen sometimes when go mod download fails
+// but are effectively a build issue from user perspective.
+// They often occur for synthetic projects, but module projects
+// might have them as well.
+func isBuildIssue(err error) bool {
+	errStr := err.Error()
+	return strings.Contains(errStr, "does not contain package") ||
+		strings.Contains(errStr, "but was required") ||
+		strings.Contains(errStr, "relative import paths are not supported in module mode")
+}

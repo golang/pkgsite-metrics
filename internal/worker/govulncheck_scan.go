@@ -320,10 +320,7 @@ func (s *scanner) ScanModule(ctx context.Context, w http.ResponseWriter, sreq *g
 	row.ScanMemory = int64(stats.ScanMemory)
 	if err != nil {
 		switch {
-		case isMissingGoMod(err) || isNoModulesSpecified(err):
-			// Covers the missing go.mod file cases when running govulncheck in the sandbox
-			err = fmt.Errorf("%v: %w", err, derrors.LoadPackagesNoGoModError)
-		case isLoadError(err):
+		case isGovulncheckLoadError(err) || isBuildIssue(err):
 			err = fmt.Errorf("%v: %w", err, derrors.LoadPackagesError)
 		case isNoRequiredModule(err):
 			// Should be subsumed by LoadPackagesError, kept for sanity
@@ -341,6 +338,10 @@ func (s *scanner) ScanModule(ctx context.Context, w http.ResponseWriter, sreq *g
 			// Should be subsumed by LoadPackagesError, kept for sanity.
 			// and to catch unexpected changes in govulncheck output.
 			err = fmt.Errorf("%v: %w", err, derrors.LoadVendorError)
+		case isMissingGoMod(err) || isNoModulesSpecified(err):
+			// Should be subsumed by LoadPackagesError, kept for sanity
+			// and to catch unexpected changes in govulncheck output.
+			err = fmt.Errorf("%v: %w", err, derrors.LoadPackagesNoGoModError)
 		case isTooManyFiles(err):
 			err = fmt.Errorf("%v: %w", err, derrors.ScanModuleTooManyOpenFiles)
 		case isProxyCacheMiss(err):
@@ -558,7 +559,7 @@ func (s *scanner) runBinaryScanInsecure(ctx context.Context, modulePath, version
 	return findings, nil
 }
 
-func isLoadError(err error) bool {
+func isGovulncheckLoadError(err error) bool {
 	return strings.Contains(err.Error(), "govulncheck: loading packages:") ||
 		strings.Contains(err.Error(), "FindAndBuildBinaries")
 }
