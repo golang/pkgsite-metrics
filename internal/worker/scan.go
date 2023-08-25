@@ -348,3 +348,8 @@ func isReplacingWithLocalPath(err error) bool {
 	matched, err := regexp.MatchString(`replaced by .{0,2}/`, errStr)
 	return err == nil && matched && strings.Contains(errStr, "go.mod: no such file")
 }
+
+func isProxyCacheMiss(err error) bool {
+	errStr := err.Error()
+	return strings.Contains(errStr, "server response") && strings.Contains(errStr, "temporarily unavailable")
+}

@@ -343,6 +343,8 @@ func (s *scanner) ScanModule(ctx context.Context, w http.ResponseWriter, sreq *g
 			err = fmt.Errorf("%v: %w", err, derrors.LoadVendorError)
 		case isTooManyFiles(err):
 			err = fmt.Errorf("%v: %w", err, derrors.ScanModuleTooManyOpenFiles)
+		case isProxyCacheMiss(err):
+			err = fmt.Errorf("%v: %w", err, derrors.ProxyError)
 		default:
 			err = fmt.Errorf("%v: %w", err, derrors.ScanModuleGovulncheckError)
 		}

@@ -217,6 +217,8 @@ func (s *analysisServer) scan(ctx context.Context, req *analysis.ScanRequest, lo
 			err = fmt.Errorf("%v: %w", err, derrors.LoadPackagesImportedLocalError)
 		case isModVendor(err):
 			err = fmt.Errorf("%v: %w", err, derrors.LoadVendorError)
+		case isProxyCacheMiss(err):
+			err = fmt.Errorf("%v: %w", err, derrors.ProxyError)
 		case !hasGoMod:
 			// Classify misc errors on synthetic modules separately.
 			err = fmt.Errorf("%v: %w", err, derrors.ScanSyntheticModuleError)
