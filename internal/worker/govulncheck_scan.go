@@ -355,25 +355,22 @@ func (s *scanner) ScanModule(ctx context.Context, w http.ResponseWriter, sreq *g
 	}
 	log.Infof(ctx, "scanner.runScanModule returned %d vulns for %s: row.Vulns=%d err=%v", len(vulns), sreq.Path(), len(row.Vulns), err)
 
-	if err := writeResult(ctx, sreq.Serve, w, s.bqClient, govulncheck.TableName, row); err != nil {
-		return err
+	rows := []bigquery.Row{row}
+	if sreq.Mode == ModeGovulncheck {
+		// For ModeGovulncheck, add the copy of row and report
+		// each vulnerability as imported. We set the performance
+		// numbers to 0 since we don't actually perform a scan
+		// at the level of import chains. Also makes a copy if
+		// the original row has an error and no vulns.
+		impRow := *row
+		impRow.ScanMode = modeImports
+		impRow.ScanSeconds = 0
+		impRow.ScanMemory = 0
+		impRow.Vulns = vulnsForMode(vulns, modeImports)
+		log.Infof(ctx, "scanner.runScanModule also storing imports vulns for %s: row.Vulns=%d", sreq.Path(), len(impRow.Vulns))
+		rows = append(rows, &impRow)
 	}
-
-	if sreq.Mode != ModeGovulncheck {
-		return nil
-	}
-	// For ModeGovulncheck, add the copy of row and report
-	// each vulnerability as imported. We set the performance
-	// numbers to 0 since we don't actually perform a scan
-	// at the level of import chains. Also makes a copy if
-	// the original row has an error and no vulns.
-	impRow := *row
-	impRow.ScanMode = modeImports
-	impRow.ScanSeconds = 0
-	impRow.ScanMemory = 0
-	impRow.Vulns = vulnsForMode(vulns, modeImports)
-	log.Infof(ctx, "scanner.runScanModule also storing imports vulns for %s: row.Vulns=%d", sreq.Path(), len(impRow.Vulns))
-	return writeResult(ctx, sreq.Serve, w, s.bqClient, govulncheck.TableName, &impRow)
+	return writeResults(ctx, sreq.Serve, w, s.bqClient, govulncheck.TableName, rows)
 }
 
 // vulnsForMode returns vulns that make sense to report for

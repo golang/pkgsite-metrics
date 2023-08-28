@@ -168,6 +168,7 @@ func writeResult(ctx context.Context, serve bool, w http.ResponseWriter, client 
 	return client.Upload(ctx, table, row)
 }
 
+// writeResults is like writeResult but stores the rows in a single transaction.
 func writeResults(ctx context.Context, serve bool, w http.ResponseWriter, client *bigquery.Client, table string, rows []bigquery.Row) (err error) {
 	defer derrors.Wrap(&err, "writeResults")
 
