@@ -300,7 +300,7 @@ func (s *scanner) ScanModule(ctx context.Context, w http.ResponseWriter, sreq *g
 	log.Debugf(ctx, "fetching proxy info: %s@%s", sreq.Path(), sreq.Version)
 	info, err := s.proxyClient.Info(ctx, sreq.Module, sreq.Version)
 	if err != nil {
-		log.Errorf(ctx, err, "proxy error")
+		log.Infof(ctx, "proxy error: %s@%s %v", sreq.Path(), sreq.Version, err)
 		row.AddError(fmt.Errorf("%v: %w", err, derrors.ProxyError))
 		// TODO: should we also make a copy for imports mode?
 		return writeResult(ctx, sreq.Serve, w, s.bqClient, govulncheck.TableName, row)
