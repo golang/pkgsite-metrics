@@ -288,7 +288,7 @@ type CompareResponse struct {
 type ComparePair struct {
 	BinaryResults SandboxResponse
 	SourceResults SandboxResponse
-	Error         error
+	Error         string
 }
 
 func UnmarshalCompareResponse(output []byte) (*CompareResponse, error) {

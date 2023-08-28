@@ -216,7 +216,7 @@ func (s *scanner) CompareModule(ctx context.Context, w http.ResponseWriter, sreq
 	defer derrors.Cleanup(&err, func() error { return os.RemoveAll(inputPath) })
 	const init = false
 	if err := prepareModule(ctx, baseRow.ModulePath, info.Version, inputPath, s.proxyClient, s.insecure, init); err != nil {
-		log.Infof(ctx, "Error trying to prepare module %s: %v", baseRow.ModulePath, err)
+		log.Errorf(ctx, err, "error trying to prepare module %s", baseRow.ModulePath)
 		return nil
 	}
 
@@ -226,18 +226,16 @@ func (s *scanner) CompareModule(ctx context.Context, w http.ResponseWriter, sreq
 
 	response, err := s.runGovulncheckCompareSandbox(ctx, smdir)
 	if err != nil {
-		// If govulncheck compare fails, discard the row and error and return nil.
-		log.Infof(ctx, "Error running govulncheckCompare on %s: %v", baseRow.ModulePath, err)
-		return nil
+		return err
 	}
 	log.Infof(ctx, "scanner.runGovulncheckCompare found %d compilable binaries in %s:", len(response.FindingsForMod), sreq.Path())
 
 	var rows []bigquery.Row
 	for pkg, results := range response.FindingsForMod {
-		if results.Error != nil {
+		if results.Error != "" {
 			// Just log error if binary failed to build. Otherwise, we'd have
 			// to create bq rows for both binary and source compare modes.
-			log.Errorf(ctx, err, "building binary failed: %s %s", pkg, sreq.Path())
+			log.Errorf(ctx, errors.New(results.Error), "building binary failed: %s %s", pkg, sreq.Path())
 			continue
 		}
 

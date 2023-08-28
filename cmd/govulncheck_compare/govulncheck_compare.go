@@ -65,7 +65,7 @@ func run(w io.Writer, args []string) {
 		response.FindingsForMod[binary.ImportPath] = pair
 
 		if binary.Error != nil {
-			pair.Error = binary.Error
+			pair.Error = binary.Error.Error()
 			continue // there was an error in building the binary
 		}
 
