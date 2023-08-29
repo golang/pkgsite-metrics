@@ -58,13 +58,13 @@ func (r *IPRequestCount) SetUploadTime(t time.Time) { r.CreatedAt = t }
 // writeToBigQuery writes request counts to BigQuery.
 func writeToBigQuery(ctx context.Context, client *bigquery.Client, rcs []*RequestCount, ircs []*IPRequestCount) (err error) {
 	defer derrors.Wrap(&err, "vulndbreqs.writeToBigQuery")
-	if err := client.CreateTable(ctx, RequestCountTableName); err != nil {
+	if _, err := client.CreateOrUpdateTable(ctx, RequestCountTableName); err != nil {
 		return err
 	}
 	if err := bigquery.UploadMany(ctx, client, RequestCountTableName, rcs, 0); err != nil {
 		return err
 	}
-	if err := client.CreateTable(ctx, IPRequestCountTableName); err != nil {
+	if _, err := client.CreateOrUpdateTable(ctx, IPRequestCountTableName); err != nil {
 		return err
 	}
 	return bigquery.UploadMany(ctx, client, IPRequestCountTableName, ircs, 0)

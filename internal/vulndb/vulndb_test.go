@@ -54,7 +54,7 @@ func TestReadMostRecentDB(t *testing.T) {
 	defer client.Close()
 
 	writeToBigQuery := func(es []*Entry) {
-		if err := client.CreateTable(ctx, TableName); err != nil {
+		if _, err := client.CreateOrUpdateTable(ctx, TableName); err != nil {
 			t.Fatal(err)
 		}
 		if err := bigquery.UploadMany(ctx, client, TableName, es, 0); err != nil {

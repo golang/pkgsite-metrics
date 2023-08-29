@@ -30,15 +30,23 @@ type Client struct {
 	deleteDatasetOnClose bool
 }
 
-// NewClient creates a new client for connecting to BigQuery, referring to a single dataset.
-// The dataset must already exist.
-func NewClient(ctx context.Context, projectID, datasetID string) (_ *Client, err error) {
+// NewClientCreate creates a new client for connecting to BigQuery, referring
+// to a single dataset. It creates the dataset if it doesn't exist.
+func NewClientCreate(ctx context.Context, projectID, datasetID string) (_ *Client, err error) {
+	if err := CreateDataset(ctx, projectID, datasetID); err != nil {
+		return nil, err
+	}
+	return newClient(ctx, projectID, datasetID)
+}
+
+func newClient(ctx context.Context, projectID, datasetID string) (_ *Client, err error) {
 	defer derrors.Wrap(&err, "New(ctx, %q, %q)", projectID, datasetID)
 	client, err := bq.NewClient(ctx, projectID)
 	if err != nil {
 		return nil, err
 	}
 	dataset := client.DatasetInProject(projectID, datasetID)
+	// Check that the dataset exists and is accessible.
 	if _, err := dataset.Metadata(ctx); err != nil {
 		return nil, err
 	}
@@ -46,14 +54,6 @@ func NewClient(ctx context.Context, projectID, datasetID string) (_ *Client, err
 		client:  client,
 		dataset: dataset,
 	}, nil
-}
-
-// NewClientCreate is like NewClient, but it creates the dataset if it doesn't exist.
-func NewClientCreate(ctx context.Context, projectID, datasetID string) (_ *Client, err error) {
-	if err := CreateDataset(ctx, projectID, datasetID); err != nil {
-		return nil, err
-	}
-	return NewClient(ctx, projectID, datasetID)
 }
 
 func (c *Client) Close() (err error) {
@@ -82,8 +82,13 @@ func CreateDataset(ctx context.Context, projectID, datasetID string) (err error)
 		return err
 	}
 	dataset := client.DatasetInProject(projectID, datasetID)
+	// If the dataset exists, do not try to create it. This will
+	// avoid generating confusing error messages in logs.
+	if _, err := dataset.Metadata(ctx); err == nil || !isNotFoundError(err) {
+		return nil
+	}
 	err = dataset.Create(ctx, &bq.DatasetMetadata{Name: datasetID})
-	if err != nil && !isAlreadyExistsError(err) {
+	if err != nil && !isAlreadyExistsError(err) { // for sanity, check for already-exists error
 		return err
 	}
 	return nil
@@ -125,41 +130,29 @@ func (c *Client) FullTableName(tableID string) string {
 	return fmt.Sprintf("%s.%s.%s", c.dataset.ProjectID, c.dataset.DatasetID, tableID)
 }
 
-// CreateTable creates a table with the given name if it doesn't exist.
-func (c *Client) CreateTable(ctx context.Context, tableID string) (err error) {
-	defer derrors.Wrap(&err, "CreateTable(%q)", tableID)
-	schema := TableSchema(tableID)
-	if schema == nil {
-		return fmt.Errorf("no schema registered for table %q", tableID)
-	}
-	err = c.Table(tableID).Create(ctx, &bq.TableMetadata{Schema: schema})
-	if err != nil && !isAlreadyExistsError(err) {
-		return err
-	}
-	return nil
-}
-
 // CreateOrUpdateTable creates a table if it does not exist, or updates it if it does.
 // It returns true if it created the table.
 func (c *Client) CreateOrUpdateTable(ctx context.Context, tableID string) (created bool, err error) {
 	defer derrors.Wrap(&err, "CreateOrUpdateTable(%q)", tableID)
+	schema := TableSchema(tableID)
+	if schema == nil {
+		return false, fmt.Errorf("no schema registered for table %q", tableID)
+	}
+
 	meta, err := c.Table(tableID).Metadata(ctx) // check if the table already exists
 	if err != nil {
 		if !isNotFoundError(err) {
 			return false, err
 		}
-		return true, c.CreateTable(ctx, tableID)
+		return true, c.Table(tableID).Create(ctx, &bq.TableMetadata{Schema: schema})
 	}
-	schema := TableSchema(tableID)
-	if schema == nil {
-		return false, fmt.Errorf("no schema registered for table %q", tableID)
-	}
+
 	_, err = c.Table(tableID).Update(ctx, bq.TableMetadataToUpdate{Schema: schema}, meta.ETag)
 	// There is a race condition if multiple threads of control call this function concurrently:
 	// The table may have changed since Metadata was called above, making the Etag invalid and
 	// resulting in a PreconditionFailed error. This error is harmless: it just means that someone
 	// else updated the table before us. Ignore it.
-	if isAlreadyExistsError(err) || hasCode(err, http.StatusPreconditionFailed) {
+	if isAlreadyExistsError(err) || hasCode(err, http.StatusPreconditionFailed) { // for sanity, check for already-exists error
 		return false, nil
 	}
 	return false, err
@@ -310,7 +303,7 @@ var (
 	tables  = map[string]bq.Schema{}
 )
 
-// AddTable records the schema for a table, so CreateTable just needs the name.
+// AddTable records the schema for a table, so table creation just needs the name.
 func AddTable(tableID string, s bq.Schema) {
 	tableMu.Lock()
 	defer tableMu.Unlock()
