@@ -207,48 +207,53 @@ func (s scanError) Unwrap() error {
 	return s.err
 }
 
-// Govulncheck compare discards all results where there is a failure that isn't directly related
-// to trying to write to bigquery. That means situations where the module is malformed, govulncheck
-// fails, or it is not possible to build a found binary within the module.
+// CompareModule gets results of govulncheck source and binary mode on each binary defined in a module.
+//
+// It discards all results where there is a failure that is not specific to the comparison, i.e., failures
+// that appear in GOVULNCHECK or IMPORTS mode. Examples are situations where the module is malformed,
+// govulncheck fails, or it is not possible to build a found binary within the module.
 func (s *scanner) CompareModule(ctx context.Context, w http.ResponseWriter, sreq *govulncheck.Request, info *proxy.VersionInfo, baseRow *govulncheck.Result) (err error) {
 	defer derrors.Wrap(&err, "CompareModule")
-	inputPath := moduleDir(baseRow.ModulePath, info.Version)
-	defer derrors.Cleanup(&err, func() error { return os.RemoveAll(inputPath) })
-	const init = false
-	if err := prepareModule(ctx, baseRow.ModulePath, info.Version, inputPath, s.proxyClient, s.insecure, init); err != nil {
-		log.Errorf(ctx, err, "error trying to prepare module %s", baseRow.ModulePath)
-		return nil
-	}
-
-	smdir := strings.TrimPrefix(inputPath, sandboxRoot)
-	err = s.sbox.Validate()
-	log.Debugf(ctx, "sandbox Validate returned %v", err)
-
-	response, err := s.runGovulncheckCompareSandbox(ctx, smdir)
-	if err != nil {
-		return err
-	}
-	log.Infof(ctx, "scanner.runGovulncheckCompare found %d compilable binaries in %s:", len(response.FindingsForMod), sreq.Path())
-
-	var rows []bigquery.Row
-	for pkg, results := range response.FindingsForMod {
-		if results.Error != "" {
-			// Just log error if binary failed to build. Otherwise, we'd have
-			// to create bq rows for both binary and source compare modes.
-			log.Errorf(ctx, errors.New(results.Error), "building binary failed: %s %s", pkg, sreq.Path())
-			continue
+	err = doScan(ctx, baseRow.ModulePath, info.Version, s.insecure, func() (err error) {
+		inputPath := moduleDir(baseRow.ModulePath, info.Version)
+		defer derrors.Cleanup(&err, func() error { return os.RemoveAll(inputPath) })
+		const init = false
+		if err := prepareModule(ctx, baseRow.ModulePath, info.Version, inputPath, s.proxyClient, s.insecure, init); err != nil {
+			log.Errorf(ctx, err, "error trying to prepare module %s", baseRow.ModulePath)
+			return nil
 		}
 
-		binRow := createComparisonRow(pkg, &results.BinaryResults, baseRow, ModeBinary)
-		srcRow := createComparisonRow(pkg, &results.SourceResults, baseRow, ModeGovulncheck)
-		log.Infof(ctx, "found %d vulns in binary mode and %d vulns in source mode for package %s (module: %s)", len(binRow.Vulns), len(srcRow.Vulns), pkg, sreq.Path())
-		rows = append(rows, binRow, srcRow)
-	}
+		smdir := strings.TrimPrefix(inputPath, sandboxRoot)
+		err = s.sbox.Validate()
+		log.Debugf(ctx, "sandbox Validate returned %v", err)
 
-	if len(rows) > 0 {
-		return writeResults(ctx, sreq.Serve, w, s.bqClient, govulncheck.TableName, rows)
-	}
-	return nil
+		response, err := s.runGovulncheckCompareSandbox(ctx, smdir)
+		if err != nil {
+			return err
+		}
+		log.Infof(ctx, "scanner.runGovulncheckCompare found %d compilable binaries in %s:", len(response.FindingsForMod), sreq.Path())
+
+		var rows []bigquery.Row
+		for pkg, results := range response.FindingsForMod {
+			if results.Error != "" {
+				// Just log error if binary failed to build. Otherwise, we'd have
+				// to create bq rows for both binary and source compare modes.
+				log.Errorf(ctx, errors.New(results.Error), "building binary failed: %s %s", pkg, sreq.Path())
+				continue
+			}
+
+			binRow := createComparisonRow(pkg, &results.BinaryResults, baseRow, ModeBinary)
+			srcRow := createComparisonRow(pkg, &results.SourceResults, baseRow, ModeGovulncheck)
+			log.Infof(ctx, "found %d vulns in binary mode and %d vulns in source mode for package %s (module: %s)", len(binRow.Vulns), len(srcRow.Vulns), pkg, sreq.Path())
+			rows = append(rows, binRow, srcRow)
+		}
+
+		if len(rows) > 0 {
+			return writeResults(ctx, sreq.Serve, w, s.bqClient, govulncheck.TableName, rows)
+		}
+		return nil
+	})
+	return err
 }
 
 func createComparisonRow(pkg string, result *govulncheck.SandboxResponse, baseRow *govulncheck.Result, mode string) (row *govulncheck.Result) {
