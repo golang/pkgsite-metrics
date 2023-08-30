@@ -217,7 +217,7 @@ func (s *scanner) CompareModule(ctx context.Context, w http.ResponseWriter, sreq
 	err = doScan(ctx, baseRow.ModulePath, info.Version, s.insecure, func() (err error) {
 		inputPath := moduleDir(baseRow.ModulePath, info.Version)
 		defer derrors.Cleanup(&err, func() error { return os.RemoveAll(inputPath) })
-		const init = false
+		const init = true
 		if err := prepareModule(ctx, baseRow.ModulePath, info.Version, inputPath, s.proxyClient, s.insecure, init); err != nil {
 			log.Errorf(ctx, err, "error trying to prepare module %s", baseRow.ModulePath)
 			return nil
