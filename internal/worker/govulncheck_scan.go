@@ -236,9 +236,9 @@ func (s *scanner) CompareModule(ctx context.Context, w http.ResponseWriter, sreq
 		var rows []bigquery.Row
 		for pkg, results := range response.FindingsForMod {
 			if results.Error != "" {
-				// Just log error if binary failed to build. Otherwise, we'd have
-				// to create bq rows for both binary and source compare modes.
-				log.Errorf(ctx, errors.New(results.Error), "building binary failed: %s %s", pkg, sreq.Path())
+				// Just log error if binary failed to build or the analysis failed.
+				// TODO: should we save those rows? This would complicate clients, namely the dashboards.
+				log.Errorf(ctx, errors.New(results.Error), "building/analyzing binary failed: %s %s", pkg, sreq.Path())
 				continue
 			}
 

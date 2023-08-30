@@ -46,10 +46,6 @@ func run(w io.Writer, args []string) {
 	modulePath := args[1]
 	vulndbPath := args[2]
 
-	response := govulncheck.CompareResponse{
-		FindingsForMod: make(map[string]*govulncheck.ComparePair),
-	}
-
 	binaries, err := buildbinary.FindAndBuildBinaries(modulePath)
 	if err != nil {
 		fail(err)
@@ -57,6 +53,9 @@ func run(w io.Writer, args []string) {
 	}
 	defer removeBinaries(binaries)
 
+	response := govulncheck.CompareResponse{
+		FindingsForMod: make(map[string]*govulncheck.ComparePair),
+	}
 	for _, binary := range binaries {
 		pair := &govulncheck.ComparePair{
 			BinaryResults: govulncheck.SandboxResponse{Stats: govulncheck.ScanStats{BuildTime: binary.BuildTime}},
@@ -71,14 +70,13 @@ func run(w io.Writer, args []string) {
 
 		pair.SourceResults.Findings, err = govulncheck.RunGovulncheckCmd(govulncheckPath, govulncheck.FlagSource, binary.ImportPath, modulePath, vulndbPath, &pair.SourceResults.Stats)
 		if err != nil {
-			fail(err)
-			return
+			pair.Error = err.Error()
+			continue
 		}
 
 		pair.BinaryResults.Findings, err = govulncheck.RunGovulncheckCmd(govulncheckPath, govulncheck.FlagBinary, binary.BinaryPath, modulePath, vulndbPath, &pair.BinaryResults.Stats)
 		if err != nil {
-			fail(err)
-			return
+			pair.Error = err.Error()
 		}
 	}
 
