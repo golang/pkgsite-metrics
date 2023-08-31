@@ -84,11 +84,16 @@ func CreateDataset(ctx context.Context, projectID, datasetID string) (err error)
 	dataset := client.DatasetInProject(projectID, datasetID)
 	// If the dataset exists, do not try to create it. This will
 	// avoid generating confusing error messages in logs.
-	if _, err := dataset.Metadata(ctx); err == nil || !isNotFoundError(err) {
+	if _, err := dataset.Metadata(ctx); err != nil {
+		if !isNotFoundError(err) {
+			return err
+		}
+	} else {
 		return nil
 	}
 	err = dataset.Create(ctx, &bq.DatasetMetadata{Name: datasetID})
-	if err != nil && !isAlreadyExistsError(err) { // for sanity, check for already-exists error
+	if err != nil && !isAlreadyExistsError(err) {
+		// check already-exists error for sanity and in case of races
 		return err
 	}
 	return nil
@@ -103,6 +108,12 @@ func isNotFoundError(err error) bool {
 func isAlreadyExistsError(err error) bool {
 	// The BigQuery API uses 409 for something that exists.
 	return hasCode(err, http.StatusConflict)
+}
+
+func isRaceChangeError(err error) bool {
+	// Changing the table in between update calls will make the
+	// Etag invalid and result in a PreconditionFailed error.
+	return hasCode(err, http.StatusPreconditionFailed)
 }
 
 func hasCode(err error, code int) bool {
@@ -149,10 +160,10 @@ func (c *Client) CreateOrUpdateTable(ctx context.Context, tableID string) (creat
 
 	_, err = c.Table(tableID).Update(ctx, bq.TableMetadataToUpdate{Schema: schema}, meta.ETag)
 	// There is a race condition if multiple threads of control call this function concurrently:
-	// The table may have changed since Metadata was called above, making the Etag invalid and
-	// resulting in a PreconditionFailed error. This error is harmless: it just means that someone
-	// else updated the table before us. Ignore it.
-	if isAlreadyExistsError(err) || hasCode(err, http.StatusPreconditionFailed) { // for sanity, check for already-exists error
+	// The table may have changed since Metadata was called above. This error is harmless: it
+	// just means that someone else updated the table before us. Ignore it.
+	if isAlreadyExistsError(err) || isRaceChangeError(err) {
+		// check already-exists error for sanity and in case of races
 		return false, nil
 	}
 	return false, err
