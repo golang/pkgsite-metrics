@@ -158,6 +158,13 @@ func (c *Client) CreateOrUpdateTable(ctx context.Context, tableID string) (creat
 		return true, c.Table(tableID).Create(ctx, &bq.TableMetadata{Schema: schema})
 	}
 
+	if SchemaVersion(schema) == SchemaVersion(meta.Schema) {
+		// The schemas are the same, so we don't need to do anything. In fact, any
+		// update, even an idempotent one, will result in table patching that counts
+		// towards quota limits for table metadata updates.
+		return false, nil
+	}
+
 	_, err = c.Table(tableID).Update(ctx, bq.TableMetadataToUpdate{Schema: schema}, meta.ETag)
 	// There is a race condition if multiple threads of control call this function concurrently:
 	// The table may have changed since Metadata was called above. This error is harmless: it
