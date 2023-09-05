@@ -241,7 +241,7 @@ resource "google_secret_manager_secret" "github_access_token" {
 resource "google_cloud_scheduler_job" "vulndb" {
   count       = var.env == "prod" ? 1 : 0
   name        = "${var.env}-vulndb"
-  description = "Compute vuln DB request counts."
+  description = "Compute vuln DB stats."
   schedule    = "0 6 * * *" # 6 AM daily
   time_zone   = local.tz
   project     = var.project
