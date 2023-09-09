@@ -12,6 +12,7 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"sort"
 	"strings"
 	"sync"
 	"time"
@@ -295,7 +296,18 @@ func SchemaVersion(schema bq.Schema) string {
 // SchemaString returns a long, human-readable string summarizing schema.
 func SchemaString(schema bq.Schema) string {
 	var b strings.Builder
-	for i, field := range schema {
+
+	// Order of columns does not matter in relational algebra,
+	// so we sort them by column name.
+	var fields []*bq.FieldSchema
+	for _, f := range schema {
+		fields = append(fields, f)
+	}
+	sort.SliceStable(fields, func(i, j int) bool {
+		return fields[i].Name < fields[j].Name // fields cannot have the same name
+	})
+
+	for i, field := range fields {
 		if i > 0 {
 			b.WriteRune(';')
 		}
