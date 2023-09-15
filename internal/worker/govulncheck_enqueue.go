@@ -12,14 +12,11 @@ import (
 	"sort"
 	"strings"
 
-	"cloud.google.com/go/storage"
 	"golang.org/x/pkgsite-metrics/internal/config"
 	"golang.org/x/pkgsite-metrics/internal/derrors"
 	"golang.org/x/pkgsite-metrics/internal/govulncheck"
-	"golang.org/x/pkgsite-metrics/internal/log"
 	"golang.org/x/pkgsite-metrics/internal/queue"
 	"golang.org/x/pkgsite-metrics/internal/scan"
-	"google.golang.org/api/iterator"
 )
 
 // handleEnqueue enqueues multiple modules for a single govulncheck mode.
@@ -82,21 +79,13 @@ func createGovulncheckQueueTasks(ctx context.Context, cfg *config.Config, params
 		modspecs []scan.ModuleSpec
 	)
 	for _, mode := range modes {
-		var reqs []*govulncheck.Request
-		if mode == ModeBinary {
-			reqs, err = readBinaries(ctx, cfg.BinaryBucket)
+		if modspecs == nil {
+			modspecs, err = readModules(ctx, cfg, params.File, params.Min)
 			if err != nil {
 				return nil, err
 			}
-		} else {
-			if modspecs == nil {
-				modspecs, err = readModules(ctx, cfg, params.File, params.Min)
-				if err != nil {
-					return nil, err
-				}
-			}
-			reqs = moduleSpecsToGovulncheckScanRequests(modspecs, mode)
 		}
+		reqs := moduleSpecsToGovulncheckScanRequests(modspecs, mode)
 		for _, req := range reqs {
 			if req.Module != "std" { // ignore the standard library
 				tasks = append(tasks, req)
@@ -133,38 +122,4 @@ func govulncheckMode(mode string) (string, error) {
 		return "", fmt.Errorf("unsupported mode: %v", mode)
 	}
 	return mode, nil
-}
-
-// gcsBinaryDir is the directory in the GCS bucket that contains binaries that should be scanned.
-const gcsBinaryDir = "binaries"
-
-func readBinaries(ctx context.Context, bucketName string) (reqs []*govulncheck.Request, err error) {
-	defer derrors.Wrap(&err, "readBinaries(%q)", bucketName)
-	if bucketName == "" {
-		log.Infof(ctx, "binary bucket not configured; not enqueuing binaries")
-		return nil, nil
-	}
-	c, err := storage.NewClient(ctx)
-	if err != nil {
-		return nil, err
-	}
-	iter := c.Bucket(bucketName).Objects(ctx, &storage.Query{Prefix: gcsBinaryDir})
-	for {
-		attrs, err := iter.Next()
-		if err == iterator.Done {
-			break
-		}
-		if err != nil {
-			return nil, err
-		}
-		mp, err := scan.ParseModuleURLPath(strings.TrimPrefix(attrs.Name, gcsBinaryDir+"/"))
-		if err != nil {
-			return nil, err
-		}
-		reqs = append(reqs, &govulncheck.Request{
-			ModuleURLPath: mp,
-			QueryParams:   govulncheck.QueryParams{Mode: ModeBinary},
-		})
-	}
-	return reqs, nil
 }

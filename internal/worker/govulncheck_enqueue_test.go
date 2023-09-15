@@ -6,7 +6,6 @@ package worker
 
 import (
 	"context"
-	"flag"
 	"fmt"
 	"testing"
 
@@ -16,39 +15,6 @@ import (
 	"golang.org/x/pkgsite-metrics/internal/queue"
 	"golang.org/x/pkgsite-metrics/internal/scan"
 )
-
-var binaryBucket = flag.String("binary-bucket", "", "bucket for scannable binaries")
-
-func TestReadBinaries(t *testing.T) {
-	if *binaryBucket == "" {
-		t.Skip("missing -binary-bucket")
-	}
-	sreqs, err := readBinaries(context.Background(), *binaryBucket)
-	if err != nil {
-		t.Fatal(err)
-	}
-	want := &govulncheck.Request{
-		ModuleURLPath: scan.ModuleURLPath{
-			Module:  "golang.org/x/pkgsite",
-			Version: "v0.0.0-20221004150836-873fb37c2479",
-			Suffix:  "cmd/worker",
-		},
-		QueryParams: govulncheck.QueryParams{Mode: ModeBinary},
-	}
-	found := false
-	for _, sr := range sreqs {
-		if *sr == *want {
-			found = true
-			break
-		}
-	}
-	if !found {
-		t.Errorf("did not find %+v in results:", want)
-		for _, r := range sreqs {
-			t.Logf("  %+v", r)
-		}
-	}
-}
 
 func TestCreateQueueTasks(t *testing.T) {
 	vreq := func(path, version, mode string, importedBy int) *govulncheck.Request {
@@ -98,7 +64,7 @@ func TestListModes(t *testing.T) {
 		want    []string
 		wantErr bool
 	}{
-		{"", true, []string{ModeBinary, ModeGovulncheck}, false},
+		{"", true, []string{ModeGovulncheck}, false},
 		{"", false, []string{ModeGovulncheck}, false},
 		{"imports", true, nil, true},
 	} {

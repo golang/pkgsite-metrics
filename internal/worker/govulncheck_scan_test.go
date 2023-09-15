@@ -5,7 +5,6 @@
 package worker
 
 import (
-	"context"
 	"errors"
 	"fmt"
 	"io"
@@ -14,10 +13,8 @@ import (
 	"strings"
 	"testing"
 
-	"cloud.google.com/go/storage"
 	"golang.org/x/pkgsite-metrics/internal/buildtest"
 	"golang.org/x/pkgsite-metrics/internal/govulncheck"
-	test "golang.org/x/pkgsite-metrics/internal/testing"
 )
 
 func TestAsScanError(t *testing.T) {
@@ -51,7 +48,7 @@ func TestVulnsForMode(t *testing.T) {
 	}{
 		{modeImports, "A:false, B:false, C:false"},
 		{ModeGovulncheck, "C:true"},
-		{ModeBinary, "A:false, B:false, C:true"},
+		{modeBinary, "A:false, B:false, C:true"},
 	} {
 		tc := tc
 		t.Run(tc.mode, func(t *testing.T) {
@@ -97,54 +94,28 @@ func TestRunScanModuleInsecure(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	ctx := context.Background()
-	for _, tc := range []struct {
-		name  string
-		input string
-		mode  string
-	}{
-		{"source", "../testdata/module", ModeGovulncheck},
-		// test_vuln binary on gcs is built from ../testdata/module.
-		{"binary", "test_vuln", ModeBinary},
-	} {
-		tc := tc
-		t.Run(tc.name, func(t *testing.T) {
-			s := &scanner{insecure: true, govulncheckPath: govulncheckPath, vulnDBDir: vulndb}
+	s := &scanner{insecure: true, govulncheckPath: govulncheckPath, vulnDBDir: vulndb}
 
-			if tc.mode == ModeBinary {
-				test.NeedsIntegrationEnv(t)
-
-				gcsClient, err := storage.NewClient(ctx)
-				if err != nil {
-					t.Fatal(err)
-				}
-				s.gcsBucket = gcsClient.Bucket("go-ecosystem")
-			}
-
-			stats := &govulncheck.ScanStats{}
-			findings, err := s.runGovulncheckScanInsecure(ctx,
-				"golang.org/vuln", "v0.0.0",
-				tc.input, tc.mode, stats)
-			if err != nil {
-				t.Fatal(err)
-			}
-			wantID := "GO-2021-0113"
-			found := false
-			for _, v := range findings {
-				if v.OSV == wantID {
-					found = true
-					break
-				}
-			}
-			if !found {
-				t.Errorf("want %s, did not find it in %d vulns", wantID, len(findings))
-			}
-			if got := stats.ScanSeconds; got <= 0 {
-				t.Errorf("scan time not collected or negative: %v", got)
-			}
-			if got := stats.ScanMemory; got <= 0 && runtime.GOOS == "linux" {
-				t.Errorf("scan memory not collected or negative: %v", got)
-			}
-		})
+	stats := &govulncheck.ScanStats{}
+	findings, err := s.runGovulncheckScanInsecure("../testdata/module", ModeGovulncheck, stats)
+	if err != nil {
+		t.Fatal(err)
+	}
+	wantID := "GO-2021-0113"
+	found := false
+	for _, v := range findings {
+		if v.OSV == wantID {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Errorf("want %s, did not find it in %d vulns", wantID, len(findings))
+	}
+	if got := stats.ScanSeconds; got <= 0 {
+		t.Errorf("scan time not collected or negative: %v", got)
+	}
+	if got := stats.ScanMemory; got <= 0 && runtime.GOOS == "linux" {
+		t.Errorf("scan memory not collected or negative: %v", got)
 	}
 }

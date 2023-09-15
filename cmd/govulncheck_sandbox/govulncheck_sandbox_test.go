@@ -6,8 +6,6 @@ package main
 
 import (
 	"bytes"
-	"os"
-	"os/exec"
 	"path/filepath"
 	"runtime"
 	"strings"
@@ -15,10 +13,8 @@ import (
 
 	"golang.org/x/exp/slices"
 	"golang.org/x/pkgsite-metrics/internal/buildtest"
-	"golang.org/x/pkgsite-metrics/internal/derrors"
 	"golang.org/x/pkgsite-metrics/internal/govulncheck"
 	"golang.org/x/pkgsite-metrics/internal/govulncheckapi"
-	"golang.org/x/pkgsite-metrics/internal/worker"
 )
 
 func Test(t *testing.T) {
@@ -54,7 +50,7 @@ func Test(t *testing.T) {
 	}
 
 	t.Run("source", func(t *testing.T) {
-		resp, err := runTest([]string{govulncheckPath, worker.ModeGovulncheck, module, vulndb})
+		resp, err := runTest([]string{govulncheckPath, govulncheck.FlagSource, module, vulndb})
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -66,22 +62,6 @@ func Test(t *testing.T) {
 		if resp.Stats.ScanMemory <= 0 {
 			t.Errorf("got %d; want >0 scan memory", resp.Stats.ScanMemory)
 		}
-	})
-
-	t.Run("binary", func(t *testing.T) {
-		t.Skip("govulncheck may not support the Go version")
-		binary := filepath.Join(module, "vuln")
-		cmd := exec.Command("go", "build")
-		cmd.Dir = module
-		if _, err := cmd.Output(); err != nil {
-			t.Fatal(derrors.IncludeStderr(err))
-		}
-		defer os.Remove(binary)
-		resp, err := runTest([]string{govulncheckPath, worker.ModeBinary, binary, vulndb})
-		if err != nil {
-			t.Fatal(err)
-		}
-		checkVuln(t, resp.Findings)
 	})
 
 	// Errors
@@ -97,17 +77,22 @@ func Test(t *testing.T) {
 		},
 		{
 			name: "no vulndb",
-			args: []string{govulncheckPath, worker.ModeGovulncheck, module, "DNE"},
+			args: []string{govulncheckPath, govulncheck.FlagSource, module, "DNE"},
 			want: "URL missing path",
 		},
 		{
 			name: "no mode",
-			args: []string{govulncheckPath, "MODE", module, vulndb},
+			args: []string{govulncheckPath, "unsupported mode", module, vulndb},
 			want: "not a valid mode",
 		},
 		{
+			name: "no mode",
+			args: []string{govulncheckPath, govulncheck.FlagBinary, module, vulndb},
+			want: "binaries are only analyzed",
+		},
+		{
 			name: "no module",
-			args: []string{govulncheckPath, worker.ModeGovulncheck, "nosuchmodule", vulndb},
+			args: []string{govulncheckPath, govulncheck.FlagSource, "nosuchmodule", vulndb},
 			// Once govulncheck destinguishes this issue from no .mod file,
 			// update want to reflect govulncheck's new output
 			want: "no go.mod",

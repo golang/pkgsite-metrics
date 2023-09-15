@@ -32,16 +32,16 @@ const (
 	// difference in precision of vulnerability detection.
 	modeImports string = "IMPORTS"
 
-	// ModeBinary runs the govulncheck binary in binary mode.
-	// TODO: needed?
-	ModeBinary string = "BINARY"
-
 	// ModeGovulncheck runs the govulncheck binary in default (source) mode.
 	ModeGovulncheck = "GOVULNCHECK"
 
 	// ModeCompare finds compilable binaries and runs govulncheck in both source
 	// and binary mode.
 	ModeCompare = "COMPARE"
+
+	// modeBinary is only used by ModeCompare for reporting results. It cannot
+	// be directly triggered by scan endpoints.
+	modeBinary string = "BINARY"
 
 	// sandboxGoCache is the location of the Go cache inside the sandbox. The
 	// user is root and their $HOME directory is /root. The Go cache resides
@@ -51,13 +51,17 @@ const (
 
 // modes is a set of govulncheck modes externally visible.
 var modes = map[string]bool{
-	ModeBinary:      true,
 	ModeGovulncheck: true,
 	ModeCompare:     true,
 }
 
-func IsValidGovulncheckMode(mode string) bool {
-	return modes[mode]
+func modeToGovulncheckFlag(mode string) string {
+	switch mode {
+	case modeBinary: // for sanity
+		return govulncheck.FlagBinary
+	default:
+		return govulncheck.FlagSource
+	}
 }
 
 var scanCounter = event.NewCounter("scans", &event.MetricOptions{Namespace: metricNamespace})
@@ -242,7 +246,7 @@ func (s *scanner) CompareModule(ctx context.Context, w http.ResponseWriter, sreq
 				continue
 			}
 
-			binRow := createComparisonRow(pkg, &results.BinaryResults, baseRow, ModeBinary)
+			binRow := createComparisonRow(pkg, &results.BinaryResults, baseRow, modeBinary)
 			srcRow := createComparisonRow(pkg, &results.SourceResults, baseRow, ModeGovulncheck)
 			log.Infof(ctx, "found %d vulns in binary mode and %d vulns in source mode for package %s (module: %s)", len(binRow.Vulns), len(srcRow.Vulns), pkg, sreq.Path())
 			rows = append(rows, binRow, srcRow)
@@ -267,7 +271,7 @@ func createComparisonRow(pkg string, result *govulncheck.SandboxResponse, baseRo
 		CommitTime:  baseRow.CommitTime,
 		WorkVersion: baseRow.WorkVersion,
 	}
-	if mode == ModeBinary {
+	if mode == modeBinary {
 		row.ScanMode = "COMPARE - BINARY"
 		row.BinaryBuildSeconds = bigquery.NullFloat(result.Stats.BuildTime.Seconds())
 	} else {
@@ -318,7 +322,7 @@ func (s *scanner) ScanModule(ctx context.Context, w http.ResponseWriter, sreq *g
 
 	log.Infof(ctx, "running scanner.runScanModule: %s@%s", sreq.Path(), sreq.Version)
 	stats := &govulncheck.ScanStats{}
-	vulns, err := s.runScanModule(ctx, sreq.Module, info.Version, sreq.Suffix, sreq.Mode, stats)
+	vulns, err := s.runScanModule(ctx, sreq.Module, info.Version, sreq.Mode, stats)
 	row.ScanSeconds = stats.ScanSeconds
 	row.ScanMemory = int64(stats.ScanMemory)
 	if err != nil {
@@ -381,11 +385,11 @@ func (s *scanner) ScanModule(ctx context.Context, w http.ResponseWriter, sreq *g
 //
 // For ModeGovulncheck, these are all vulns that are actually
 // called. For modeImports, these are all vulns, called or just
-// imported. For ModeBinary, these are exactly all the vulns
+// imported. For modeBinary, these are exactly all the vulns
 // since binary analysis does not distinguish between called
 // and imported vulnerabilities.
 func vulnsForMode(vulns []*govulncheck.Vuln, mode string) []*govulncheck.Vuln {
-	if mode == ModeBinary {
+	if mode == modeBinary {
 		return vulns
 	}
 
@@ -409,28 +413,23 @@ func vulnsForMode(vulns []*govulncheck.Vuln, mode string) []*govulncheck.Vuln {
 	return vs
 }
 
-// runScanModule fetches the module version from the proxy, and analyzes it for
-// vulnerabilities.
-func (s *scanner) runScanModule(ctx context.Context, modulePath, version, binaryDir, mode string, stats *govulncheck.ScanStats) (bvulns []*govulncheck.Vuln, err error) {
+// runScanModule fetches the module version from the proxy, and analyzes its source
+// code for vulnerabilities. The analysis of binaries is done in CompareModules.
+func (s *scanner) runScanModule(ctx context.Context, modulePath, version, mode string, stats *govulncheck.ScanStats) (bvulns []*govulncheck.Vuln, err error) {
 	err = doScan(ctx, modulePath, version, s.insecure, func() (err error) {
-		// In ModeBinary, path is a file path to the input binary.
-		// Otherwise, it is a path to the input module directory.
-		inputPath := binaryDir
-		if mode != ModeBinary {
-			// In source analysis modes, download the module first.
-			inputPath = moduleDir(modulePath, version)
-			defer derrors.Cleanup(&err, func() error { return os.RemoveAll(inputPath) })
-			const init = true
-			if err := prepareModule(ctx, modulePath, version, inputPath, s.proxyClient, s.insecure, init); err != nil {
-				return err
-			}
+		// Download the module first.
+		inputPath := moduleDir(modulePath, version)
+		defer derrors.Cleanup(&err, func() error { return os.RemoveAll(inputPath) })
+		const init = true
+		if err := prepareModule(ctx, modulePath, version, inputPath, s.proxyClient, s.insecure, init); err != nil {
+			return err
 		}
 
 		var findings []*govulncheckapi.Finding
 		if s.insecure {
-			findings, err = s.runGovulncheckScanInsecure(ctx, modulePath, version, inputPath, mode, stats)
+			findings, err = s.runGovulncheckScanInsecure(inputPath, mode, stats)
 		} else {
-			findings, err = s.runGovulncheckScanSandbox(ctx, modulePath, version, inputPath, mode, stats)
+			findings, err = s.runGovulncheckScanSandbox(ctx, inputPath, mode, stats)
 		}
 		if err != nil {
 			return err
@@ -445,52 +444,12 @@ func (s *scanner) runScanModule(ctx context.Context, modulePath, version, binary
 	return bvulns, err
 }
 
-func (s *scanner) runGovulncheckScanSandbox(ctx context.Context, modulePath, version, inputPath, mode string, stats *govulncheck.ScanStats) (_ []*govulncheckapi.Finding, err error) {
-	if mode == ModeBinary {
-		return s.runBinaryScanSandbox(ctx, modulePath, version, inputPath, stats)
-	}
-
+func (s *scanner) runGovulncheckScanSandbox(ctx context.Context, inputPath, mode string, stats *govulncheck.ScanStats) (_ []*govulncheckapi.Finding, err error) {
 	smdir := strings.TrimPrefix(inputPath, sandboxRoot)
 	err = s.sbox.Validate()
 	log.Debugf(ctx, "sandbox Validate returned %v", err)
 
-	response, err := s.runGovulncheckSandbox(ctx, ModeGovulncheck, smdir)
-	if err != nil {
-		return nil, err
-	}
-	stats.ScanMemory = response.Stats.ScanMemory
-	stats.ScanSeconds = response.Stats.ScanSeconds
-	return response.Findings, nil
-}
-
-func (s *scanner) runBinaryScanSandbox(ctx context.Context, modulePath, version, binDir string, stats *govulncheck.ScanStats) ([]*govulncheckapi.Finding, error) {
-	if s.gcsBucket == nil {
-		return nil, errors.New("binary bucket not configured; set GO_ECOSYSTEM_BINARY_BUCKET")
-	}
-	// Copy the binary from GCS to the local disk, because vulncheck.Binary
-	// ultimately requires a ReaderAt and GCS doesn't provide that.
-	gcsPathname := fmt.Sprintf("%s/%s@%s/%s", gcsBinaryDir, modulePath, version, binDir)
-	destDir := s.binaryDir
-	log.Debug(ctx, "copying",
-		"from", gcsPathname,
-		"to", destDir,
-		"module", modulePath, "version", version,
-		"dir", binDir)
-	destf, err := os.CreateTemp(destDir, "govulncheck-binary-")
-	if err != nil {
-		return nil, err
-	}
-	defer os.Remove(destf.Name())
-	rc, err := s.gcsBucket.Object(gcsPathname).NewReader(ctx)
-	if err != nil {
-		return nil, err
-	}
-	defer rc.Close()
-	if err := copyAndClose(destf, rc); err != nil {
-		return nil, err
-	}
-
-	response, err := s.runGovulncheckSandbox(ctx, ModeBinary, destf.Name())
+	response, err := s.runGovulncheckSandbox(ctx, modeToGovulncheckFlag(mode), smdir)
 	if err != nil {
 		return nil, err
 	}
@@ -507,7 +466,7 @@ func (s *scanner) runGovulncheckSandbox(ctx context.Context, mode, arg string) (
 		log.Debugf(ctx, "Sandbox running %s", goOut)
 	}
 	log.Infof(ctx, "running govulncheck in sandbox: mode %s, arg %q", mode, arg)
-	cmd := s.sbox.Command(filepath.Join(s.binaryDir, "govulncheck_sandbox"), s.govulncheckPath, mode, arg, s.vulnDBDir)
+	cmd := s.sbox.Command(filepath.Join(s.binaryDir, "govulncheck_sandbox"), s.govulncheckPath, modeToGovulncheckFlag(mode), arg, s.vulnDBDir)
 	stdout, err := cmd.Output()
 	log.Infof(ctx, "govulncheck in sandbox finished with err=%v", err)
 	if err != nil {
@@ -527,36 +486,8 @@ func (s *scanner) runGovulncheckCompareSandbox(ctx context.Context, arg string) 
 	return govulncheck.UnmarshalCompareResponse(stdout)
 }
 
-func (s *scanner) runGovulncheckScanInsecure(ctx context.Context, modulePath, version, inputPath, mode string, stats *govulncheck.ScanStats) (_ []*govulncheckapi.Finding, err error) {
-	if mode == ModeBinary {
-		return s.runBinaryScanInsecure(ctx, modulePath, version, inputPath, os.TempDir(), stats)
-	}
-
-	findings, err := govulncheck.RunGovulncheckCmd(s.govulncheckPath, govulncheck.FlagSource, "./...", inputPath, s.vulnDBDir, stats)
-	if err != nil {
-		return nil, err
-	}
-	return findings, nil
-}
-
-func (s *scanner) runBinaryScanInsecure(ctx context.Context, modulePath, version, binDir, tempDir string, stats *govulncheck.ScanStats) ([]*govulncheckapi.Finding, error) {
-	if s.gcsBucket == nil {
-		return nil, errors.New("binary bucket not configured; set GO_ECOSYSTEM_BINARY_BUCKET")
-	}
-	// Copy the binary from GCS to the local disk, because govulncheck
-	// ultimately requires a ReaderAt and GCS doesn't provide that.
-	gcsPathname := fmt.Sprintf("%s/%s@%s/%s", gcsBinaryDir, modulePath, version, binDir)
-	log.Debug(ctx, "copying to temp dir",
-		"from", gcsPathname, "module", modulePath, "version", version, "dir", binDir)
-	localPathname := filepath.Join(tempDir, "binary")
-	if err := copyToLocalFile(localPathname, false, gcsPathname, gcsOpenFileFunc(ctx, s.gcsBucket)); err != nil {
-		return nil, err
-	}
-	findings, err := govulncheck.RunGovulncheckCmd(s.govulncheckPath, govulncheck.FlagBinary, localPathname, "", s.vulnDBDir, stats)
-	if err != nil {
-		return nil, err
-	}
-	return findings, nil
+func (s *scanner) runGovulncheckScanInsecure(inputPath, mode string, stats *govulncheck.ScanStats) (_ []*govulncheckapi.Finding, err error) {
+	return govulncheck.RunGovulncheckCmd(s.govulncheckPath, modeToGovulncheckFlag(mode), "./...", inputPath, s.vulnDBDir, stats)
 }
 
 func isGovulncheckLoadError(err error) bool {
