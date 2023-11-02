@@ -213,7 +213,7 @@ resource "google_cloud_tasks_queue" "worker_tasks" {
   project  = var.project
 
   rate_limits {
-    max_concurrent_dispatches = 400
+    max_concurrent_dispatches = 200
     max_dispatches_per_second = 500
   }
 
