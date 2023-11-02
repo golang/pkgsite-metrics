@@ -280,7 +280,7 @@ resource "google_cloud_scheduler_job" "enqueueall" {
   count       = var.env == "prod" ? 1 : 0
   name        = "${var.env}-enqueueall"
   description = "Enqueue modules for all modes that should be run frequently."
-  schedule    = "0 8 * * *" # 8 AM daily
+  schedule    = "0 8 * * 1,3,5" # 8 AM every Mon, Wed, and Fri
   time_zone   = local.tz
   project     = var.project
 
@@ -299,7 +299,7 @@ resource "google_cloud_scheduler_job" "enqueuecompare" {
   count       = var.env == "prod" ? 1 : 0
   name        = "${var.env}-enqueuecompare"
   description = "Enqueue modules for compare mode."
-  schedule    = "0 5 * * SUN" # 5 AM every Sunday
+  schedule    = "0 20 * * SAT" # 8PM every Saturday
   time_zone   = local.tz
   project     = var.project
 
