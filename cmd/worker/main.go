@@ -11,6 +11,8 @@ import (
 	"fmt"
 	"net/http"
 	"os"
+	"os/signal"
+	"syscall"
 	"time"
 
 	"golang.org/x/exp/slog"
@@ -68,10 +70,24 @@ func runServer(ctx context.Context) error {
 	cfg.Insecure = *insecure
 	cfg.Dump(os.Stdout)
 	log.Infof(ctx, "config: project=%s, dataset=%s", cfg.ProjectID, cfg.BigQueryDataset)
+
 	if _, err := worker.NewServer(ctx, cfg); err != nil {
 		return err
 	}
+	go monitor(ctx)
+
 	addr := ":" + *port
 	log.Infof(ctx, "Listening on addr http://localhost%s", addr)
 	return fmt.Errorf("listening: %v", http.ListenAndServe(addr, nil))
+}
+
+// monitor measures details of server execution from
+// the moment is starts listening to the moment it
+// gets a SIGTERM signal.
+func monitor(ctx context.Context) {
+	start := time.Now()
+	signals := make(chan os.Signal, 1)
+	signal.Notify(signals, syscall.SIGTERM)
+	<-signals
+	log.Infof(ctx, "server stopped listening after: %v\n", time.Since(start))
 }
