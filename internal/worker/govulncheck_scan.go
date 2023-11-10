@@ -64,7 +64,14 @@ func modeToGovulncheckFlag(mode string) string {
 	}
 }
 
-var scanCounter = event.NewCounter("scans", &event.MetricOptions{Namespace: metricNamespace})
+var (
+	// gReqCounter counts requests to govulncheck handleScan
+	gReqCounter = event.NewCounter("govulncheck-requests", &event.MetricOptions{Namespace: metricNamespace})
+	// gSuccCounter counts successfully processed requests to govulncheck handleScan
+	gSuccCounter = event.NewCounter("govulncheck-requests-ok", &event.MetricOptions{Namespace: metricNamespace})
+	// gSkipCounter counts skipped requests to govulncheck handleScan
+	gSkipCounter = event.NewCounter("govulncheck-requests-skip", &event.MetricOptions{Namespace: metricNamespace})
+)
 
 // handleScan runs a govulncheck scan for a single input module. It is triggered
 // by path /govulncheck/scan/MODULE_VERSION_SUFFIX?params.
@@ -73,8 +80,13 @@ var scanCounter = event.NewCounter("scans", &event.MetricOptions{Namespace: metr
 func (h *GovulncheckServer) handleScan(w http.ResponseWriter, r *http.Request) (err error) {
 	defer derrors.Wrap(&err, "handleScan")
 
+	// Collect basic metrics.
+	gReqCounter.Record(r.Context(), 1)
+	h.Server.reqs++
+	skip := false // request skipped
 	defer func() {
-		scanCounter.Record(r.Context(), 1, event.Bool("success", err == nil))
+		gSuccCounter.Record(r.Context(), 1, event.Bool("success", err == nil))
+		gSkipCounter.Record(r.Context(), 1, event.Bool("skipped", skip))
 	}()
 
 	ctx := r.Context()
@@ -93,7 +105,7 @@ func (h *GovulncheckServer) handleScan(w http.ResponseWriter, r *http.Request) (
 	if sreq.Insecure {
 		scanner.insecure = sreq.Insecure
 	}
-	skip, err := h.canSkip(ctx, sreq, scanner)
+	skip, err = h.canSkip(ctx, sreq, scanner)
 	if err != nil {
 		return err
 	}

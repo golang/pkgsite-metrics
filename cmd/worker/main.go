@@ -71,10 +71,11 @@ func runServer(ctx context.Context) error {
 	cfg.Dump(os.Stdout)
 	log.Infof(ctx, "config: project=%s, dataset=%s", cfg.ProjectID, cfg.BigQueryDataset)
 
-	if _, err := worker.NewServer(ctx, cfg); err != nil {
+	s, err := worker.NewServer(ctx, cfg)
+	if err != nil {
 		return err
 	}
-	go monitor(ctx)
+	go monitor(ctx, s)
 
 	addr := ":" + *port
 	log.Infof(ctx, "Listening on addr http://localhost%s", addr)
@@ -84,10 +85,10 @@ func runServer(ctx context.Context) error {
 // monitor measures details of server execution from
 // the moment is starts listening to the moment it
 // gets a SIGTERM signal.
-func monitor(ctx context.Context) {
+func monitor(ctx context.Context, s *worker.Server) {
 	start := time.Now()
 	signals := make(chan os.Signal, 1)
 	signal.Notify(signals, syscall.SIGTERM)
 	<-signals
-	log.Infof(ctx, "server stopped listening after: %v\n", time.Since(start))
+	log.Infof(ctx, "server stopped listening after: %v\n%s", time.Since(start), s.Info())
 }

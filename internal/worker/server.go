@@ -36,8 +36,15 @@ type Server struct {
 	queue       queue.Queue
 	jobDB       *jobs.DB
 
+	reqs int // for debugging
+
 	devMode bool
 	mu      sync.Mutex
+}
+
+// Info summarizes Server execution as text.
+func (s *Server) Info() string {
+	return fmt.Sprintf("total requests: %d", s.reqs)
 }
 
 func NewServer(ctx context.Context, cfg *config.Config) (_ *Server, err error) {
