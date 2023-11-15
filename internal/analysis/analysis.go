@@ -36,6 +36,7 @@ type ScanParams struct {
 	Insecure      bool   // if true, run outside sandbox
 	Serve         bool   // serve results back to client instead of writing them to BigQuery
 	JobID         string // ID of job, if non-empty
+	SkipInit      bool   // if true, do not initialize non-module Go projects
 }
 
 type EnqueueParams struct {
@@ -46,6 +47,7 @@ type EnqueueParams struct {
 	File     string // path to file containing modules; if missing, use DB
 	Suffix   string // appended to task queue IDs to generate unique tasks
 	User     string // user initiating enqueue
+	SkipInit bool   // if true, do not initialize non-module Go projects
 }
 
 // Request implements queue.Task so it can be put on a TaskQueue.

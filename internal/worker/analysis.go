@@ -242,8 +242,7 @@ func (s *analysisServer) scan(ctx context.Context, req *analysis.ScanRequest, lo
 }
 
 func (s *analysisServer) scanInternal(ctx context.Context, req *analysis.ScanRequest, binaryPath, moduleDir string) (jt analysis.JSONTree, err error) {
-	const init = true
-	if err := prepareModule(ctx, req.Module, req.Version, moduleDir, s.proxyClient, req.Insecure, init); err != nil {
+	if err := prepareModule(ctx, req.Module, req.Version, moduleDir, s.proxyClient, req.Insecure, !req.SkipInit); err != nil {
 		return nil, err
 	}
 	var sbox *sandbox.Sandbox
@@ -475,6 +474,7 @@ func createAnalysisQueueTasks(params *analysis.EnqueueParams, jobID string, bina
 				ImportedBy:    mod.ImportedBy,
 				Insecure:      params.Insecure,
 				JobID:         jobID,
+				SkipInit:      params.SkipInit,
 			},
 		})
 	}
