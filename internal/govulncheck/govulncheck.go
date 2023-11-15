@@ -222,7 +222,7 @@ func ReadWorkState(ctx context.Context, c *bigquery.Client, module_path, version
 	defer derrors.Wrap(&err, "ReadWorkState")
 
 	const qf = `
-                SELECT module_path, version, go_version, worker_version, schema_version, vulndb_last_modified, error_category
+                SELECT go_version, worker_version, schema_version, vulndb_last_modified, error_category
                 FROM %s WHERE module_path="%s" AND version="%s" ORDER BY created_at DESC LIMIT 1
         `
 	query := fmt.Sprintf(qf, "`"+c.FullTableName(TableName)+"`", module_path, version)

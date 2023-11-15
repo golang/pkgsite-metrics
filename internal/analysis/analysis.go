@@ -218,7 +218,7 @@ func ReadWorkVersion(ctx context.Context, c *bigquery.Client, module_path, versi
 	defer derrors.Wrap(&err, "ReadWorkVersion")
 
 	const qf = `
-                SELECT module_path, version, binary_name, binary_version, binary_args, worker_version, schema_version
+                SELECT binary_version, binary_args, worker_version, schema_version
                 FROM %s WHERE module_path="%s" AND version="%s" AND binary_name="%s" ORDER BY created_at DESC LIMIT 1
         `
 	query := fmt.Sprintf(qf, "`"+c.FullTableName(TableName)+"`", module_path, version, binary)
