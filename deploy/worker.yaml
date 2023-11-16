@@ -85,7 +85,8 @@ steps:
         image=$(cat /workspace/image.txt)
         docker build -t $image -f cmd/worker/Dockerfile . \
           --build-arg DOCKER_IMAGE=$image \
-          --build-arg BQ_DATASET=${_BQ_DATASET}
+          --build-arg BQ_DATASET=${_BQ_DATASET} \
+          --build-arg SERVICE_ID=${_ENV}-ecosystem-worker
         docker push $image
 
   - id: Deploy
