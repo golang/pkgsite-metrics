@@ -269,7 +269,11 @@ func (s *scanner) CompareModule(ctx context.Context, w http.ResponseWriter, sreq
 		}
 		return nil
 	})
-	return err
+
+	if err != nil {
+		log.Errorf(ctx, err, "CompareModule failed for: %s", baseRow.ModulePath)
+	}
+	return nil
 }
 
 func createComparisonRow(pkg string, result *govulncheck.SandboxResponse, baseRow *govulncheck.Result, mode string) (row *govulncheck.Result) {
