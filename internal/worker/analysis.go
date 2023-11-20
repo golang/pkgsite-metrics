@@ -226,6 +226,8 @@ func (s *analysisServer) scan(ctx context.Context, req *analysis.ScanRequest, lo
 			err = fmt.Errorf("%v: %w", err, derrors.LoadVendorError)
 		case isProxyCacheMiss(err):
 			err = fmt.Errorf("%v: %w", err, derrors.ProxyError)
+		case isMemoryIssue(err):
+			err = fmt.Errorf("%v: %w", err, derrors.ScanModuleMemoryLimitExceeded)
 		case isBuildIssue(err):
 			err = fmt.Errorf("%v: %w", err, derrors.LoadPackagesError)
 		case !hasGoMod:
