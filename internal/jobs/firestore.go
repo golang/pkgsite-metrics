@@ -6,42 +6,27 @@ package jobs
 
 import (
 	"context"
-	"errors"
 	"time"
 
 	"cloud.google.com/go/firestore"
 	"golang.org/x/pkgsite-metrics/internal/derrors"
+	"golang.org/x/pkgsite-metrics/internal/fstore"
 	"google.golang.org/api/iterator"
 )
 
-// A DB is a client for a database that stores Jobs.
-type DB struct {
-	namespace string
-	client    *firestore.Client
-	nsDoc     *firestore.DocumentRef // the namespace for this db
-}
+const jobCollection = "Jobs"
 
-const (
-	namespaceCollection = "Namespaces"
-	jobCollection       = "Jobs"
-)
+type DB struct {
+	ns *fstore.Namespace
+}
 
 // NewDB creates a new database client for jobs.
 func NewDB(ctx context.Context, projectID, namespace string) (_ *DB, err error) {
-	defer derrors.Wrap(&err, "job.NewDB(%q, %q)", projectID, namespace)
-
-	if namespace == "" {
-		return nil, errors.New("empty namespace")
-	}
-	client, err := firestore.NewClient(ctx, projectID)
+	ns, err := fstore.OpenNamespace(ctx, projectID, namespace)
 	if err != nil {
 		return nil, err
 	}
-	return &DB{
-		namespace: namespace,
-		client:    client,
-		nsDoc:     client.Collection(namespaceCollection).Doc(namespace),
-	}, nil
+	return &DB{ns}, nil
 }
 
 // CreateJob creates a new job. It returns an error if a job with the same ID already exists.
@@ -62,11 +47,7 @@ func (d *DB) DeleteJob(ctx context.Context, id string) (err error) {
 // GetJob retrieves the job with the given ID. It returns an error if the job does not exist.
 func (d *DB) GetJob(ctx context.Context, id string) (_ *Job, err error) {
 	defer derrors.Wrap(&err, "job.DB.GetJob(%s)", id)
-	docsnap, err := d.jobRef(id).Get(ctx)
-	if err != nil {
-		return nil, err
-	}
-	return docsnapToJob(docsnap)
+	return fstore.Get[Job](ctx, d.jobRef(id))
 }
 
 // UpdateJob gets the job with the given ID, which must exist, then calls f on
@@ -74,13 +55,13 @@ func (d *DB) GetJob(ctx context.Context, id string) (_ *Job, err error) {
 // If f returns an error, that error is returned and no update occurs.
 func (d *DB) UpdateJob(ctx context.Context, id string, f func(*Job) error) (err error) {
 	defer derrors.Wrap(&err, "job.DB.UpdateJob(%s)", id)
-	return d.client.RunTransaction(ctx, func(ctx context.Context, tx *firestore.Transaction) error {
+	return d.ns.Client().RunTransaction(ctx, func(ctx context.Context, tx *firestore.Transaction) error {
 		docref := d.jobRef(id)
 		docsnap, err := tx.Get(docref)
 		if err != nil {
 			return err
 		}
-		j, err := docsnapToJob(docsnap)
+		j, err := fstore.Decode[Job](docsnap)
 		if err != nil {
 			return err
 		}
@@ -108,7 +89,7 @@ func (d *DB) Increment(ctx context.Context, id, name string, n int) (err error) 
 func (d *DB) ListJobs(ctx context.Context, f func(_ *Job, lastUpdate time.Time) error) (err error) {
 	defer derrors.Wrap(&err, "job.DB.ListJobs()")
 
-	q := d.nsDoc.Collection(jobCollection).OrderBy("StartedAt", firestore.Desc)
+	q := d.ns.Collection(jobCollection).OrderBy("StartedAt", firestore.Desc)
 	iter := q.Documents(ctx)
 	defer iter.Stop()
 	for {
@@ -119,7 +100,7 @@ func (d *DB) ListJobs(ctx context.Context, f func(_ *Job, lastUpdate time.Time) 
 		if err != nil {
 			return err
 		}
-		job, err := docsnapToJob(docsnap)
+		job, err := fstore.Decode[Job](docsnap)
 		if err != nil {
 			return err
 		}
@@ -132,14 +113,5 @@ func (d *DB) ListJobs(ctx context.Context, f func(_ *Job, lastUpdate time.Time) 
 
 // jobRef returns the DocumentRef for a job with the given ID.
 func (d *DB) jobRef(id string) *firestore.DocumentRef {
-	return d.nsDoc.Collection(jobCollection).Doc(id)
-}
-
-// docsnapToJob converts a DocumentSnapshot to a Job.
-func docsnapToJob(ds *firestore.DocumentSnapshot) (*Job, error) {
-	var j Job
-	if err := ds.DataTo(&j); err != nil {
-		return nil, err
-	}
-	return &j, nil
+	return d.ns.Collection(jobCollection).Doc(id)
 }
