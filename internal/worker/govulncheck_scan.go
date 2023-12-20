@@ -17,6 +17,7 @@ import (
 	"golang.org/x/exp/event"
 	"golang.org/x/pkgsite-metrics/internal/bigquery"
 	"golang.org/x/pkgsite-metrics/internal/derrors"
+	"golang.org/x/pkgsite-metrics/internal/fstore"
 	"golang.org/x/pkgsite-metrics/internal/govulncheck"
 	"golang.org/x/pkgsite-metrics/internal/govulncheckapi"
 	"golang.org/x/pkgsite-metrics/internal/log"
@@ -105,7 +106,7 @@ func (h *GovulncheckServer) handleScan(w http.ResponseWriter, r *http.Request) (
 	if sreq.Insecure {
 		scanner.insecure = sreq.Insecure
 	}
-	skip, err = h.canSkip(ctx, sreq, scanner)
+	skip, err = scanner.canSkip(ctx, sreq, h.fsNamespace)
 	if err != nil {
 		return err
 	}
@@ -113,27 +114,40 @@ func (h *GovulncheckServer) handleScan(w http.ResponseWriter, r *http.Request) (
 		log.Infof(ctx, "skipping (work version unchanged or unrecoverable error): %s@%s", sreq.Module, sreq.Version)
 		return nil
 	}
-
-	return scanner.ScanModule(ctx, w, sreq)
+	workState, err := scanner.ScanModule(ctx, w, sreq)
+	if err != nil {
+		return err
+	}
+	if workState == nil {
+		return nil
+	}
+	// We can't upload the row to bigquery and write the WorkState to Firestore atomically.
+	// But that's OK: if we fail before writing the WorkState, then we'll just re-do the scan
+	// the next time.
+	if err := govulncheck.SetWorkState(ctx, h.fsNamespace, sreq.Module, sreq.Version, workState); err != nil {
+		// Don't fail if there's an error, because we'd just re-run the task.
+		log.Errorf(ctx, err, "SetWorkState")
+	}
+	return nil
 }
 
-func (h *GovulncheckServer) canSkip(ctx context.Context, sreq *govulncheck.Request, scanner *scanner) (bool, error) {
-	if err := h.readGovulncheckWorkState(ctx, sreq.Module, sreq.Version); err != nil {
+func (s *scanner) canSkip(ctx context.Context, sreq *govulncheck.Request, fsn *fstore.Namespace) (bool, error) {
+	ws, err := govulncheck.GetWorkState(ctx, fsn, sreq.Module, sreq.Version)
+	if err != nil {
 		return false, err
 	}
-	wve := h.storedWorkStates[[2]string{sreq.Module, sreq.Version}]
-	if wve == nil {
-		// sreq.Module@sreq.Version have not been analyzed before.
+	if ws == nil {
+		// Not scanned before.
 		return false, nil
 	}
-
-	if scanner.workVersion.Equal(wve.WorkVersion) {
+	log.Infof(ctx, "read work version for %s@%s", sreq.Module, sreq.Version)
+	if s.workVersion.Equal(ws.WorkVersion) {
 		// If the work version has not changed, skip analyzing the module
 		return true, nil
 	}
 	// Otherwise, skip if the error is not recoverable. The version of the
 	// module has not changed, so we'll get the same error anyhow.
-	return unrecoverableError(wve.ErrorCategory), nil
+	return unrecoverableError(ws.ErrorCategory), nil
 }
 
 // unrecoverableError returns true iff errorCategory encodes that
@@ -146,27 +160,6 @@ func unrecoverableError(errorCategory string) bool {
 	default:
 		return false
 	}
-}
-
-func (h *GovulncheckServer) readGovulncheckWorkState(ctx context.Context, module_path, version string) error {
-	h.mu.Lock()
-	defer h.mu.Unlock()
-	// Don't read work state for module_path@version if an entry in the cache already exists.
-	if _, ok := h.storedWorkStates[[2]string{module_path, version}]; ok {
-		return nil
-	}
-	if h.bqClient == nil {
-		return nil
-	}
-	ws, err := govulncheck.ReadWorkState(ctx, h.bqClient, module_path, version)
-	if err != nil {
-		return err
-	}
-	if ws != nil {
-		h.storedWorkStates[[2]string{module_path, version}] = ws
-	}
-	log.Infof(ctx, "read work version for %s@%s", module_path, version)
-	return nil
 }
 
 // A scanner holds state for scanning modules.
@@ -306,9 +299,10 @@ func createComparisonRow(pkg string, result *govulncheck.SandboxResponse, baseRo
 	return row
 }
 
-func (s *scanner) ScanModule(ctx context.Context, w http.ResponseWriter, sreq *govulncheck.Request) error {
+// ScanModule scans the module in the request. It returns the WorkState for the result.
+func (s *scanner) ScanModule(ctx context.Context, w http.ResponseWriter, sreq *govulncheck.Request) (*govulncheck.WorkState, error) {
 	if sreq.Module == "std" {
-		return nil // ignore the standard library
+		return nil, nil // ignore the standard library
 	}
 	row := &govulncheck.Result{
 		ModulePath:  sreq.Module,
@@ -326,14 +320,19 @@ func (s *scanner) ScanModule(ctx context.Context, w http.ResponseWriter, sreq *g
 		log.Infof(ctx, "proxy error: %s@%s %v", sreq.Path(), sreq.Version, err)
 		row.AddError(fmt.Errorf("%v: %w", err, derrors.ProxyError))
 		// TODO: should we also make a copy for imports mode?
-		return writeResult(ctx, sreq.Serve, w, s.bqClient, govulncheck.TableName, row)
+		if err := writeResult(ctx, sreq.Serve, w, s.bqClient, govulncheck.TableName, row); err != nil {
+			return nil, err
+		}
+		return row.WorkState(), nil
 	}
 	row.Version = info.Version
 	row.SortVersion = version.ForSorting(row.Version)
 	row.CommitTime = info.Time
 
 	if sreq.Mode == ModeCompare {
-		return s.CompareModule(ctx, w, sreq, info, row)
+		err := s.CompareModule(ctx, w, sreq, info, row)
+		// TODO: WorkState for CompareModule requests?
+		return nil, err
 	}
 
 	log.Infof(ctx, "running scanner.runScanModule: %s@%s", sreq.Path(), sreq.Version)
@@ -395,7 +394,10 @@ func (s *scanner) ScanModule(ctx context.Context, w http.ResponseWriter, sreq *g
 		log.Infof(ctx, "scanner.runScanModule also storing imports vulns for %s: row.Vulns=%d", sreq.Path(), len(impRow.Vulns))
 		rows = append(rows, &impRow)
 	}
-	return writeResults(ctx, sreq.Serve, w, s.bqClient, govulncheck.TableName, rows)
+	if err := writeResults(ctx, sreq.Serve, w, s.bqClient, govulncheck.TableName, rows); err != nil {
+		return nil, err
+	}
+	return row.WorkState(), nil
 }
 
 // vulnsForMode returns vulns that make sense to report for

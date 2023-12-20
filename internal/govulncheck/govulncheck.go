@@ -11,8 +11,8 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
-	"fmt"
 	"net/http"
+	"net/url"
 	"os/exec"
 	"path/filepath"
 	"runtime"
@@ -23,7 +23,9 @@ import (
 
 	"golang.org/x/pkgsite-metrics/internal/bigquery"
 	"golang.org/x/pkgsite-metrics/internal/derrors"
+	"golang.org/x/pkgsite-metrics/internal/fstore"
 	"golang.org/x/pkgsite-metrics/internal/govulncheckapi"
+	"golang.org/x/pkgsite-metrics/internal/log"
 	"golang.org/x/pkgsite-metrics/internal/scan"
 )
 
@@ -149,6 +151,14 @@ type Result struct {
 	Vulns              []*Vuln        `bigquery:"vulns"`
 }
 
+// WorkState returns a WorkState for the Result.
+func (r *Result) WorkState() *WorkState {
+	return &WorkState{
+		WorkVersion:   &r.WorkVersion,
+		ErrorCategory: r.ErrorCategory,
+	}
+}
+
 // WorkVersion contains information that can be used to avoid duplicate work.
 // Given two WorkVersion values v1 and v2 for the same module path and version,
 // if v1.Equal(v2) then it is not necessary to scan the module.
@@ -214,35 +224,6 @@ func init() {
 type WorkState struct {
 	WorkVersion   *WorkVersion
 	ErrorCategory string
-}
-
-// ReadWorkState reads the most recent work version for module_path@version
-// in the govulncheck table together with its accompanying error category.
-func ReadWorkState(ctx context.Context, c *bigquery.Client, module_path, version string) (ws *WorkState, err error) {
-	defer derrors.Wrap(&err, "ReadWorkState")
-
-	const qf = `
-                SELECT go_version, worker_version, schema_version, vulndb_last_modified, error_category
-                FROM %s WHERE module_path="%s" AND version="%s" ORDER BY created_at DESC LIMIT 1
-        `
-	query := fmt.Sprintf(qf, "`"+c.FullTableName(TableName)+"`", module_path, version)
-	iter, err := c.Query(ctx, query)
-	if err != nil {
-		return nil, err
-	}
-
-	err = bigquery.ForEachRow(iter, func(r *Result) bool {
-		// This should be reachable at most once.
-		ws = &WorkState{
-			WorkVersion:   &r.WorkVersion,
-			ErrorCategory: r.ErrorCategory,
-		}
-		return true
-	})
-	if err != nil {
-		return nil, err
-	}
-	return ws, nil
 }
 
 // ScanStats contains monitoring information for a govulncheck run.
@@ -341,4 +322,37 @@ func RunGovulncheckCmd(govulncheckPath, modeFlag, pattern, moduleDir, vulndbDir 
 // getMemoryUsage is overridden with a Unix-specific function on Linux.
 var getMemoryUsage = func(c *exec.Cmd) uint64 {
 	return 0
+}
+
+const collName = "GovulncheckWorkStates"
+
+// SetWorkState writes the work state for modulePath@version.
+func SetWorkState(ctx context.Context, ns *fstore.Namespace, modulePath, version string, ws *WorkState) (err error) {
+	defer func() {
+		log.Debugf(ctx, "SetWorkState(%s@%s, %+v) => %v", modulePath, version, ws, err)
+	}()
+	dr := ns.Collection(collName).Doc(docName(modulePath, version))
+	return fstore.Set[WorkState](ctx, dr, ws)
+}
+
+// GetWorkState reads the work state for modulePath@version.
+// If there is none, it returns (nil, nil).
+func GetWorkState(ctx context.Context, ns *fstore.Namespace, modulePath, version string) (ws *WorkState, err error) {
+	defer func() {
+		log.Debugf(ctx, "GetWorkState(%s@%s) => (%+v, %v)", modulePath, version, ws, err)
+	}()
+
+	defer derrors.Wrap(&err, "ReadWorkState(%q, %q)", modulePath, version)
+	dr := ns.Collection(collName).Doc(docName(modulePath, version))
+	ws, err = fstore.Get[WorkState](ctx, dr)
+	if errors.Is(err, derrors.NotFound) {
+		return nil, nil
+	}
+	return ws, err
+}
+
+// docName returns a valid Firestore document name for the given module path and version.
+// It escapes slashes, since Firestore treats them specially.
+func docName(modulePath, version string) string {
+	return url.PathEscape(modulePath + "@" + version)
 }

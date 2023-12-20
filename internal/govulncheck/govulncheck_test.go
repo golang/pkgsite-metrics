@@ -13,6 +13,7 @@ import (
 	bq "cloud.google.com/go/bigquery"
 	"github.com/google/go-cmp/cmp"
 	"golang.org/x/pkgsite-metrics/internal/bigquery"
+	"golang.org/x/pkgsite-metrics/internal/fstore"
 	"golang.org/x/pkgsite-metrics/internal/govulncheckapi"
 	test "golang.org/x/pkgsite-metrics/internal/testing"
 	"google.golang.org/api/iterator"
@@ -114,18 +115,22 @@ func TestIntegration(t *testing.T) {
 	defer func() { must(client.Table(TableName).Delete(ctx)) }()
 
 	tm := time.Date(2022, 7, 21, 0, 0, 0, 0, time.UTC)
-	row := &Result{
-		ModulePath:  "m",
-		Version:     "v",
-		SortVersion: "sv",
-		ImportedBy:  10,
-		WorkVersion: WorkVersion{
+	ws := &WorkState{
+		WorkVersion: &WorkVersion{
 			GoVersion:          "go1.19.6",
 			WorkerVersion:      "1",
 			SchemaVersion:      "s",
 			VulnDBLastModified: tm,
 		},
 		ErrorCategory: "SOME ERROR",
+	}
+	row := &Result{
+		ModulePath:    "m",
+		Version:       "v",
+		SortVersion:   "sv",
+		ImportedBy:    10,
+		WorkVersion:   *ws.WorkVersion,
+		ErrorCategory: ws.ErrorCategory,
 	}
 
 	t.Run("upload", func(t *testing.T) {
@@ -147,24 +152,26 @@ func TestIntegration(t *testing.T) {
 			t.Errorf("mismatch (-want, +got):\n%s", diff)
 		}
 	})
-	t.Run("work versions", func(t *testing.T) {
-		ws, err := ReadWorkState(ctx, client, "m", "v")
+	t.Run("work states", func(t *testing.T) {
+		ns, err := fstore.OpenNamespace(ctx, projectID, "testing")
 		if err != nil {
 			t.Fatal(err)
 		}
-		if ws == nil {
-			t.Fatal("got nil, wanted work state")
+		if err := SetWorkState(ctx, ns, "example.com/mod", "v1.0.0", ws); err != nil {
+			t.Fatal(err)
 		}
-		wgot := ws.WorkVersion
-		if wgot == nil {
-			t.Fatal("got nil, wanted work version")
+		got, err := GetWorkState(ctx, ns, "example.com/mod", "v1.0.0")
+		if err != nil {
+			t.Fatal(err)
 		}
-		if want := &row.WorkVersion; !wgot.Equal(want) {
-			t.Errorf("got %+v, want %+v", wgot, want)
+		if !cmp.Equal(got, ws) {
+			t.Errorf("got %+v\nwant %+v", got, ws)
 		}
-		egot := ws.ErrorCategory
-		if want := row.ErrorCategory; want != egot {
-			t.Errorf("got %+v, want %+v", egot, want)
+
+		// GetWorkState returns nil if the WorkState doesn't exist.
+		got, err = GetWorkState(ctx, ns, "example.com/mod", "v1.2.3")
+		if got != nil || err != nil {
+			t.Errorf("got (%v, %v), want (nil, nil)", got, err)
 		}
 	})
 }

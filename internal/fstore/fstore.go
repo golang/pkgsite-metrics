@@ -13,6 +13,8 @@ import (
 
 	"cloud.google.com/go/firestore"
 	"golang.org/x/pkgsite-metrics/internal/derrors"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
 )
 
 const namespaceCollection = "Namespaces"
@@ -62,16 +64,40 @@ func Get[T any](ctx context.Context, dr *firestore.DocumentRef) (_ *T, err error
 	defer derrors.Wrap(&err, "fstore.Get(%q)", dr.Path)
 	docsnap, err := dr.Get(ctx)
 	if err != nil {
-		return nil, err
+		return nil, convertError(err)
 	}
 	return Decode[T](docsnap)
+}
+
+// Set sets the DocumentRef to the value.
+func Set[T any](ctx context.Context, dr *firestore.DocumentRef, value *T) (err error) {
+	defer derrors.Wrap(&err, "firestore.Set(%q)", dr.Path)
+	_, err = dr.Set(ctx, value)
+	return convertError(err)
 }
 
 // Decode decodes a DocumentSnapshot into a value of type T.
 func Decode[T any](ds *firestore.DocumentSnapshot) (*T, error) {
 	var t T
 	if err := ds.DataTo(&t); err != nil {
-		return nil, err
+		return nil, convertError(err)
 	}
 	return &t, nil
+}
+
+// convertError converts err into one of this module's error kinds
+// if possible.
+func convertError(err error) error {
+	serr, ok := status.FromError(err)
+	if !ok {
+		return err
+	}
+	switch serr.Code() {
+	case codes.NotFound:
+		return derrors.NotFound
+	case codes.InvalidArgument:
+		return derrors.InvalidArgument
+	default:
+		return err
+	}
 }

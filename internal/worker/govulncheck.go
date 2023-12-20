@@ -19,15 +19,11 @@ import (
 
 type GovulncheckServer struct {
 	*Server
-	storedWorkStates map[[2]string]*govulncheck.WorkState
-	workVersion      *govulncheck.WorkVersion
+	workVersion *govulncheck.WorkVersion
 }
 
 func newGovulncheckServer(s *Server) *GovulncheckServer {
-	return &GovulncheckServer{
-		Server:           s,
-		storedWorkStates: make(map[[2]string]*govulncheck.WorkState),
-	}
+	return &GovulncheckServer{Server: s}
 }
 
 func (h *GovulncheckServer) getWorkVersion(ctx context.Context) (_ *govulncheck.WorkVersion, err error) {

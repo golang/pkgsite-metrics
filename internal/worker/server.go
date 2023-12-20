@@ -20,6 +20,7 @@ import (
 	"golang.org/x/pkgsite-metrics/internal/bigquery"
 	"golang.org/x/pkgsite-metrics/internal/config"
 	"golang.org/x/pkgsite-metrics/internal/derrors"
+	"golang.org/x/pkgsite-metrics/internal/fstore"
 	"golang.org/x/pkgsite-metrics/internal/govulncheck"
 	"golang.org/x/pkgsite-metrics/internal/jobs"
 	"golang.org/x/pkgsite-metrics/internal/log"
@@ -35,6 +36,8 @@ type Server struct {
 	proxyClient *proxy.Client
 	queue       queue.Queue
 	jobDB       *jobs.DB
+	// Firestore namespace for storing work versions.
+	fsNamespace *fstore.Namespace
 
 	reqs int // for debugging
 
@@ -58,6 +61,12 @@ func NewServer(ctx context.Context, cfg *config.Config) (_ *Server, err error) {
 		if err != nil {
 			return nil, err
 		}
+	}
+
+	// Use the same name for the namespace as the BQ dataset.
+	ns, err := fstore.OpenNamespace(ctx, cfg.ProjectID, cfg.BigQueryDataset)
+	if err != nil {
+		return nil, err
 	}
 
 	q, err := queue.New(ctx, cfg,
@@ -95,6 +104,7 @@ func NewServer(ctx context.Context, cfg *config.Config) (_ *Server, err error) {
 		proxyClient: proxyClient,
 		devMode:     cfg.DevMode,
 		jobDB:       jdb,
+		fsNamespace: ns,
 	}
 
 	if cfg.ProjectID != "" && cfg.ServiceID != "" {
