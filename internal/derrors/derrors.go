@@ -109,6 +109,9 @@ var (
 	// due to an issue in the analysis.
 	ScanSyntheticModuleError = errors.New("scan synthetic module error")
 
+	// ScanModuleSandboxError is used to capture general sandbox related issues.
+	ScanModuleSandboxError = errors.New("sandbox related issue")
+
 	// ScanModuleMemoryLimitExceeded occurs when scanning uses too much memory.
 	ScanModuleMemoryLimitExceeded = errors.New("scan module memory limit exceeded")
 
@@ -223,6 +226,8 @@ func CategorizeError(err error) string {
 		return "MEM LIMIT EXCEEDED"
 	case errors.Is(err, ScanModuleTooManyOpenFiles):
 		return "TOO MANY OPEN FILES"
+	case errors.Is(err, ScanModuleSandboxError):
+		return "SANDBOX MISC"
 	case errors.Is(err, ProxyError):
 		return "PROXY"
 	case errors.Is(err, BigQueryError):

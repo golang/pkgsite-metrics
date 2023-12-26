@@ -368,6 +368,7 @@ func isBuildIssue(err error) bool {
 		strings.Contains(errStr, "relative import paths are not supported in module mode")
 }
 
-func isMemoryIssue(err error) bool {
-	return strings.Contains(err.Error(), "status 137")
+func isSandboxRelatedIssue(err error) bool {
+	e := err.Error()
+	return strings.Contains(e, "runner") && strings.Contains(e, "status 137")
 }

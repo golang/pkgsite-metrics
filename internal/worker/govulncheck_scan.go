@@ -368,8 +368,8 @@ func (s *scanner) ScanModule(ctx context.Context, w http.ResponseWriter, sreq *g
 			err = fmt.Errorf("%v: %w", err, derrors.ScanModuleTooManyOpenFiles)
 		case isProxyCacheMiss(err):
 			err = fmt.Errorf("%v: %w", err, derrors.ProxyError)
-		case isMemoryIssue(err):
-			err = fmt.Errorf("%v: %w", err, derrors.ScanModuleMemoryLimitExceeded)
+		case isSandboxRelatedIssue(err):
+			err = fmt.Errorf("%v: %w", err, derrors.ScanModuleSandboxError)
 		default:
 			err = fmt.Errorf("%v: %w", err, derrors.ScanModuleGovulncheckError)
 		}
