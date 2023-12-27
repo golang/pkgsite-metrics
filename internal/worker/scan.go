@@ -369,6 +369,5 @@ func isBuildIssue(err error) bool {
 }
 
 func isSandboxRelatedIssue(err error) bool {
-	e := err.Error()
-	return strings.Contains(e, "runner") && strings.Contains(e, "status 137")
+	return strings.Contains(err.Error(), "exit status 137")
 }
