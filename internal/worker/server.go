@@ -13,6 +13,7 @@ import (
 	"os"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"cloud.google.com/go/errorreporting"
@@ -39,7 +40,9 @@ type Server struct {
 	// Firestore namespace for storing work versions.
 	fsNamespace *fstore.Namespace
 
-	reqs int // for debugging
+	// reqs is the number of incoming scan requests, both analysis and
+	// govulncheck. Used for monitoring, debugging, and server restart.
+	reqs atomic.Uint64
 
 	devMode bool
 	mu      sync.Mutex
@@ -47,7 +50,7 @@ type Server struct {
 
 // Info summarizes Server execution as text.
 func (s *Server) Info() string {
-	return fmt.Sprintf("total requests: %d", s.reqs)
+	return fmt.Sprintf("total requests: %d", s.reqs.Load())
 }
 
 func NewServer(ctx context.Context, cfg *config.Config) (_ *Server, err error) {
@@ -202,7 +205,7 @@ func (s *Server) registerGovulncheckHandlers() {
 	h := newGovulncheckServer(s)
 	s.handle("/govulncheck/enqueueall", h.handleEnqueueAll)
 	s.handle("/govulncheck/enqueue", h.handleEnqueue)
-	s.handle("/govulncheck/scan/", h.handleScan)
+	s.handle("/govulncheck/scan/", reqMonitorHandler(s, h.handleScan))
 }
 
 func (s *Server) registerAnalysisHandlers(ctx context.Context) error {
@@ -210,9 +213,27 @@ func (s *Server) registerAnalysisHandlers(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
-	s.handle("/analysis/scan/", h.handleScan)
+	s.handle("/analysis/scan/", reqMonitorHandler(s, h.handleScan))
 	s.handle("/analysis/enqueue", h.handleEnqueue)
 	return nil
+}
+
+// reqMonitorHandler creates a handler with h that 1) updates server request statistics
+// and 2) resets the server after a certain number of incoming server requests. The
+// incoming request that triggers the reset will be disregarded. Cloud Run will retry
+// that request.
+func reqMonitorHandler(s *Server, h func(http.ResponseWriter, *http.Request) error) func(http.ResponseWriter, *http.Request) error {
+	const reqLimit = 500 // experimentally shown to be a good threshold
+	return func(w http.ResponseWriter, r *http.Request) error {
+		// Reset the server after a certain number of requests due to a process leak.
+		// TODO(#65215): why does this happen? It seems to be due to gvisor.
+		if s.reqs.Load() > reqLimit {
+			log.Infof(r.Context(), "resetting server after %d requests, just before: %v", reqLimit, r.URL.Path)
+			os.Exit(0)
+		}
+		s.reqs.Add(1)
+		return h(w, r)
+	}
 }
 
 type serverError struct {

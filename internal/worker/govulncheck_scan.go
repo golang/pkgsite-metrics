@@ -83,7 +83,6 @@ func (h *GovulncheckServer) handleScan(w http.ResponseWriter, r *http.Request) (
 
 	// Collect basic metrics.
 	gReqCounter.Record(r.Context(), 1)
-	h.Server.reqs++
 	skip := false // request skipped
 	defer func() {
 		gSuccCounter.Record(r.Context(), 1, event.Bool("success", err == nil))
