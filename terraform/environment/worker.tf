@@ -313,3 +313,22 @@ resource "google_cloud_scheduler_job" "enqueuecompare" {
     }
   }
 }
+
+resource "google_cloud_scheduler_job" "gomodstat" {
+  count       = var.env == "prod" ? 1 : 0
+  name        = "${var.env}-gomodstat"
+  description = "Run gomodstat every week."
+  schedule    = "0 16 * * FRI" # 4PM every Friday
+  time_zone   = local.tz
+  project     = var.project
+
+  attempt_deadline = "1800s" # 30 min max deadline for HTTP target
+  http_target {
+    http_method = "GET"
+    uri         = "${local.worker_url}/analysis/enqueue?binary=golang-gomodstat&skipinit=true&min=0"
+    oidc_token {
+      service_account_email = local.worker_service_account
+      audience              = local.worker_url
+    }
+  }
+}
