@@ -26,9 +26,9 @@ require (
 	golang.org/x/exp/event v0.0.0-20220218215828-6cf2b201936e
 	golang.org/x/mod v0.15.0
 	golang.org/x/net v0.21.0
-	golang.org/x/oauth2 v0.17.0
+	golang.org/x/oauth2 v0.10.0
 	golang.org/x/tools v0.18.0
-	golang.org/x/vuln v1.0.1-0.20230810155601-91424c7c0e1c
+	golang.org/x/vuln v1.0.5-0.20240213143941-dcac2d7cab09
 	google.golang.org/api v0.132.0
 	google.golang.org/genproto/googleapis/api v0.0.0-20230706204954-ccb25ca9f130
 	google.golang.org/grpc v1.56.2

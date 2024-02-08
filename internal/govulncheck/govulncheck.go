@@ -107,18 +107,12 @@ func ParseRequest(r *http.Request, prefix string) (*Request, error) {
 // a bigquery vuln.
 func ConvertGovulncheckFinding(f *govulncheckapi.Finding) *Vuln {
 	vulnerableFrame := f.Trace[0]
-	vuln := &Vuln{
+	return &Vuln{
 		ID:          f.OSV,
 		PackagePath: vulnerableFrame.Package,
 		ModulePath:  vulnerableFrame.Module,
 		Version:     vulnerableFrame.Version,
-		Called:      false,
 	}
-	if vulnerableFrame.Function != "" {
-		vuln.Called = true
-	}
-
-	return vuln
 }
 
 const TableName = "govulncheck"
@@ -201,12 +195,6 @@ type Vuln struct {
 	PackagePath string `bigquery:"package_path"`
 	ModulePath  string `bigquery:"module_path"`
 	Version     string `bigquery:"version"`
-	// Called is currently used to differentiate between
-	// called and imported vulnerabilities. We need it
-	// because we don't conduct an imports analysis yet
-	// use the full results of govulncheck source analysis.
-	// It is not part of the bigquery schema.
-	Called bool `bigquery:"-"`
 }
 
 // SchemaVersion changes whenever the govulncheck schema changes.

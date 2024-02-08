@@ -61,7 +61,6 @@ func TestConvertGovulncheckFinding(t *testing.T) {
 				PackagePath: "example.com/repo/module/package",
 				ModulePath:  "example.com/repo/module",
 				Version:     "v0.0.1",
-				Called:      true,
 			},
 		},
 		{
@@ -72,7 +71,6 @@ func TestConvertGovulncheckFinding(t *testing.T) {
 				PackagePath: "example.com/repo/module/package",
 				ModulePath:  "example.com/repo/module",
 				Version:     "v1.0.0",
-				Called:      false,
 			},
 		},
 	}

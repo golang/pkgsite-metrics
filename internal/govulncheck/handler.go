@@ -5,22 +5,18 @@
 package govulncheck
 
 import (
-	"golang.org/x/exp/maps"
 	"golang.org/x/pkgsite-metrics/internal/govulncheckapi"
 	"golang.org/x/pkgsite-metrics/internal/osv"
 )
 
-// NewMetricsHandler returns a handler that returns a set of all findings.
+// NewMetricsHandler returns a handler that returns all findings.
 // For use in the ecosystem metrics pipeline.
 func NewMetricsHandler() *MetricsHandler {
-	m := make(map[string]*govulncheckapi.Finding)
-	return &MetricsHandler{
-		byOSV: m,
-	}
+	return &MetricsHandler{}
 }
 
 type MetricsHandler struct {
-	byOSV map[string]*govulncheckapi.Finding
+	findings []*govulncheckapi.Finding
 }
 
 func (h *MetricsHandler) Config(c *govulncheckapi.Config) error {
@@ -36,16 +32,10 @@ func (h *MetricsHandler) OSV(e *osv.Entry) error {
 }
 
 func (h *MetricsHandler) Finding(finding *govulncheckapi.Finding) error {
-	f, found := h.byOSV[finding.OSV]
-	if !found || f.Trace[0].Function == "" {
-		// If the vuln wasn't called in the first trace, replace it with
-		// the new finding (that way if the vuln is called at any point
-		// it's trace will reflect that, which is needed when converting to bq)
-		h.byOSV[finding.OSV] = finding
-	}
+	h.findings = append(h.findings, finding)
 	return nil
 }
 
 func (h *MetricsHandler) Findings() []*govulncheckapi.Finding {
-	return maps.Values(h.byOSV)
+	return h.findings
 }

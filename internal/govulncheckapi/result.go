@@ -21,12 +21,12 @@ type Message struct {
 	Finding  *Finding   `json:"finding,omitempty"`
 }
 
-// ProtocolVersion is the current protocol version this file implements
-const ProtocolVersion = "v0.1.0"
-
+// Config must occur as the first message of a stream and informs the client
+// about the information used to generate the findings.
+// The only required field is the protocol version.
 type Config struct {
 	// ProtocolVersion specifies the version of the JSON protocol.
-	ProtocolVersion string `json:"protocol_version,omitempty"`
+	ProtocolVersion string `json:"protocol_version"`
 
 	// ScannerName is the name of the tool, for example, govulncheck.
 	//
@@ -48,17 +48,15 @@ type Config struct {
 	// vulnerabilities.
 	GoVersion string `json:"go_version,omitempty"`
 
-	// Consider only vulnerabilities that apply to this OS.
-	GOOS string `json:"goos,omitempty"`
-
-	// Consider only vulnerabilities that apply to this architecture.
-	GOARCH string `json:"goarch,omitempty"`
-
-	// ImportsOnly instructs vulncheck to analyze import chains only.
-	// Otherwise, call chains are analyzed too.
-	ImportsOnly bool `json:"imports_only,omitempty"`
+	// ScanLevel instructs govulncheck to analyze at a specific level of detail.
+	// Valid values include module, package and symbol.
+	ScanLevel ScanLevel `json:"scan_level,omitempty"`
 }
 
+// Progress messages are informational only, intended to allow users to monitor
+// the progress of a long running scan.
+// A stream must remain fully valid and able to be interpreted with all progress
+// messages removed.
 type Progress struct {
 	// A time stamp for the message.
 	Timestamp *time.Time `json:"time,omitempty"`
@@ -67,7 +65,14 @@ type Progress struct {
 	Message string `json:"message,omitempty"`
 }
 
-// Vuln represents a single OSV entry.
+// Finding contains information on a discovered vulnerability. Each vulnerability
+// will likely have multiple findings in JSON mode. This is because govulncheck
+// emits findings as it does work, and therefore could emit one module level,
+// one package level, and potentially multiple symbol level findings depending
+// on scan level.
+// Multiple symbol level findings can be emitted when multiple symbols of the
+// same vuln are called or govulncheck decides to show multiple traces for the
+// same symbol.
 type Finding struct {
 	// OSV is the id of the detected vulnerability.
 	OSV string `json:"osv,omitempty"`
@@ -97,8 +102,10 @@ type Finding struct {
 	// In binary mode, trace will contain a single-frame with no position
 	// information.
 	//
-	// When a package is imported but no vulnerable symbol is called, the trace
-	// will contain a single-frame with no symbol or position information.
+	// For module level source findings, the trace will contain a single-frame
+	// with no symbol, position, or package information. For package level source
+	// findings, the trace will contain a single-frame with no symbol or position
+	// information.
 	Trace []*Frame `json:"trace,omitempty"`
 }
 
@@ -130,11 +137,31 @@ type Frame struct {
 	Position *Position `json:"position,omitempty"`
 }
 
-// Position is a copy of token.Position used to marshal/unmarshal
-// JSON correctly.
+// Position represents arbitrary source position.
 type Position struct {
 	Filename string `json:"filename,omitempty"` // filename, if any
-	Offset   int    `json:"offset"`             // offset, starting at 0
+	Offset   int    `json:"offset"`             // byte offset, starting at 0
 	Line     int    `json:"line"`               // line number, starting at 1
 	Column   int    `json:"column"`             // column number, starting at 1 (byte count)
 }
+
+// ScanLevel represents the detail level at which a scan occurred.
+// This can be necessary to correctly interpret the findings, for instance if
+// a scan is at symbol level and a finding does not have a symbol it means the
+// vulnerability was imported but not called. If the scan however was at
+// "package" level, that determination cannot be made.
+type ScanLevel string
+
+const (
+	ScanLevelModule  = "module"
+	ScanLevelPackage = "package"
+	ScanLevelSymbol  = "symbol"
+)
+
+// WantSymbols can be used to check whether the scan level is one that is able
+// to generate symbol-level findings.
+func (l ScanLevel) WantSymbols() bool { return l == ScanLevelSymbol }
+
+// WantPackages can be used to check whether the scan level is one that is able
+// to generate package-level findings.
+func (l ScanLevel) WantPackages() bool { return l == ScanLevelPackage || l == ScanLevelSymbol }

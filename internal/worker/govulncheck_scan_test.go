@@ -15,6 +15,7 @@ import (
 
 	"golang.org/x/pkgsite-metrics/internal/buildtest"
 	"golang.org/x/pkgsite-metrics/internal/govulncheck"
+	"golang.org/x/pkgsite-metrics/internal/govulncheckapi"
 )
 
 func TestAsScanError(t *testing.T) {
@@ -28,16 +29,17 @@ func TestAsScanError(t *testing.T) {
 }
 
 func TestVulnsForMode(t *testing.T) {
-	vulns := []*govulncheck.Vuln{
-		&govulncheck.Vuln{ID: "A"},
-		&govulncheck.Vuln{ID: "B", Called: false},
-		&govulncheck.Vuln{ID: "C", Called: true},
+	findings := []*govulncheckapi.Finding{
+		{Trace: []*govulncheckapi.Frame{{Module: "M1", Package: "P1", Function: "F1"}}},
+		{Trace: []*govulncheckapi.Frame{{Module: "M1", Package: "P1"}}},
+		{Trace: []*govulncheckapi.Frame{{Module: "M1"}}},
+		{Trace: []*govulncheckapi.Frame{{Module: "M2"}}},
 	}
 
 	vulnsStr := func(vulns []*govulncheck.Vuln) string {
 		var vs []string
 		for _, v := range vulns {
-			vs = append(vs, fmt.Sprintf("%s:%t", v.ID, v.Called))
+			vs = append(vs, fmt.Sprintf("%s:%s", v.ModulePath, v.PackagePath))
 		}
 		return strings.Join(vs, ", ")
 	}
@@ -46,14 +48,15 @@ func TestVulnsForMode(t *testing.T) {
 		mode string
 		want string
 	}{
-		{modeImports, "A:false, B:false, C:false"},
-		{ModeGovulncheck, "C:true"},
-		{modeBinary, "A:false, B:false, C:true"},
+		{scanModeSourceSymbol, "M1:P1"},
+		{scanModeBinarySymbol, "M1:P1"},
+		{scanModeSourcePackage, "M1:P1"},
+		{scanModeSourceModule, "M1:, M2:"},
 	} {
 		tc := tc
 		t.Run(tc.mode, func(t *testing.T) {
-			modeVulns := vulnsForMode(vulns, tc.mode)
-			if got := vulnsStr(modeVulns); got != tc.want {
+			vs := vulnsForScanMode(findings, tc.mode)
+			if got := vulnsStr(vs); got != tc.want {
 				t.Errorf("got %s; want %s", got, tc.want)
 			}
 		})

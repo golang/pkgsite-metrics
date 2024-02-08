@@ -27,22 +27,47 @@ import (
 )
 
 const (
-	// modeImports is used to report results of vulnerability detection at
-	// imports level precision. It cannot be directly triggered by scan
-	// endpoints. Instead, ModeGovulncheck mode reports its results to show
-	// difference in precision of vulnerability detection.
-	modeImports string = "IMPORTS"
-
-	// ModeGovulncheck runs the govulncheck binary in default (source) mode.
+	// ModeGovulncheck is an ecosystem metrics mode that runs the govulncheck
+	// binary in default (source) mode.
 	ModeGovulncheck = "GOVULNCHECK"
 
-	// ModeCompare finds compilable binaries and runs govulncheck in both source
-	// and binary mode.
+	// ModeCompare is an ecosystem metrics mode that finds compilable binaries
+	// and runs govulncheck in both source and binary mode and reports results.
 	ModeCompare = "COMPARE"
+)
 
-	// modeBinary is only used by ModeCompare for reporting results. It cannot
-	// be directly triggered by scan endpoints.
-	modeBinary string = "BINARY"
+// modes is a set of supported govulncheck ecosystem metrics modes.
+var modes = map[string]bool{
+	ModeGovulncheck: true,
+	ModeCompare:     true,
+}
+
+const (
+	// scanModeSourceSymbol is used to designate results at govulncheck source
+	// '-scan symbol' level of precision.
+	//
+	// Note that this is not an ecosystem metrics mode. Its value is "GOVULNCHECK"
+	// for historical reasons.
+	scanModeSourceSymbol = "GOVULNCHECK"
+
+	// scanModeSourcePackage is used to designate results at govulncheck source
+	// '-scan package' level of precision.
+	//
+	// Note that this is not an ecosystem metrics mode.
+	scanModeSourcePackage string = "IMPORTS"
+
+	// scanModeSourceModule is used to designate results at govulncheck source
+	// '-scan module' level of precision.
+	//
+	// Note that this is not an ecosystem metrics mode.
+	scanModeSourceModule string = "REQUIRES"
+
+	// scanModeBinarySymbol is used to designate results at govulncheck binary
+	// '-scan symbol' level of precision.
+	//
+	// Note that this is not an ecosystem metrics mode. Its value is "BINARY"
+	// for historical reasons.
+	scanModeBinarySymbol string = "BINARY"
 
 	// sandboxGoCache is the location of the Go cache inside the sandbox. The
 	// user is root and their $HOME directory is /root. The Go cache resides
@@ -50,15 +75,9 @@ const (
 	sandboxGoCache = "root/.cache/go-build"
 )
 
-// modes is a set of govulncheck modes externally visible.
-var modes = map[string]bool{
-	ModeGovulncheck: true,
-	ModeCompare:     true,
-}
-
 func modeToGovulncheckFlag(mode string) string {
 	switch mode {
-	case modeBinary: // for sanity
+	case scanModeBinarySymbol:
 		return govulncheck.FlagBinary
 	default:
 		return govulncheck.FlagSource
@@ -217,9 +236,9 @@ func (s scanError) Unwrap() error {
 
 // CompareModule gets results of govulncheck source and binary mode on each binary defined in a module.
 //
-// It discards all results where there is a failure that is not specific to the comparison, i.e., failures
-// that appear in GOVULNCHECK or IMPORTS mode. Examples are situations where the module is malformed,
-// govulncheck fails, or it is not possible to build a found binary within the module.
+// It discards all results where there is a failure that is not specific to the comparison. Examples are
+// situations where the module is malformed, govulncheck fails, or it is not possible to build a found
+// binary within the module.
 func (s *scanner) CompareModule(ctx context.Context, w http.ResponseWriter, sreq *govulncheck.Request, info *proxy.VersionInfo, baseRow *govulncheck.Result) (err error) {
 	defer derrors.Wrap(&err, "CompareModule")
 	err = doScan(ctx, baseRow.ModulePath, info.Version, s.insecure, func() (err error) {
@@ -250,8 +269,8 @@ func (s *scanner) CompareModule(ctx context.Context, w http.ResponseWriter, sreq
 				continue
 			}
 
-			binRow := createComparisonRow(pkg, &results.BinaryResults, baseRow, modeBinary)
-			srcRow := createComparisonRow(pkg, &results.SourceResults, baseRow, ModeGovulncheck)
+			binRow := createComparisonRow(pkg, &results.BinaryResults, baseRow, scanModeBinarySymbol)
+			srcRow := createComparisonRow(pkg, &results.SourceResults, baseRow, scanModeSourceSymbol)
 			log.Infof(ctx, "found %d vulns in binary mode and %d vulns in source mode for package %s (module: %s)", len(binRow.Vulns), len(srcRow.Vulns), pkg, sreq.Path())
 			rows = append(rows, binRow, srcRow)
 		}
@@ -268,7 +287,7 @@ func (s *scanner) CompareModule(ctx context.Context, w http.ResponseWriter, sreq
 	return nil
 }
 
-func createComparisonRow(pkg string, result *govulncheck.SandboxResponse, baseRow *govulncheck.Result, mode string) (row *govulncheck.Result) {
+func createComparisonRow(pkg string, result *govulncheck.SandboxResponse, baseRow *govulncheck.Result, scanMode string) (row *govulncheck.Result) {
 	row = &govulncheck.Result{
 		CreatedAt:   baseRow.CreatedAt,
 		Suffix:      pkg,
@@ -279,22 +298,16 @@ func createComparisonRow(pkg string, result *govulncheck.SandboxResponse, baseRo
 		CommitTime:  baseRow.CommitTime,
 		WorkVersion: baseRow.WorkVersion,
 	}
-	if mode == modeBinary {
+	if scanMode == scanModeBinarySymbol {
 		row.ScanMode = "COMPARE - BINARY"
 		row.BinaryBuildSeconds = bigquery.NullFloat(result.Stats.BuildTime.Seconds())
 	} else {
 		row.ScanMode = "COMPARE - SOURCE"
 	}
 
-	vulns := []*govulncheck.Vuln{}
-	for _, finding := range result.Findings {
-		vulns = append(vulns, govulncheck.ConvertGovulncheckFinding(finding))
-	}
-	row.Vulns = vulnsForMode(vulns, mode)
-
+	row.Vulns = vulnsForScanMode(result.Findings, scanMode)
 	row.ScanMemory = int64(result.Stats.ScanMemory)
 	row.ScanSeconds = result.Stats.ScanSeconds
-
 	return row
 }
 
@@ -303,42 +316,46 @@ func (s *scanner) ScanModule(ctx context.Context, w http.ResponseWriter, sreq *g
 	if sreq.Module == "std" {
 		return nil, nil // ignore the standard library
 	}
-	row := &govulncheck.Result{
+	// baseRow is used to return on a premature error and
+	// to create actual bq rows otherwise.
+	baseRow := &govulncheck.Result{
 		ModulePath:  sreq.Module,
 		Suffix:      sreq.Suffix,
 		WorkVersion: *s.workVersion,
-		ScanMode:    sreq.Mode,
 		ImportedBy:  sreq.ImportedBy,
 	}
-	row.VulnDBLastModified = s.workVersion.VulnDBLastModified
+	baseRow.VulnDBLastModified = s.workVersion.VulnDBLastModified
 
 	// Scan the version.
 	log.Debugf(ctx, "fetching proxy info: %s@%s", sreq.Path(), sreq.Version)
 	info, err := s.proxyClient.Info(ctx, sreq.Module, sreq.Version)
 	if err != nil {
 		log.Infof(ctx, "proxy error: %s@%s %v", sreq.Path(), sreq.Version, err)
-		row.AddError(fmt.Errorf("%v: %w", err, derrors.ProxyError))
-		// TODO: should we also make a copy for imports mode?
-		if err := writeResult(ctx, sreq.Serve, w, s.bqClient, govulncheck.TableName, row); err != nil {
+		baseRow.AddError(fmt.Errorf("%v: %w", err, derrors.ProxyError))
+		// If proxy failed, put the scan mode as the incoming ecosystem mode
+		// for now.
+		// TODO: is there a better way of doing this?
+		baseRow.ScanMode = sreq.Mode
+		if err := writeResult(ctx, sreq.Serve, w, s.bqClient, govulncheck.TableName, baseRow); err != nil {
 			return nil, err
 		}
-		return row.WorkState(), nil
+		return baseRow.WorkState(), nil
 	}
-	row.Version = info.Version
-	row.SortVersion = version.ForSorting(row.Version)
-	row.CommitTime = info.Time
+	baseRow.Version = info.Version
+	baseRow.SortVersion = version.ForSorting(baseRow.Version)
+	baseRow.CommitTime = info.Time
 
 	if sreq.Mode == ModeCompare {
-		err := s.CompareModule(ctx, w, sreq, info, row)
+		err := s.CompareModule(ctx, w, sreq, info, baseRow)
 		// TODO: WorkState for CompareModule requests?
 		return nil, err
 	}
 
 	log.Infof(ctx, "running scanner.runScanModule: %s@%s", sreq.Path(), sreq.Version)
 	stats := &govulncheck.ScanStats{}
-	vulns, err := s.runScanModule(ctx, sreq.Module, info.Version, sreq.Mode, stats)
-	row.ScanSeconds = stats.ScanSeconds
-	row.ScanMemory = int64(stats.ScanMemory)
+	findings, err := s.runScanModule(ctx, sreq.Module, info.Version, sreq.Mode, stats)
+	baseRow.ScanSeconds = stats.ScanSeconds
+	baseRow.ScanMemory = int64(stats.ScanMemory)
 	if err != nil {
 		switch {
 		case isGovulncheckLoadError(err) || isBuildIssue(err):
@@ -372,69 +389,71 @@ func (s *scanner) ScanModule(ctx context.Context, w http.ResponseWriter, sreq *g
 		default:
 			err = fmt.Errorf("%v: %w", err, derrors.ScanModuleGovulncheckError)
 		}
-		row.AddError(err)
-	} else {
-		row.Vulns = vulnsForMode(vulns, sreq.Mode)
+		baseRow.AddError(err)
 	}
-	log.Infof(ctx, "scanner.runScanModule returned %d vulns for %s: row.Vulns=%d err=%v", len(vulns), sreq.Path(), len(row.Vulns), err)
 
-	rows := []bigquery.Row{row}
-	if sreq.Mode == ModeGovulncheck {
-		// For ModeGovulncheck, add the copy of row and report
-		// each vulnerability as imported. We set the performance
-		// numbers to 0 since we don't actually perform a scan
-		// at the level of import chains. Also makes a copy if
-		// the original row has an error and no vulns.
-		impRow := *row
-		impRow.ScanMode = modeImports
-		impRow.ScanSeconds = 0
-		impRow.ScanMemory = 0
-		impRow.Vulns = vulnsForMode(vulns, modeImports)
-		log.Infof(ctx, "scanner.runScanModule also storing imports vulns for %s: row.Vulns=%d", sreq.Path(), len(impRow.Vulns))
-		rows = append(rows, &impRow)
+	// create a row for each precision level
+	var rows []bigquery.Row
+	for _, mode := range []string{scanModeSourceSymbol, scanModeSourcePackage, scanModeSourceModule} {
+		row := *baseRow
+		row.ScanMode = mode
+		// We use govulncheck command execution time as the approx. time for symbol level analysis.
+		// We currently don't have a way of approximating time for measuring time for module and
+		// package level scans. We could run govulncheck with -scan package and -scan module, but
+		// that would put more pressure on the pipeline and use more resources.
+		// TODO: could we instrument handler to measure this for us?
+		if mode != ModeGovulncheck {
+			row.ScanSeconds = 0
+			row.ScanMemory = 0
+		}
+		row.Vulns = vulnsForScanMode(findings, mode)
+		log.Infof(ctx, "scanner.runScanModule returned %d findings and err=%v for %s with row.Vulns=%d in scan mode=%s", len(findings), err, sreq.Path(), len(row.Vulns), mode)
+		rows = append(rows, &row)
 	}
 	if err := writeResults(ctx, sreq.Serve, w, s.bqClient, govulncheck.TableName, rows); err != nil {
 		return nil, err
 	}
-	return row.WorkState(), nil
+	return baseRow.WorkState(), nil
 }
 
-// vulnsForMode returns vulns that make sense to report for
-// a particular mode.
-//
-// For ModeGovulncheck, these are all vulns that are actually
-// called. For modeImports, these are all vulns, called or just
-// imported. For modeBinary, these are exactly all the vulns
-// since binary analysis does not distinguish between called
-// and imported vulnerabilities.
-func vulnsForMode(vulns []*govulncheck.Vuln, mode string) []*govulncheck.Vuln {
-	if mode == modeBinary {
-		return vulns
-	}
-
-	var vs []*govulncheck.Vuln
-	for _, v := range vulns {
-		if mode == ModeGovulncheck {
-			// Return only the called vulns for ModeGovulncheck.
-			if v.Called {
-				vs = append(vs, v)
+// vulnsForScanMode produces Vulns from findings at the specified
+// govulncheck scan mode.
+func vulnsForScanMode(findings []*govulncheckapi.Finding, mode string) []*govulncheck.Vuln {
+	var modeFindings []*govulncheckapi.Finding
+	for _, f := range findings {
+		fr := f.Trace[0]
+		switch mode {
+		case scanModeSourceSymbol, scanModeBinarySymbol:
+			if fr.Function != "" {
+				modeFindings = append(modeFindings, f)
 			}
-		} else if mode == modeImports {
-			// For imports mode, return the vulnerability as it
-			// is imported, but not called.
-			nv := *v
-			nv.Called = false
-			vs = append(vs, &nv)
-		} else {
-			panic(fmt.Sprintf("vulnsForMode unsupported mode %s", mode))
+		case scanModeSourcePackage:
+			if fr.Package != "" && fr.Function == "" {
+				modeFindings = append(modeFindings, f)
+			}
+		case scanModeSourceModule:
+			if fr.Package == "" && fr.Function == "" { // fr.Module is always set
+				modeFindings = append(modeFindings, f)
+			}
 		}
 	}
-	return vs
+
+	var vulns []*govulncheck.Vuln
+	seen := make(map[govulncheck.Vuln]bool) // avoid duplicates
+	for _, f := range modeFindings {
+		v := govulncheck.ConvertGovulncheckFinding(f)
+		if seen[*v] {
+			continue
+		}
+		seen[*v] = true
+		vulns = append(vulns, v)
+	}
+	return vulns
 }
 
 // runScanModule fetches the module version from the proxy, and analyzes its source
 // code for vulnerabilities. The analysis of binaries is done in CompareModules.
-func (s *scanner) runScanModule(ctx context.Context, modulePath, version, mode string, stats *govulncheck.ScanStats) (bvulns []*govulncheck.Vuln, err error) {
+func (s *scanner) runScanModule(ctx context.Context, modulePath, version, mode string, stats *govulncheck.ScanStats) (findings []*govulncheckapi.Finding, err error) {
 	err = doScan(ctx, modulePath, version, s.insecure, func() (err error) {
 		// Download the module first.
 		inputPath := moduleDir(modulePath, version)
@@ -444,23 +463,15 @@ func (s *scanner) runScanModule(ctx context.Context, modulePath, version, mode s
 			return err
 		}
 
-		var findings []*govulncheckapi.Finding
 		if s.insecure {
 			findings, err = s.runGovulncheckScanInsecure(inputPath, mode, stats)
 		} else {
 			findings, err = s.runGovulncheckScanSandbox(ctx, inputPath, mode, stats)
 		}
-		if err != nil {
-			return err
-		}
 		log.Debugf(ctx, "govulncheck stats: %dkb | %vs", stats.ScanMemory, stats.ScanSeconds)
-
-		for _, v := range findings {
-			bvulns = append(bvulns, govulncheck.ConvertGovulncheckFinding(v))
-		}
-		return nil
+		return err
 	})
-	return bvulns, err
+	return findings, err
 }
 
 func (s *scanner) runGovulncheckScanSandbox(ctx context.Context, inputPath, mode string, stats *govulncheck.ScanStats) (_ []*govulncheckapi.Finding, err error) {
@@ -468,7 +479,7 @@ func (s *scanner) runGovulncheckScanSandbox(ctx context.Context, inputPath, mode
 	err = s.sbox.Validate()
 	log.Debugf(ctx, "sandbox Validate returned %v", err)
 
-	response, err := s.runGovulncheckSandbox(ctx, modeToGovulncheckFlag(mode), smdir)
+	response, err := s.runGovulncheckSandbox(ctx, mode, smdir)
 	if err != nil {
 		return nil, err
 	}
