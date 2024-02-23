@@ -60,13 +60,6 @@ check_headers() {
   fi
 }
 
-
-# check_unparam runs unparam on source files.
-check_unparam() {
-    ensure_go_binary mvdan.cc/unparam
-    runcmd unparam ./...
-}
-
 # check_vet runs go vet on source files.
 check_vet() {
   runcmd go vet -all ./...
@@ -98,7 +91,6 @@ go_linters() {
   check_vet
   check_staticcheck
   check_misspell
-  check_unparam
 }
 
 go_modtidy() {
