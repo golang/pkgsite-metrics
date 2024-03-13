@@ -32,7 +32,7 @@ require (
 	google.golang.org/api v0.132.0
 	google.golang.org/genproto/googleapis/api v0.0.0-20230706204954-ccb25ca9f130
 	google.golang.org/grpc v1.56.2
-	google.golang.org/protobuf v1.31.0
+	google.golang.org/protobuf v1.33.0
 	honnef.co/go/tools v0.4.3
 	mvdan.cc/unparam v0.0.0-20230312165513-e84e2d14e3b8
 )
