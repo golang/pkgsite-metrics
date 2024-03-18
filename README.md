@@ -1,6 +1,7 @@
 # pkgsite-metrics
 
-This repository contains code that serves pkg.go.dev/metrics.
+This repository contains code that enables collecting and evaluating
+metrics for the Go ecosystem.
 
 ## Report Issues / Send Patches
 
