@@ -195,6 +195,12 @@ type Vuln struct {
 	PackagePath string `bigquery:"package_path"`
 	ModulePath  string `bigquery:"module_path"`
 	Version     string `bigquery:"version"`
+	// ReviewStatus is a field of osv. However,
+	// we don't have the osv field, yet only its
+	// ID. To avoid joining tables with osv tables
+	// that do not exist in ecosystem metrics, we
+	// just put the review status here instead.
+	ReviewStatus bq.NullString `bigquery:"review_status"`
 }
 
 // SchemaVersion changes whenever the govulncheck schema changes.
