@@ -8,28 +8,38 @@
 package main
 
 import (
+	"bufio"
+	"io/fs"
 	"os"
-	"os/exec"
+	"regexp"
+	"strings"
 	"testing"
 )
 
-func Test(t *testing.T) {
-	if os.Getenv("GO_ECOSYSTEM_INTEGRATION_TESTING") != "1" {
-		t.Log("warning: running go test ./... will skip checking integration tests")
-	}
+var goHeader = regexp.MustCompile(`^// Copyright 20\d\d The Go Authors\. All rights reserved\.
+// Use of this source code is governed by a BSD-style
+// license that can be found in the LICENSE file\.`)
 
-	if testing.Short() {
-		t.Skip("skipping test that uses internet in short mode")
-	}
-	bash, err := exec.LookPath("bash")
-	if err != nil {
-		t.Skipf("skipping: %v", err)
-	}
-
-	cmd := exec.Command(bash, "./checks.bash")
-	cmd.Stdout = os.Stdout
-	cmd.Stderr = os.Stderr
-	if err := cmd.Run(); err != nil {
-		t.Fatal(err)
-	}
+func TestHeaders(t *testing.T) {
+	sfs := os.DirFS(".")
+	fs.WalkDir(sfs, ".", func(path string, d fs.DirEntry, _ error) error {
+		if d.IsDir() {
+			if d.Name() == "testdata" {
+				return fs.SkipDir
+			}
+			return nil
+		}
+		if !strings.HasSuffix(path, ".go") {
+			return nil
+		}
+		f, err := sfs.Open(path)
+		if err != nil {
+			return err
+		}
+		defer f.Close()
+		if !goHeader.MatchReader(bufio.NewReader(f)) {
+			t.Errorf("%v: incorrect go header", path)
+		}
+		return nil
+	})
 }

@@ -3,8 +3,8 @@
 # Use of this source code is governed by a BSD-style
 # license that can be found in the LICENSE file.
 
-# This file will be run by `go test`.
-# See all_test.go in this directory.
+# Not run by unit tests. Intended to help authors
+# during development.
 
 go version
 
@@ -24,39 +24,6 @@ ensure_go_binary() {
     info "Installing: $1"
     # Install the binary in a way that doesn't affect our go.mod file.
     go install $1
-  fi
-}
-
-# verify_header checks that all given files contain the standard header for Go
-# projects.
-verify_header() {
-  if [[ "$@" != "" ]]; then
-    for FILE in $@
-    do
-      if [ -f $FILE ]; then
-        line="$(head -4 $FILE)"
-        if [[ ! $line == *"The Go Authors. All rights reserved."* ]] &&
-         [[ ! $line == "// DO NOT EDIT. This file was copied from" ]]; then
-              err "missing license header: $FILE"
-        fi
-      fi
-    done
-  fi
-}
-
-# check_headers checks that all source files that have been staged in this
-# commit, and all other non-third-party files in the repo, have a license
-# header.
-check_headers() {
-  if [[ $# -gt 0 ]]; then
-    info "Checking listed files for license header"
-    verify_header $*
-  else
-    info "Checking go and sh files for license header"
-    # Ignore files in testdata directories.
-    verify_header $(find . -name testdata -prune \
-      -o -name '*.go' -print \
-      -o -name '*.sh' -print)
   fi
 }
 
@@ -99,7 +66,6 @@ go_modtidy() {
 
 runchecks() {
   check_integration
-  check_headers
   go_linters
   go_modtidy
 }

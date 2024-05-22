@@ -1,12 +1,12 @@
-// DO NOT EDIT. This file was copied from
-// https://go.googlesource.com/pkgsite/+/035bfc02/internal/testing
-
 // Copyright 2019 The Go Authors. All rights reserved.
 // Use of this source code is governed by a BSD-style
 // license that can be found in the LICENSE file.
 
 // Package testhelper provides shared functionality and constants to be used in
 // Discovery tests. It should only be imported by test files.
+
+// DO NOT EDIT. This file was copied from
+// https://go.googlesource.com/pkgsite/+/035bfc02/internal/testing
 package testhelper
 
 import (
