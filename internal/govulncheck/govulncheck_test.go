@@ -76,7 +76,7 @@ func TestConvertGovulncheckFinding(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			if diff := cmp.Diff(ConvertGovulncheckFinding(tt.vuln), tt.wantVuln, cmp.AllowUnexported(Vuln{})); diff != "" {
+			if diff := cmp.Diff(ConvertGovulncheckFinding(tt.vuln, nil), tt.wantVuln, cmp.AllowUnexported(Vuln{})); diff != "" {
 				t.Errorf("mismatch (-got, +want): %s", diff)
 			}
 		})

@@ -55,7 +55,7 @@ func TestVulnsForMode(t *testing.T) {
 	} {
 		tc := tc
 		t.Run(tc.mode, func(t *testing.T) {
-			vs := vulnsForScanMode(findings, tc.mode)
+			vs := vulnsForScanMode(&govulncheck.SandboxResponse{Findings: findings}, tc.mode)
 			if got := vulnsStr(vs); got != tc.want {
 				t.Errorf("got %s; want %s", got, tc.want)
 			}
@@ -100,10 +100,11 @@ func TestRunScanModuleInsecure(t *testing.T) {
 	s := &scanner{insecure: true, govulncheckPath: govulncheckPath, vulnDBDir: vulndb}
 
 	stats := &govulncheck.ScanStats{}
-	findings, err := s.runGovulncheckScanInsecure("../testdata/module", ModeGovulncheck, stats)
+	response, err := s.runGovulncheckScanInsecure("../testdata/module", ModeGovulncheck, stats)
 	if err != nil {
 		t.Fatal(err)
 	}
+	findings := response.Findings
 	wantID := "GO-2021-0113"
 	found := false
 	for _, v := range findings {

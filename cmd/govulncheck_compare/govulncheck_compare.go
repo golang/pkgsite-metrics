@@ -68,16 +68,18 @@ func run(w io.Writer, args []string) {
 			continue // there was an error in building the binary
 		}
 
-		pair.SourceResults.Findings, err = govulncheck.RunGovulncheckCmd(govulncheckPath, govulncheck.FlagSource, binary.ImportPath, modulePath, vulndbPath, &pair.SourceResults.Stats)
+		resp, err := govulncheck.RunGovulncheckCmd(govulncheckPath, govulncheck.FlagSource, binary.ImportPath, modulePath, vulndbPath, &pair.SourceResults.Stats)
 		if err != nil {
 			pair.Error = err.Error()
 			continue
 		}
+		pair.SourceResults.Findings = resp.Findings
 
-		pair.BinaryResults.Findings, err = govulncheck.RunGovulncheckCmd(govulncheckPath, govulncheck.FlagBinary, binary.BinaryPath, modulePath, vulndbPath, &pair.BinaryResults.Stats)
+		resp, err = govulncheck.RunGovulncheckCmd(govulncheckPath, govulncheck.FlagBinary, binary.BinaryPath, modulePath, vulndbPath, &pair.BinaryResults.Stats)
 		if err != nil {
 			pair.Error = err.Error()
 		}
+		pair.BinaryResults.Findings = resp.Findings
 	}
 
 	b, err := json.MarshalIndent(response, "", "\t")

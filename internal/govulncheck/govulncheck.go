@@ -26,6 +26,7 @@ import (
 	"golang.org/x/pkgsite-metrics/internal/fstore"
 	"golang.org/x/pkgsite-metrics/internal/govulncheckapi"
 	"golang.org/x/pkgsite-metrics/internal/log"
+	"golang.org/x/pkgsite-metrics/internal/osv"
 	"golang.org/x/pkgsite-metrics/internal/scan"
 )
 
@@ -105,13 +106,21 @@ func ParseRequest(r *http.Request, prefix string) (*Request, error) {
 
 // ConvertGovulncheckFinding takes a finding from govulncheck and converts it to
 // a bigquery vuln.
-func ConvertGovulncheckFinding(f *govulncheckapi.Finding) *Vuln {
+func ConvertGovulncheckFinding(f *govulncheckapi.Finding, o *osv.Entry) *Vuln {
 	vulnerableFrame := f.Trace[0]
+	reviewed := ""
+	if o != nil && o.DatabaseSpecific != nil { // sanity
+		reviewed = o.DatabaseSpecific.ReviewStatus.String()
+	}
 	return &Vuln{
 		ID:          f.OSV,
 		PackagePath: vulnerableFrame.Package,
 		ModulePath:  vulnerableFrame.Module,
 		Version:     vulnerableFrame.Version,
+		ReviewStatus: bq.NullString{
+			StringVal: reviewed,
+			Valid:     reviewed != "",
+		},
 	}
 }
 
@@ -237,6 +246,7 @@ type ScanStats struct {
 // for capturing result of govulncheck run in a sandbox.
 type SandboxResponse struct {
 	Findings []*govulncheckapi.Finding
+	OSVs     map[string]*osv.Entry
 	Stats    ScanStats
 }
 
@@ -281,7 +291,7 @@ func UnmarshalCompareResponse(output []byte) (*CompareResponse, error) {
 	return &res, nil
 }
 
-func RunGovulncheckCmd(govulncheckPath, modeFlag, pattern, moduleDir, vulndbDir string, stats *ScanStats) ([]*govulncheckapi.Finding, error) {
+func RunGovulncheckCmd(govulncheckPath, modeFlag, pattern, moduleDir, vulndbDir string, stats *ScanStats) (*SandboxResponse, error) {
 	stdOut := bytes.Buffer{}
 	stdErr := bytes.Buffer{}
 	uri := "file://" + vulndbDir
@@ -310,7 +320,10 @@ func RunGovulncheckCmd(govulncheckPath, modeFlag, pattern, moduleDir, vulndbDir 
 	if err != nil {
 		return nil, err
 	}
-	return handler.Findings(), nil
+	return &SandboxResponse{
+		Findings: handler.Findings(),
+		OSVs:     handler.OSVs(),
+	}, nil
 }
 
 // getMemoryUsage is overridden with a Unix-specific function on Linux.

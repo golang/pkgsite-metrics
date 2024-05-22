@@ -287,7 +287,7 @@ func (s *scanner) CompareModule(ctx context.Context, w http.ResponseWriter, sreq
 	return nil
 }
 
-func createComparisonRow(pkg string, result *govulncheck.SandboxResponse, baseRow *govulncheck.Result, scanMode string) (row *govulncheck.Result) {
+func createComparisonRow(pkg string, response *govulncheck.SandboxResponse, baseRow *govulncheck.Result, scanMode string) (row *govulncheck.Result) {
 	row = &govulncheck.Result{
 		CreatedAt:   baseRow.CreatedAt,
 		Suffix:      pkg,
@@ -300,14 +300,14 @@ func createComparisonRow(pkg string, result *govulncheck.SandboxResponse, baseRo
 	}
 	if scanMode == scanModeBinarySymbol {
 		row.ScanMode = "COMPARE - BINARY"
-		row.BinaryBuildSeconds = bigquery.NullFloat(result.Stats.BuildTime.Seconds())
+		row.BinaryBuildSeconds = bigquery.NullFloat(response.Stats.BuildTime.Seconds())
 	} else {
 		row.ScanMode = "COMPARE - SOURCE"
 	}
 
-	row.Vulns = vulnsForScanMode(result.Findings, scanMode)
-	row.ScanMemory = int64(result.Stats.ScanMemory)
-	row.ScanSeconds = result.Stats.ScanSeconds
+	row.Vulns = vulnsForScanMode(response, scanMode)
+	row.ScanMemory = int64(response.Stats.ScanMemory)
+	row.ScanSeconds = response.Stats.ScanSeconds
 	return row
 }
 
@@ -353,7 +353,7 @@ func (s *scanner) ScanModule(ctx context.Context, w http.ResponseWriter, sreq *g
 
 	log.Infof(ctx, "running scanner.runScanModule: %s@%s", sreq.Path(), sreq.Version)
 	stats := &govulncheck.ScanStats{}
-	findings, err := s.runScanModule(ctx, sreq.Module, info.Version, sreq.Mode, stats)
+	response, err := s.runScanModule(ctx, sreq.Module, info.Version, sreq.Mode, stats)
 	baseRow.ScanSeconds = stats.ScanSeconds
 	baseRow.ScanMemory = int64(stats.ScanMemory)
 	if err != nil {
@@ -406,8 +406,8 @@ func (s *scanner) ScanModule(ctx context.Context, w http.ResponseWriter, sreq *g
 			row.ScanSeconds = 0
 			row.ScanMemory = 0
 		}
-		row.Vulns = vulnsForScanMode(findings, mode)
-		log.Infof(ctx, "scanner.runScanModule returned %d findings and err=%v for %s with row.Vulns=%d in scan mode=%s", len(findings), err, sreq.Path(), len(row.Vulns), mode)
+		row.Vulns = vulnsForScanMode(response, mode)
+		log.Infof(ctx, "scanner.runScanModule returned %d findings and err=%v for %s with row.Vulns=%d in scan mode=%s", len(response.Findings), err, sreq.Path(), len(row.Vulns), mode)
 		rows = append(rows, &row)
 	}
 	if err := writeResults(ctx, sreq.Serve, w, s.bqClient, govulncheck.TableName, rows); err != nil {
@@ -418,9 +418,9 @@ func (s *scanner) ScanModule(ctx context.Context, w http.ResponseWriter, sreq *g
 
 // vulnsForScanMode produces Vulns from findings at the specified
 // govulncheck scan mode.
-func vulnsForScanMode(findings []*govulncheckapi.Finding, mode string) []*govulncheck.Vuln {
+func vulnsForScanMode(response *govulncheck.SandboxResponse, mode string) []*govulncheck.Vuln {
 	var modeFindings []*govulncheckapi.Finding
-	for _, f := range findings {
+	for _, f := range response.Findings {
 		fr := f.Trace[0]
 		switch mode {
 		case scanModeSourceSymbol, scanModeBinarySymbol:
@@ -441,7 +441,7 @@ func vulnsForScanMode(findings []*govulncheckapi.Finding, mode string) []*govuln
 	var vulns []*govulncheck.Vuln
 	seen := make(map[govulncheck.Vuln]bool) // avoid duplicates
 	for _, f := range modeFindings {
-		v := govulncheck.ConvertGovulncheckFinding(f)
+		v := govulncheck.ConvertGovulncheckFinding(f, response.OSVs[f.OSV])
 		if seen[*v] {
 			continue
 		}
@@ -453,7 +453,7 @@ func vulnsForScanMode(findings []*govulncheckapi.Finding, mode string) []*govuln
 
 // runScanModule fetches the module version from the proxy, and analyzes its source
 // code for vulnerabilities. The analysis of binaries is done in CompareModules.
-func (s *scanner) runScanModule(ctx context.Context, modulePath, version, mode string, stats *govulncheck.ScanStats) (findings []*govulncheckapi.Finding, err error) {
+func (s *scanner) runScanModule(ctx context.Context, modulePath, version, mode string, stats *govulncheck.ScanStats) (response *govulncheck.SandboxResponse, err error) {
 	err = doScan(ctx, modulePath, version, s.insecure, func() (err error) {
 		// Download the module first.
 		inputPath := moduleDir(modulePath, version)
@@ -464,17 +464,17 @@ func (s *scanner) runScanModule(ctx context.Context, modulePath, version, mode s
 		}
 
 		if s.insecure {
-			findings, err = s.runGovulncheckScanInsecure(inputPath, mode, stats)
+			response, err = s.runGovulncheckScanInsecure(inputPath, mode, stats)
 		} else {
-			findings, err = s.runGovulncheckScanSandbox(ctx, inputPath, mode, stats)
+			response, err = s.runGovulncheckScanSandbox(ctx, inputPath, mode, stats)
 		}
 		log.Debugf(ctx, "govulncheck stats: %dkb | %vs", stats.ScanMemory, stats.ScanSeconds)
 		return err
 	})
-	return findings, err
+	return response, err
 }
 
-func (s *scanner) runGovulncheckScanSandbox(ctx context.Context, inputPath, mode string, stats *govulncheck.ScanStats) (_ []*govulncheckapi.Finding, err error) {
+func (s *scanner) runGovulncheckScanSandbox(ctx context.Context, inputPath, mode string, stats *govulncheck.ScanStats) (_ *govulncheck.SandboxResponse, err error) {
 	smdir := strings.TrimPrefix(inputPath, sandboxRoot)
 	err = s.sbox.Validate()
 	log.Debugf(ctx, "sandbox Validate returned %v", err)
@@ -485,7 +485,7 @@ func (s *scanner) runGovulncheckScanSandbox(ctx context.Context, inputPath, mode
 	}
 	stats.ScanMemory = response.Stats.ScanMemory
 	stats.ScanSeconds = response.Stats.ScanSeconds
-	return response.Findings, nil
+	return response, nil
 }
 
 func (s *scanner) runGovulncheckSandbox(ctx context.Context, mode, arg string) (*govulncheck.SandboxResponse, error) {
@@ -516,7 +516,7 @@ func (s *scanner) runGovulncheckCompareSandbox(ctx context.Context, arg string) 
 	return govulncheck.UnmarshalCompareResponse(stdout)
 }
 
-func (s *scanner) runGovulncheckScanInsecure(inputPath, mode string, stats *govulncheck.ScanStats) (_ []*govulncheckapi.Finding, err error) {
+func (s *scanner) runGovulncheckScanInsecure(inputPath, mode string, stats *govulncheck.ScanStats) (_ *govulncheck.SandboxResponse, err error) {
 	return govulncheck.RunGovulncheckCmd(s.govulncheckPath, modeToGovulncheckFlag(mode), "./...", inputPath, s.vulnDBDir, stats)
 }
 

@@ -67,14 +67,12 @@ func run(w io.Writer, args []string) {
 }
 
 func runGovulncheck(govulncheckPath, modeFlag, filePath, vulnDBDir string) (*govulncheck.SandboxResponse, error) {
-	response := govulncheck.SandboxResponse{
-		Stats: govulncheck.ScanStats{},
-	}
+	stats := govulncheck.ScanStats{}
 
-	findings, err := govulncheck.RunGovulncheckCmd(govulncheckPath, modeFlag, "./...", filePath, vulnDBDir, &response.Stats)
+	response, err := govulncheck.RunGovulncheckCmd(govulncheckPath, modeFlag, "./...", filePath, vulnDBDir, &stats)
 	if err != nil {
 		return nil, err
 	}
-	response.Findings = findings
-	return &response, nil
+	response.Stats = stats
+	return response, nil
 }
