@@ -57,10 +57,7 @@ func run(w io.Writer, args []string) {
 		FindingsForMod: make(map[string]*govulncheck.ComparePair),
 	}
 	for _, binary := range binaries {
-		pair := &govulncheck.ComparePair{
-			BinaryResults: govulncheck.SandboxResponse{Stats: govulncheck.ScanStats{BuildTime: binary.BuildTime}},
-			SourceResults: govulncheck.SandboxResponse{Stats: govulncheck.ScanStats{}},
-		}
+		pair := &govulncheck.ComparePair{}
 		response.FindingsForMod[binary.ImportPath] = pair
 
 		if binary.Error != nil {
@@ -68,18 +65,19 @@ func run(w io.Writer, args []string) {
 			continue // there was an error in building the binary
 		}
 
-		resp, err := govulncheck.RunGovulncheckCmd(govulncheckPath, govulncheck.FlagSource, binary.ImportPath, modulePath, vulndbPath, &pair.SourceResults.Stats)
+		srcResp, err := govulncheck.RunGovulncheckCmd(govulncheckPath, govulncheck.FlagSource, binary.ImportPath, modulePath, vulndbPath)
 		if err != nil {
 			pair.Error = err.Error()
 			continue
 		}
-		pair.SourceResults.Findings = resp.Findings
+		pair.SourceResults = *srcResp
 
-		resp, err = govulncheck.RunGovulncheckCmd(govulncheckPath, govulncheck.FlagBinary, binary.BinaryPath, modulePath, vulndbPath, &pair.BinaryResults.Stats)
+		binResp, err := govulncheck.RunGovulncheckCmd(govulncheckPath, govulncheck.FlagBinary, binary.BinaryPath, modulePath, vulndbPath)
 		if err != nil {
 			pair.Error = err.Error()
 		}
-		pair.BinaryResults.Findings = resp.Findings
+		pair.BinaryResults = *binResp
+		pair.BinaryResults.Stats.BuildTime = binary.BuildTime
 	}
 
 	b, err := json.MarshalIndent(response, "", "\t")

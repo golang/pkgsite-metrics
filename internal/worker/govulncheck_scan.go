@@ -287,7 +287,7 @@ func (s *scanner) CompareModule(ctx context.Context, w http.ResponseWriter, sreq
 	return nil
 }
 
-func createComparisonRow(pkg string, response *govulncheck.SandboxResponse, baseRow *govulncheck.Result, scanMode string) (row *govulncheck.Result) {
+func createComparisonRow(pkg string, response *govulncheck.AnalysisResponse, baseRow *govulncheck.Result, scanMode string) (row *govulncheck.Result) {
 	row = &govulncheck.Result{
 		CreatedAt:   baseRow.CreatedAt,
 		Suffix:      pkg,
@@ -352,10 +352,9 @@ func (s *scanner) ScanModule(ctx context.Context, w http.ResponseWriter, sreq *g
 	}
 
 	log.Infof(ctx, "running scanner.runScanModule: %s@%s", sreq.Path(), sreq.Version)
-	stats := &govulncheck.ScanStats{}
-	response, err := s.runScanModule(ctx, sreq.Module, info.Version, sreq.Mode, stats)
-	baseRow.ScanSeconds = stats.ScanSeconds
-	baseRow.ScanMemory = int64(stats.ScanMemory)
+	response, err := s.runScanModule(ctx, sreq.Module, info.Version, sreq.Mode)
+	baseRow.ScanSeconds = response.Stats.ScanSeconds
+	baseRow.ScanMemory = int64(response.Stats.ScanMemory)
 	if err != nil {
 		switch {
 		case isGovulncheckLoadError(err) || isBuildIssue(err):
@@ -418,7 +417,7 @@ func (s *scanner) ScanModule(ctx context.Context, w http.ResponseWriter, sreq *g
 
 // vulnsForScanMode produces Vulns from findings at the specified
 // govulncheck scan mode.
-func vulnsForScanMode(response *govulncheck.SandboxResponse, mode string) []*govulncheck.Vuln {
+func vulnsForScanMode(response *govulncheck.AnalysisResponse, mode string) []*govulncheck.Vuln {
 	var modeFindings []*govulncheckapi.Finding
 	for _, f := range response.Findings {
 		fr := f.Trace[0]
@@ -453,7 +452,7 @@ func vulnsForScanMode(response *govulncheck.SandboxResponse, mode string) []*gov
 
 // runScanModule fetches the module version from the proxy, and analyzes its source
 // code for vulnerabilities. The analysis of binaries is done in CompareModules.
-func (s *scanner) runScanModule(ctx context.Context, modulePath, version, mode string, stats *govulncheck.ScanStats) (response *govulncheck.SandboxResponse, err error) {
+func (s *scanner) runScanModule(ctx context.Context, modulePath, version, mode string) (response *govulncheck.AnalysisResponse, err error) {
 	err = doScan(ctx, modulePath, version, s.insecure, func() (err error) {
 		// Download the module first.
 		inputPath := moduleDir(modulePath, version)
@@ -464,31 +463,25 @@ func (s *scanner) runScanModule(ctx context.Context, modulePath, version, mode s
 		}
 
 		if s.insecure {
-			response, err = s.runGovulncheckScanInsecure(inputPath, mode, stats)
+			response, err = s.runGovulncheckScanInsecure(inputPath, mode)
 		} else {
-			response, err = s.runGovulncheckScanSandbox(ctx, inputPath, mode, stats)
+			response, err = s.runGovulncheckScanSandbox(ctx, inputPath, mode)
 		}
-		log.Debugf(ctx, "govulncheck stats: %dkb | %vs", stats.ScanMemory, stats.ScanSeconds)
+		log.Debugf(ctx, "govulncheck stats: %dkb | %vs", response.Stats.ScanMemory, response.Stats.ScanSeconds)
 		return err
 	})
 	return response, err
 }
 
-func (s *scanner) runGovulncheckScanSandbox(ctx context.Context, inputPath, mode string, stats *govulncheck.ScanStats) (_ *govulncheck.SandboxResponse, err error) {
+func (s *scanner) runGovulncheckScanSandbox(ctx context.Context, inputPath, mode string) (_ *govulncheck.AnalysisResponse, err error) {
 	smdir := strings.TrimPrefix(inputPath, sandboxRoot)
 	err = s.sbox.Validate()
 	log.Debugf(ctx, "sandbox Validate returned %v", err)
 
-	response, err := s.runGovulncheckSandbox(ctx, mode, smdir)
-	if err != nil {
-		return nil, err
-	}
-	stats.ScanMemory = response.Stats.ScanMemory
-	stats.ScanSeconds = response.Stats.ScanSeconds
-	return response, nil
+	return s.runGovulncheckSandbox(ctx, mode, smdir)
 }
 
-func (s *scanner) runGovulncheckSandbox(ctx context.Context, mode, arg string) (*govulncheck.SandboxResponse, error) {
+func (s *scanner) runGovulncheckSandbox(ctx context.Context, mode, arg string) (*govulncheck.AnalysisResponse, error) {
 	goOut, err := s.sbox.Command("/usr/local/go/bin/go", "version").Output()
 	if err != nil {
 		log.Debugf(ctx, "running go version error: %v", err)
@@ -502,7 +495,7 @@ func (s *scanner) runGovulncheckSandbox(ctx context.Context, mode, arg string) (
 	if err != nil {
 		return nil, errors.New(derrors.IncludeStderr(err))
 	}
-	return govulncheck.UnmarshalSandboxResponse(stdout)
+	return govulncheck.UnmarshalAnalysisResponse(stdout)
 }
 
 func (s *scanner) runGovulncheckCompareSandbox(ctx context.Context, arg string) (*govulncheck.CompareResponse, error) {
@@ -516,8 +509,8 @@ func (s *scanner) runGovulncheckCompareSandbox(ctx context.Context, arg string) 
 	return govulncheck.UnmarshalCompareResponse(stdout)
 }
 
-func (s *scanner) runGovulncheckScanInsecure(inputPath, mode string, stats *govulncheck.ScanStats) (_ *govulncheck.SandboxResponse, err error) {
-	return govulncheck.RunGovulncheckCmd(s.govulncheckPath, modeToGovulncheckFlag(mode), "./...", inputPath, s.vulnDBDir, stats)
+func (s *scanner) runGovulncheckScanInsecure(inputPath, mode string) (_ *govulncheck.AnalysisResponse, err error) {
+	return govulncheck.RunGovulncheckCmd(s.govulncheckPath, modeToGovulncheckFlag(mode), "./...", inputPath, s.vulnDBDir)
 }
 
 func isGovulncheckLoadError(err error) bool {

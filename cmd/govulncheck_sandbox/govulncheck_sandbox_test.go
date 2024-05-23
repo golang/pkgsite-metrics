@@ -110,8 +110,8 @@ func Test(t *testing.T) {
 	}
 }
 
-func runTest(args []string) (*govulncheck.SandboxResponse, error) {
+func runTest(args []string) (*govulncheck.AnalysisResponse, error) {
 	var buf bytes.Buffer
 	run(&buf, args)
-	return govulncheck.UnmarshalSandboxResponse(buf.Bytes())
+	return govulncheck.UnmarshalAnalysisResponse(buf.Bytes())
 }

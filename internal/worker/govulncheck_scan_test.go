@@ -55,7 +55,7 @@ func TestVulnsForMode(t *testing.T) {
 	} {
 		tc := tc
 		t.Run(tc.mode, func(t *testing.T) {
-			vs := vulnsForScanMode(&govulncheck.SandboxResponse{Findings: findings}, tc.mode)
+			vs := vulnsForScanMode(&govulncheck.AnalysisResponse{Findings: findings}, tc.mode)
 			if got := vulnsStr(vs); got != tc.want {
 				t.Errorf("got %s; want %s", got, tc.want)
 			}
@@ -99,8 +99,7 @@ func TestRunScanModuleInsecure(t *testing.T) {
 
 	s := &scanner{insecure: true, govulncheckPath: govulncheckPath, vulnDBDir: vulndb}
 
-	stats := &govulncheck.ScanStats{}
-	response, err := s.runGovulncheckScanInsecure("../testdata/module", ModeGovulncheck, stats)
+	response, err := s.runGovulncheckScanInsecure("../testdata/module", ModeGovulncheck)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -116,6 +115,8 @@ func TestRunScanModuleInsecure(t *testing.T) {
 	if !found {
 		t.Errorf("want %s, did not find it in %d vulns", wantID, len(findings))
 	}
+
+	stats := response.Stats
 	if got := stats.ScanSeconds; got <= 0 {
 		t.Errorf("scan time not collected or negative: %v", got)
 	}

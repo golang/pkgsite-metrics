@@ -241,16 +241,17 @@ type ScanStats struct {
 	BuildTime time.Duration
 }
 
-// SandboxResponse contains the raw govulncheck result
-// and statistics about memory usage and run time. Used
-// for capturing result of govulncheck run in a sandbox.
-type SandboxResponse struct {
+// AnalysisResponse contains the raw govulncheck result
+// and statistics about memory usage and run time of invoking
+// govulncheck on source code or a binary. Used when
+// running govulncheck inside and outside of a sandbox.
+type AnalysisResponse struct {
 	Findings []*govulncheckapi.Finding
 	OSVs     map[string]*osv.Entry
 	Stats    ScanStats
 }
 
-func UnmarshalSandboxResponse(output []byte) (*SandboxResponse, error) {
+func UnmarshalAnalysisResponse(output []byte) (*AnalysisResponse, error) {
 	var e struct{ Error string }
 	if err := json.Unmarshal(output, &e); err != nil {
 		return nil, err
@@ -258,21 +259,23 @@ func UnmarshalSandboxResponse(output []byte) (*SandboxResponse, error) {
 	if e.Error != "" {
 		return nil, errors.New(e.Error)
 	}
-	var res SandboxResponse
+	var res AnalysisResponse
 	if err := json.Unmarshal(output, &res); err != nil {
 		return nil, err
 	}
 	return &res, nil
 }
 
+// CompareResponse contains results running govulncheck on a binary
+// and corresponding source code.
 type CompareResponse struct {
 	// Map from package import path to pair of binary & source mode findings
 	FindingsForMod map[string]*ComparePair
 }
 
 type ComparePair struct {
-	BinaryResults SandboxResponse
-	SourceResults SandboxResponse
+	BinaryResults AnalysisResponse
+	SourceResults AnalysisResponse
 	Error         string
 }
 
@@ -291,7 +294,7 @@ func UnmarshalCompareResponse(output []byte) (*CompareResponse, error) {
 	return &res, nil
 }
 
-func RunGovulncheckCmd(govulncheckPath, modeFlag, pattern, moduleDir, vulndbDir string, stats *ScanStats) (*SandboxResponse, error) {
+func RunGovulncheckCmd(govulncheckPath, modeFlag, pattern, moduleDir, vulndbDir string) (*AnalysisResponse, error) {
 	stdOut := bytes.Buffer{}
 	stdErr := bytes.Buffer{}
 	uri := "file://" + vulndbDir
@@ -312,17 +315,20 @@ func RunGovulncheckCmd(govulncheckPath, modeFlag, pattern, moduleDir, vulndbDir 
 	if err := govulncheckCmd.Run(); err != nil {
 		return nil, errors.New(stdErr.String())
 	}
-	stats.ScanSeconds = time.Since(start).Seconds()
-	stats.ScanMemory = getMemoryUsage(govulncheckCmd)
+	end := time.Now()
 
 	handler := NewMetricsHandler()
 	err := govulncheckapi.HandleJSON(&stdOut, handler)
 	if err != nil {
 		return nil, err
 	}
-	return &SandboxResponse{
+	return &AnalysisResponse{
 		Findings: handler.Findings(),
 		OSVs:     handler.OSVs(),
+		Stats: ScanStats{
+			ScanSeconds: end.Sub(start).Seconds(),
+			ScanMemory:  getMemoryUsage(govulncheckCmd),
+		},
 	}, nil
 }
 
