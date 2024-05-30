@@ -249,28 +249,11 @@ func (s scanError) Unwrap() error {
 // binary within the module.
 func (s *scanner) CompareModule(ctx context.Context, w http.ResponseWriter, sreq *govulncheck.Request, baseRow *govulncheck.Result) (err error) {
 	defer derrors.Wrap(&err, "CompareModule")
-
-	info, err := s.proxyClient.Info(ctx, sreq.Module, sreq.Version)
-	if err != nil {
-		log.Infof(ctx, "proxy error: %s@%s %v", sreq.Path(), sreq.Version, err)
-		var rows []bigquery.Row
-		for _, sm := range []string{scanModeCompareBinary, scanModeCompareSource} {
-			row := *baseRow
-			row.ScanMode = sm
-			row.AddError(fmt.Errorf("%v: %w", err, derrors.ProxyError))
-			rows = append(rows, &row)
-		}
-		return writeResults(ctx, sreq.Serve, w, s.bqClient, govulncheck.TableName, rows)
-	}
-	baseRow.Version = info.Version
-	baseRow.SortVersion = version.ForSorting(info.Version)
-	baseRow.CommitTime = info.Time
-
-	err = doScan(ctx, baseRow.ModulePath, info.Version, s.insecure, func() (err error) {
-		inputPath := moduleDir(baseRow.ModulePath, info.Version)
+	err = doScan(ctx, baseRow.ModulePath, baseRow.Version, s.insecure, func() (err error) {
+		inputPath := moduleDir(baseRow.ModulePath, baseRow.Version)
 		defer derrors.Cleanup(&err, func() error { return os.RemoveAll(inputPath) })
 		const init = true
-		if err := prepareModule(ctx, baseRow.ModulePath, info.Version, inputPath, s.proxyClient, s.insecure, init); err != nil {
+		if err := prepareModule(ctx, baseRow.ModulePath, baseRow.Version, inputPath, s.proxyClient, s.insecure, init); err != nil {
 			log.Errorf(ctx, err, "error trying to prepare module %s", baseRow.ModulePath)
 			return nil
 		}
@@ -342,24 +325,20 @@ func (s *scanner) ScanModule(ctx context.Context, w http.ResponseWriter, sreq *g
 	}
 	baseRow.VulnDBLastModified = s.workVersion.VulnDBLastModified
 
-	if sreq.Mode == ModeCompare {
-		// TODO: WorkState for CompareModule requests?
-		return nil, s.CompareModule(ctx, w, sreq, baseRow)
-	}
-	if sreq.Mode == ModeGovulncheck {
-		return s.CheckModule(ctx, w, sreq, baseRow)
-	}
-	return nil, nil
-}
-
-// CheckModule govulnchecks a module specified by sreq.
-func (s *scanner) CheckModule(ctx context.Context, w http.ResponseWriter, sreq *govulncheck.Request, baseRow *govulncheck.Result) (*govulncheck.WorkState, error) {
 	log.Debugf(ctx, "fetching proxy info: %s@%s", sreq.Path(), sreq.Version)
 	info, err := s.proxyClient.Info(ctx, sreq.Module, sreq.Version)
 	if err != nil {
 		log.Infof(ctx, "proxy error: %s@%s %v", sreq.Path(), sreq.Version, err)
+		// return row with proxy error for each appropriate scan mode
+		// based on the ecosystem metrics mode.
+		var scanModes []string
+		if sreq.Mode == ModeCompare {
+			scanModes = []string{scanModeCompareBinary, scanModeCompareSource}
+		} else if sreq.Mode == ModeGovulncheck {
+			scanModes = []string{scanModeSourceSymbol, scanModeSourcePackage, scanModeSourceModule}
+		}
 		var rows []bigquery.Row
-		for _, sm := range []string{scanModeSourceSymbol, scanModeSourcePackage, scanModeSourceModule} {
+		for _, sm := range scanModes {
 			row := *baseRow
 			row.ScanMode = sm
 			row.AddError(fmt.Errorf("%v: %w", err, derrors.ProxyError))
@@ -371,8 +350,19 @@ func (s *scanner) CheckModule(ctx context.Context, w http.ResponseWriter, sreq *
 	baseRow.SortVersion = version.ForSorting(info.Version)
 	baseRow.CommitTime = info.Time
 
+	if sreq.Mode == ModeCompare {
+		// TODO: WorkState for CompareModule requests?
+		return nil, s.CompareModule(ctx, w, sreq, baseRow)
+	} else if sreq.Mode == ModeGovulncheck {
+		return s.CheckModule(ctx, w, sreq, baseRow)
+	}
+	return nil, nil
+}
+
+// CheckModule govulnchecks a module specified by sreq.
+func (s *scanner) CheckModule(ctx context.Context, w http.ResponseWriter, sreq *govulncheck.Request, baseRow *govulncheck.Result) (*govulncheck.WorkState, error) {
 	log.Infof(ctx, "running scanner.runScanModule: %s@%s", sreq.Path(), sreq.Version)
-	response, err := s.runScanModule(ctx, sreq.Module, info.Version, sreq.Mode)
+	response, err := s.runScanModule(ctx, sreq.Module, baseRow.Version, sreq.Mode)
 	baseRow.ScanSeconds = response.Stats.ScanSeconds
 	baseRow.ScanMemory = int64(response.Stats.ScanMemory)
 	// classify scan error
@@ -409,6 +399,7 @@ func (s *scanner) CheckModule(ctx context.Context, w http.ResponseWriter, sreq *
 		default:
 			err = fmt.Errorf("%v: %w", err, derrors.ScanModuleGovulncheckError)
 		}
+		baseRow.AddError(err)
 	}
 
 	// create a row for each precision level
@@ -426,9 +417,7 @@ func (s *scanner) CheckModule(ctx context.Context, w http.ResponseWriter, sreq *
 			row.ScanMemory = 0
 		}
 		row.Vulns = vulnsForScanMode(response, sm)
-		row.AddError(err) // either this line or the one above have effect, not both
 		log.Infof(ctx, "scanner.runScanModule returned %d findings and err=%v for %s with row.Vulns=%d in scan mode=%s", len(response.Findings), err, sreq.Path(), len(row.Vulns), sm)
-
 		rows = append(rows, &row)
 	}
 
