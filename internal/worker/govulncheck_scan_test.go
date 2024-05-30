@@ -49,7 +49,6 @@ func TestVulnsForMode(t *testing.T) {
 		want string
 	}{
 		{scanModeSourceSymbol, "M1:P1"},
-		{scanModeBinarySymbol, "M1:P1"},
 		{scanModeSourcePackage, "M1:P1"},
 		{scanModeSourceModule, "M1:, M2:"},
 	} {

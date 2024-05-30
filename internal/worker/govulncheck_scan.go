@@ -62,13 +62,6 @@ const (
 	// Note that this is not an ecosystem metrics mode.
 	scanModeSourceModule string = "REQUIRES"
 
-	// scanModeBinarySymbol is used to designate results at govulncheck binary
-	// '-scan symbol' level of precision.
-	//
-	// Note that this is not an ecosystem metrics mode. Its value is "BINARY"
-	// for historical reasons.
-	scanModeBinarySymbol string = "BINARY"
-
 	// scanModeCompareBinary is used to designate results for govulncheck
 	// binary (symbol) precision level in compare mode.
 	scanModeCompareBinary string = "COMPARE - BINARY"
@@ -82,15 +75,6 @@ const (
 	// in its default location, $HOME/.cache/go-build.
 	sandboxGoCache = "root/.cache/go-build"
 )
-
-func modeToGovulncheckFlag(mode string) string {
-	switch mode {
-	case scanModeBinarySymbol:
-		return govulncheck.FlagBinary
-	default:
-		return govulncheck.FlagSource
-	}
-}
 
 var (
 	// gReqCounter counts requests to govulncheck handleScan
@@ -277,8 +261,8 @@ func (s *scanner) CompareModule(ctx context.Context, w http.ResponseWriter, sreq
 				continue
 			}
 
-			binRow := createComparisonRow(pkg, &results.BinaryResults, baseRow, scanModeBinarySymbol)
-			srcRow := createComparisonRow(pkg, &results.SourceResults, baseRow, scanModeSourceSymbol)
+			binRow := createComparisonRow(pkg, &results.BinaryResults, baseRow, true)
+			srcRow := createComparisonRow(pkg, &results.SourceResults, baseRow, false)
 			log.Infof(ctx, "found %d vulns in binary mode and %d vulns in source mode for package %s (module: %s)", len(binRow.Vulns), len(srcRow.Vulns), pkg, sreq.Path())
 			rows = append(rows, binRow, srcRow)
 		}
@@ -295,17 +279,17 @@ func (s *scanner) CompareModule(ctx context.Context, w http.ResponseWriter, sreq
 	return nil
 }
 
-func createComparisonRow(pkg string, response *govulncheck.AnalysisResponse, baseRow *govulncheck.Result, scanMode string) *govulncheck.Result {
+func createComparisonRow(pkg string, response *govulncheck.AnalysisResponse, baseRow *govulncheck.Result, binary bool) *govulncheck.Result {
 	row := *baseRow
 	row.Suffix = pkg
-	if scanMode == scanModeBinarySymbol {
+	if binary {
 		row.ScanMode = scanModeCompareBinary
 		row.BinaryBuildSeconds = bigquery.NullFloat(response.Stats.BuildTime.Seconds())
 	} else {
 		row.ScanMode = scanModeCompareSource
 	}
 
-	row.Vulns = vulnsForScanMode(response, scanMode)
+	row.Vulns = vulnsForScanMode(response, scanModeSourceSymbol) // we want vulns at the symbol level, binary or source
 	row.ScanMemory = int64(response.Stats.ScanMemory)
 	row.ScanSeconds = response.Stats.ScanSeconds
 	return &row
@@ -359,7 +343,8 @@ func (s *scanner) ScanModule(ctx context.Context, w http.ResponseWriter, sreq *g
 	return nil, nil
 }
 
-// CheckModule govulnchecks a module specified by sreq.
+// CheckModule govulnchecks a module specified by sreq. Currently, only source
+// analysis is conducted. For binary analysis, see CompareModule.
 func (s *scanner) CheckModule(ctx context.Context, w http.ResponseWriter, sreq *govulncheck.Request, baseRow *govulncheck.Result) (*govulncheck.WorkState, error) {
 	log.Infof(ctx, "running scanner.runScanModule: %s@%s", sreq.Path(), sreq.Version)
 	response, err := s.runScanModule(ctx, sreq.Module, baseRow.Version, sreq.Mode)
@@ -432,12 +417,12 @@ func (s *scanner) CheckModule(ctx context.Context, w http.ResponseWriter, sreq *
 
 // vulnsForScanMode produces Vulns from findings at the specified
 // govulncheck scan mode.
-func vulnsForScanMode(response *govulncheck.AnalysisResponse, mode string) []*govulncheck.Vuln {
+func vulnsForScanMode(response *govulncheck.AnalysisResponse, scanMode string) []*govulncheck.Vuln {
 	var modeFindings []*govulncheckapi.Finding
 	for _, f := range response.Findings {
 		fr := f.Trace[0]
-		switch mode {
-		case scanModeSourceSymbol, scanModeBinarySymbol:
+		switch scanMode {
+		case scanModeSourceSymbol:
 			if fr.Function != "" {
 				modeFindings = append(modeFindings, f)
 			}
@@ -506,7 +491,8 @@ func (s *scanner) runGovulncheckSandbox(ctx context.Context, mode, arg string) (
 		log.Debugf(ctx, "Sandbox running %s", goOut)
 	}
 	log.Infof(ctx, "running govulncheck in sandbox: mode %s, arg %q", mode, arg)
-	cmd := s.sbox.Command(filepath.Join(s.binaryDir, "govulncheck_sandbox"), s.govulncheckPath, modeToGovulncheckFlag(mode), arg, s.vulnDBDir)
+	// currently, only source analysis is done in govulncheck_sandbox (binary is done elsewhere)
+	cmd := s.sbox.Command(filepath.Join(s.binaryDir, "govulncheck_sandbox"), s.govulncheckPath, govulncheck.FlagSource, arg, s.vulnDBDir)
 	stdout, err := cmd.Output()
 	log.Infof(ctx, "govulncheck in sandbox finished with err=%v", err)
 	if err != nil {
@@ -527,7 +513,8 @@ func (s *scanner) runGovulncheckCompareSandbox(ctx context.Context, arg string) 
 }
 
 func (s *scanner) runGovulncheckScanInsecure(inputPath, mode string) (_ *govulncheck.AnalysisResponse, err error) {
-	return govulncheck.RunGovulncheckCmd(s.govulncheckPath, modeToGovulncheckFlag(mode), "./...", inputPath, s.vulnDBDir)
+	// currently, only source analysis is done individually (binary is done in compare mode)
+	return govulncheck.RunGovulncheckCmd(s.govulncheckPath, govulncheck.FlagSource, "./...", inputPath, s.vulnDBDir)
 }
 
 func isGovulncheckLoadError(err error) bool {
