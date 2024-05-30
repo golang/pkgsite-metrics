@@ -313,21 +313,12 @@ func (s *scanner) ScanModule(ctx context.Context, w http.ResponseWriter, sreq *g
 	info, err := s.proxyClient.Info(ctx, sreq.Module, sreq.Version)
 	if err != nil {
 		log.Infof(ctx, "proxy error: %s@%s %v", sreq.Path(), sreq.Version, err)
-		// return row with proxy error for each appropriate scan mode
-		// based on the ecosystem metrics mode.
-		var scanModes []string
-		if sreq.Mode == ModeCompare {
-			scanModes = []string{scanModeCompareBinary, scanModeCompareSource}
-		} else if sreq.Mode == ModeGovulncheck {
-			scanModes = []string{scanModeSourceSymbol, scanModeSourcePackage, scanModeSourceModule}
-		}
-		var rows []bigquery.Row
-		for _, sm := range scanModes {
+		rows := createRows(sreq.Mode, func(sm string) *govulncheck.Result {
 			row := *baseRow
 			row.ScanMode = sm
 			row.AddError(fmt.Errorf("%v: %w", err, derrors.ProxyError))
-			rows = append(rows, &row)
-		}
+			return &row
+		})
 		return nil, writeResults(ctx, sreq.Serve, w, s.bqClient, govulncheck.TableName, rows)
 	}
 	baseRow.Version = info.Version
@@ -384,9 +375,7 @@ func (s *scanner) CheckModule(ctx context.Context, w http.ResponseWriter, sreq *
 		}
 	}
 
-	// create a row for each precision level, error or not
-	var rows []bigquery.Row
-	for _, sm := range []string{scanModeSourceSymbol, scanModeSourcePackage, scanModeSourceModule} {
+	rows := createRows(sreq.Mode, func(sm string) *govulncheck.Result {
 		row := *baseRow
 		row.ScanMode = sm
 
@@ -405,8 +394,8 @@ func (s *scanner) CheckModule(ctx context.Context, w http.ResponseWriter, sreq *
 			row.Vulns = vulnsForScanMode(response, sm)
 			log.Infof(ctx, "scanner.runScanModule returned %d findings for %s with row.Vulns=%d in scan mode=%s", len(response.Findings), sreq.Path(), len(row.Vulns), sm)
 		}
-		rows = append(rows, &row)
-	}
+		return &row
+	})
 
 	if err := writeResults(ctx, sreq.Serve, w, s.bqClient, govulncheck.TableName, rows); err != nil {
 		return nil, err
@@ -450,7 +439,23 @@ func vulnsForScanMode(response *govulncheck.AnalysisResponse, scanMode string) [
 	return vulns
 }
 
-// runScanModule fetches the module version from the proxy, and analyzes its source
+// createRows creates a row, using f, for each scanMode associated
+// with ecosystem metrics mode.
+func createRows(mode string, f func(string) *govulncheck.Result) []bigquery.Row {
+	var scanModes []string
+	if mode == ModeCompare {
+		scanModes = []string{scanModeCompareBinary, scanModeCompareSource}
+	} else if mode == ModeGovulncheck {
+		scanModes = []string{scanModeSourceSymbol, scanModeSourcePackage, scanModeSourceModule}
+	}
+
+	var rows []bigquery.Row
+	for _, sm := range scanModes {
+		rows = append(rows, f(sm))
+	}
+	return rows
+}
+
 // code for vulnerabilities. The analysis of binaries is done in CompareModule.
 func (s *scanner) runScanModule(ctx context.Context, modulePath, version, mode string) (response *govulncheck.AnalysisResponse, err error) {
 	err = doScan(ctx, modulePath, version, s.insecure, func() (err error) {
