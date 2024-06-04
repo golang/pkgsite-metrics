@@ -363,9 +363,7 @@ func (s *scanner) ScanModule(ctx context.Context, w http.ResponseWriter, sreq *g
 func (s *scanner) CheckModule(ctx context.Context, w http.ResponseWriter, sreq *govulncheck.Request, baseRow *govulncheck.Result) (*govulncheck.WorkState, error) {
 	log.Infof(ctx, "running scanner.runScanModule: %s@%s", sreq.Path(), sreq.Version)
 	response, err := s.runScanModule(ctx, sreq.Module, baseRow.Version, sreq.Mode)
-	baseRow.ScanSeconds = response.Stats.ScanSeconds
-	baseRow.ScanMemory = int64(response.Stats.ScanMemory)
-	// classify scan error
+	// classify scan error first
 	if err != nil {
 		switch {
 		case isGovulncheckLoadError(err) || isBuildIssue(err):
@@ -399,25 +397,29 @@ func (s *scanner) CheckModule(ctx context.Context, w http.ResponseWriter, sreq *
 		default:
 			err = fmt.Errorf("%v: %w", err, derrors.ScanModuleGovulncheckError)
 		}
-		baseRow.AddError(err)
 	}
 
-	// create a row for each precision level
+	// create a row for each precision level, error or not
 	var rows []bigquery.Row
 	for _, sm := range []string{scanModeSourceSymbol, scanModeSourcePackage, scanModeSourceModule} {
 		row := *baseRow
 		row.ScanMode = sm
 
-		// We use govulncheck command execution time as the approx. time for symbol level analysis.
-		// We currently don't have a way of approximating time for measuring time for module and
-		// package level scans. We could run govulncheck with -scan package and -scan module, but
-		// that would put more pressure on the pipeline and use more resources.
-		if sm != ModeGovulncheck {
-			row.ScanSeconds = 0
-			row.ScanMemory = 0
+		if err != nil {
+			row.AddError(err)
+			log.Infof(ctx, "scanner.runScanModule returned err=%v for %s in scan mode=%s", err, sreq.Path(), sm)
+		} else {
+			// We use govulncheck command execution time as the approx. time for symbol level analysis.
+			// We currently don't have a way of approximating time for measuring time for module and
+			// package level scans. We could run govulncheck with -scan package and -scan module, but
+			// that would put more pressure on the pipeline and use more resources.
+			if sm == ModeGovulncheck {
+				row.ScanSeconds = response.Stats.ScanSeconds
+				row.ScanMemory = int64(response.Stats.ScanMemory)
+			}
+			row.Vulns = vulnsForScanMode(response, sm)
+			log.Infof(ctx, "scanner.runScanModule returned %d findings for %s with row.Vulns=%d in scan mode=%s", len(response.Findings), sreq.Path(), len(row.Vulns), sm)
 		}
-		row.Vulns = vulnsForScanMode(response, sm)
-		log.Infof(ctx, "scanner.runScanModule returned %d findings and err=%v for %s with row.Vulns=%d in scan mode=%s", len(response.Findings), err, sreq.Path(), len(row.Vulns), sm)
 		rows = append(rows, &row)
 	}
 
