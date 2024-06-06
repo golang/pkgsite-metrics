@@ -482,7 +482,9 @@ func (s *scanner) runScanModule(ctx context.Context, modulePath, version, mode s
 		} else {
 			response, err = s.runGovulncheckScanSandbox(ctx, inputPath, mode)
 		}
-		log.Debugf(ctx, "govulncheck stats: %dkb | %vs", response.Stats.ScanMemory, response.Stats.ScanSeconds)
+		if response != nil {
+			log.Debugf(ctx, "govulncheck stats: %dkb | %vs", response.Stats.ScanMemory, response.Stats.ScanSeconds)
+		}
 		return err
 	})
 	return response, err
