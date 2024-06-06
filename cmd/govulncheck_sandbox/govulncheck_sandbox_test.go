@@ -83,7 +83,7 @@ func Test(t *testing.T) {
 		{
 			name: "no mode",
 			args: []string{govulncheckPath, "unsupported mode", module, vulndb},
-			want: "not a valid mode",
+			want: "invalid value",
 		},
 		{
 			name: "no mode",
