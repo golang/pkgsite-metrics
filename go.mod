@@ -1,6 +1,6 @@
 module golang.org/x/pkgsite-metrics
 
-go 1.20
+go 1.21
 
 require (
 	cloud.google.com/go v0.110.7
@@ -28,7 +28,7 @@ require (
 	golang.org/x/net v0.27.0
 	golang.org/x/oauth2 v0.21.0
 	golang.org/x/tools v0.23.0
-	golang.org/x/vuln v1.1.2
+	golang.org/x/vuln v1.1.3
 	google.golang.org/api v0.132.0
 	google.golang.org/genproto/googleapis/api v0.0.0-20230706204954-ccb25ca9f130
 	google.golang.org/grpc v1.56.2
