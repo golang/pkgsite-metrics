@@ -13,7 +13,7 @@ test: /usr/local/bin/runsc testbundle
 
 
 # Release version must match the one in cmd/worker/Dockerfile.
-RUNSC_URL := https://storage.googleapis.com/gvisor/releases/release/20230327.0/$(shell uname -m)
+RUNSC_URL := https://storage.googleapis.com/gvisor/releases/release/20240722.0/$(shell uname -m)
 
 # This is an edited version of the commands at https://gvisor.dev/docs/user_guide/install.
 /usr/local/bin/runsc:
