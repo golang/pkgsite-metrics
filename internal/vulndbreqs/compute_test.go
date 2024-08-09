@@ -94,7 +94,7 @@ func TestReadJSONLogEntries(t *testing.T) {
 
 	gotDates := map[civil.Date]int{}
 	gotIPs := map[string]int{}
-	err = readJSONLogEntries(f, testHMACKey, func(e *logEntry) error {
+	err = readJSONLogEntries("logfile.json", f, testHMACKey, func(e *logEntry) error {
 		gotDates[civil.DateOf(e.Timestamp)]++
 		gotIPs[e.HTTPRequest.RemoteIP]++
 		return nil

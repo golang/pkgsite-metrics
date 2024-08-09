@@ -233,7 +233,7 @@ func countLogsForObjects(ctx context.Context, bucket *storage.BucketHandle, objN
 	if len(objNames) == 0 {
 		return nil, nil, nil
 	}
-	defer derrors.Wrap(&err, "countLogsForObjects(%q, ...)", objNames[0])
+	defer derrors.Wrap(&err, "countLogsForObjects(%q, ...[%d in total])", objNames[0], len(objNames))
 
 	byDate = map[civil.Date]int{}
 	byIP = map[string]int{}
@@ -243,7 +243,7 @@ func countLogsForObjects(ctx context.Context, bucket *storage.BucketHandle, objN
 			return nil, nil, err
 		}
 		defer r.Close()
-		err = readJSONLogEntries(r, hmacKey, func(e *logEntry) error {
+		err = readJSONLogEntries(name, r, hmacKey, func(e *logEntry) error {
 			byDate[civil.DateOf(e.Timestamp)]++
 			byIP[e.HTTPRequest.RemoteIP]++
 			return nil
@@ -292,11 +292,11 @@ type logEntry struct {
 	} `json:"httpRequest"`
 }
 
-// readJSONLogEntries reads the contents of r, which must consist of a sequence
+// readJSONLogEntries reads the contents of r, which is named name and must consist of a sequence
 // of JSON objects each of which has the fields of a logEntry.
 // For each entry, after obfuscating the IP using hmacKey, it calls fn on the entry.
-func readJSONLogEntries(r io.Reader, hmacKey []byte, fn func(e *logEntry) error) (err error) {
-	defer derrors.Wrap(&err, "readJSONLogEntries")
+func readJSONLogEntries(name string, r io.Reader, hmacKey []byte, fn func(e *logEntry) error) (err error) {
+	defer derrors.Wrap(&err, "readJSONLogEntries(%s)", name)
 	dec := json.NewDecoder(r)
 	for dec.More() {
 		var e logEntry
