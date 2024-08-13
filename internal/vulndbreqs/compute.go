@@ -16,6 +16,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"sync"
 	"time"
 
 	"cloud.google.com/go/civil"
@@ -24,6 +25,7 @@ import (
 	"golang.org/x/pkgsite-metrics/internal/bigquery"
 	"golang.org/x/pkgsite-metrics/internal/derrors"
 	"golang.org/x/pkgsite-metrics/internal/log"
+	"golang.org/x/sync/errgroup"
 	"google.golang.org/api/iterator"
 )
 
@@ -235,22 +237,40 @@ func countLogsForObjects(ctx context.Context, bucket *storage.BucketHandle, objN
 	}
 	defer derrors.Wrap(&err, "countLogsForObjects(%q, ...[%d in total])", objNames[0], len(objNames))
 
+	var mu sync.Mutex
 	byDate = map[civil.Date]int{}
 	byIP = map[string]int{}
+	update := func(e *logEntry) error {
+		mu.Lock()
+		byDate[civil.DateOf(e.Timestamp)]++
+		byIP[e.HTTPRequest.RemoteIP]++
+		mu.Unlock()
+		return nil
+	}
+
+	g, ctx := errgroup.WithContext(ctx)
+	g.SetLimit(5)
 	for _, name := range objNames {
-		r, err := bucket.Object(name).NewReader(ctx)
-		if err != nil {
-			return nil, nil, err
-		}
-		defer r.Close()
-		err = readJSONLogEntries(name, r, hmacKey, func(e *logEntry) error {
-			byDate[civil.DateOf(e.Timestamp)]++
-			byIP[e.HTTPRequest.RemoteIP]++
+		name := name
+		g.TryGo(func() error {
+			select {
+			case <-ctx.Done():
+				return nil // context cancelled, likely another routine erred
+			default:
+				r, err := bucket.Object(name).NewReader(ctx)
+				if err != nil {
+					return err
+				}
+				defer r.Close()
+				if err := readJSONLogEntries(name, r, hmacKey, update); err != nil {
+					return err
+				}
+			}
 			return nil
 		})
-		if err != nil {
-			return nil, nil, err
-		}
+	}
+	if err := g.Wait(); err != nil {
+		return nil, nil, err
 	}
 	return byDate, byIP, nil
 }
