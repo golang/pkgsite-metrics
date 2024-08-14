@@ -252,7 +252,7 @@ func countLogsForObjects(ctx context.Context, bucket *storage.BucketHandle, objN
 	g.SetLimit(5)
 	for _, name := range objNames {
 		name := name
-		g.TryGo(func() error {
+		g.Go(func() error {
 			select {
 			case <-ctx.Done():
 				return nil // context cancelled, likely another routine erred
