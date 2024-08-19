@@ -249,7 +249,7 @@ func countLogsForObjects(ctx context.Context, bucket *storage.BucketHandle, objN
 	}
 
 	g, ctx := errgroup.WithContext(ctx)
-	g.SetLimit(5)
+	g.SetLimit(10)
 	for _, name := range objNames {
 		name := name
 		g.Go(func() error {
