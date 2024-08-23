@@ -45,6 +45,14 @@ func writeZip(r *zip.Reader, destination, stripPrefix string) error {
 		if !strings.HasPrefix(fpath, filepath.Clean(destination)+string(os.PathSeparator)) {
 			return fmt.Errorf("%s is an illegal filepath", fpath)
 		}
+
+		// Do not include vendor directory. They currently contain only modules.txt,
+		// not the dependencies. This makes package loading fail. Starting with go1.24,
+		// there likely won't be any vendor directories at all.
+		if vendored(name) {
+			continue
+		}
+
 		if f.FileInfo().IsDir() {
 			if err := os.MkdirAll(fpath, os.ModePerm); err != nil {
 				return err
@@ -73,4 +81,8 @@ func writeZip(r *zip.Reader, destination, stripPrefix string) error {
 		}
 	}
 	return nil
+}
+
+func vendored(path string) bool {
+	return path == "vendor" || strings.HasPrefix(path, "vendor"+string(os.PathSeparator))
 }

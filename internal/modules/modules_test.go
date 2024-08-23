@@ -7,6 +7,7 @@ package modules
 import (
 	"archive/zip"
 	"bytes"
+	"os"
 	"path/filepath"
 	"testing"
 )
@@ -20,6 +21,8 @@ func TestWriteZip(t *testing.T) {
 	}{
 		{filepath.Join("golang.org@v0.0.0", "README"), "This is a readme."},
 		{filepath.Join("golang.org@v0.0.0", "main"), "package main"},
+		{filepath.Join("golang.org@v0.0.0", "vendor", "modules.txt"), "# golang.org v1.1.1"},
+		{filepath.Join("golang.org@v0.0.0", "vendorius"), "This is some file with vendor in its name"},
 	}
 	for _, file := range files {
 		f, err := w.Create(file.Name)
@@ -44,10 +47,21 @@ func TestWriteZip(t *testing.T) {
 	}
 
 	tempDir := t.TempDir()
-	if err := writeZip(r, tempDir, ""); err != nil {
+	if err := writeZip(r, tempDir, "golang.org@v0.0.0/"); err != nil {
 		t.Error(err)
 	}
-	if err := writeZip(r, tempDir, "golang.org@v0.0.0"); err != nil {
+	// make sure there are no vendor files
+	fs, err := os.ReadDir(tempDir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, f := range fs {
+		if f.IsDir() && f.Name() == "vendor" {
+			t.Errorf("found unexpected vendor file or dir: %s", f.Name())
+		}
+	}
+
+	if err := writeZip(r, tempDir, ""); err != nil {
 		t.Error(err)
 	}
 }
