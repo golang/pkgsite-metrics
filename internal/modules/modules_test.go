@@ -60,8 +60,4 @@ func TestWriteZip(t *testing.T) {
 			t.Errorf("found unexpected vendor file or dir: %s", f.Name())
 		}
 	}
-
-	if err := writeZip(r, tempDir, ""); err != nil {
-		t.Error(err)
-	}
 }

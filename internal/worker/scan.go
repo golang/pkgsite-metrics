@@ -244,7 +244,7 @@ func gcsOpenFileFunc(ctx context.Context, bucket *storage.BucketHandle) openFile
 // that don't have go.mod files.
 func prepareModule(ctx context.Context, modulePath, version, dir string, proxyClient *proxy.Client, insecure, init bool) error {
 	log.Debugf(ctx, "downloading %s@%s to %s", modulePath, version, dir)
-	if err := modules.Download(ctx, modulePath, version, dir, proxyClient, true); err != nil {
+	if err := modules.Download(ctx, modulePath, version, dir, proxyClient); err != nil {
 		log.Debugf(ctx, "download error: %v (%[1]T)", err)
 		return err
 	}

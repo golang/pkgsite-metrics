@@ -22,16 +22,13 @@ import (
 
 // Download fetches module at version via proxyClient and writes the modules
 // down to disk at dir.
-func Download(ctx context.Context, module, version, dir string, proxyClient *proxy.Client, stripModulePrefix bool) error {
+func Download(ctx context.Context, module, version, dir string, proxyClient *proxy.Client) error {
 	zipr, err := proxyClient.Zip(ctx, module, version)
 	if err != nil {
 		return fmt.Errorf("%v: %w", err, derrors.ProxyError)
 	}
 	log.Debugf(ctx, "writing module zip: %s@%s", module, version)
-	stripPrefix := ""
-	if stripModulePrefix {
-		stripPrefix = module + "@" + version + "/"
-	}
+	stripPrefix := module + "@" + version + "/"
 	if err := writeZip(zipr, dir, stripPrefix); err != nil {
 		return fmt.Errorf("%v: %w", err, derrors.ScanModuleOSError)
 	}
