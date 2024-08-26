@@ -157,7 +157,9 @@ func (s *scanner) canSkip(ctx context.Context, sreq *govulncheck.Request, fsn *f
 	}
 	// Otherwise, skip if the error is not recoverable. The version of the
 	// module has not changed, so we'll get the same error anyhow.
-	return unrecoverableError(ws.ErrorCategory), nil
+	// TODO re-enable this
+	// return unrecoverableError(ws.ErrorCategory), nil
+	return false, nil
 }
 
 // unrecoverableError returns true iff errorCategory encodes that
@@ -342,6 +344,8 @@ func (s *scanner) CheckModule(ctx context.Context, w http.ResponseWriter, sreq *
 	// classify scan error first
 	if err != nil {
 		switch {
+		case isModVendor(err):
+			err = fmt.Errorf("%v: %w", err, derrors.LoadVendorError)
 		case isGovulncheckLoadError(err) || isBuildIssue(err):
 			err = fmt.Errorf("%v: %w", err, derrors.LoadPackagesError)
 		case isNoRequiredModule(err):
@@ -356,10 +360,6 @@ func (s *scanner) CheckModule(ctx context.Context, w http.ResponseWriter, sreq *
 			// Should be subsumed by LoadPackagesError, kept for sanity.
 			// and to catch unexpected changes in govulncheck output.
 			err = fmt.Errorf("%v: %w", err, derrors.LoadPackagesImportedLocalError)
-		case isModVendor(err):
-			// Should be subsumed by LoadPackagesError, kept for sanity.
-			// and to catch unexpected changes in govulncheck output.
-			err = fmt.Errorf("%v: %w", err, derrors.LoadVendorError)
 		case isMissingGoMod(err) || isNoModulesSpecified(err):
 			// Should be subsumed by LoadPackagesError, kept for sanity
 			// and to catch unexpected changes in govulncheck output.

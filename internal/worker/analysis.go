@@ -214,6 +214,8 @@ func (s *analysisServer) scan(ctx context.Context, req *analysis.ScanRequest, lo
 			// branch should never be reached. We keep this for sanity and to
 			// catch any regressions.
 			err = fmt.Errorf("%v: %w", err, derrors.LoadPackagesNoGoModError)
+		case isModVendor(err):
+			err = fmt.Errorf("%v: %w", err, derrors.LoadVendorError)
 		case isNoRequiredModule(err):
 			err = fmt.Errorf("%v: %w", err, derrors.LoadPackagesNoRequiredModuleError)
 		case isTooManyFiles(err):
@@ -222,8 +224,6 @@ func (s *analysisServer) scan(ctx context.Context, req *analysis.ScanRequest, lo
 			err = fmt.Errorf("%v: %w", err, derrors.LoadPackagesMissingGoSumEntryError)
 		case isReplacingWithLocalPath(err):
 			err = fmt.Errorf("%v: %w", err, derrors.LoadPackagesImportedLocalError)
-		case isModVendor(err):
-			err = fmt.Errorf("%v: %w", err, derrors.LoadVendorError)
 		case isProxyCacheMiss(err):
 			err = fmt.Errorf("%v: %w", err, derrors.ProxyError)
 		case isSandboxRelatedIssue(err):
