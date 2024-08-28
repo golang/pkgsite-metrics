@@ -218,7 +218,7 @@ resource "google_cloud_tasks_queue" "worker_tasks" {
   }
 
   retry_config {
-    max_attempts       = -1
+    max_attempts       = 100
     max_backoff        = "1440s"
     max_doublings      = 16
     max_retry_duration = "604800s"
