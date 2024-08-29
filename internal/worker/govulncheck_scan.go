@@ -157,9 +157,7 @@ func (s *scanner) canSkip(ctx context.Context, sreq *govulncheck.Request, fsn *f
 	}
 	// Otherwise, skip if the error is not recoverable. The version of the
 	// module has not changed, so we'll get the same error anyhow.
-	// TODO re-enable this
-	// return unrecoverableError(ws.ErrorCategory), nil
-	return false, nil
+	return unrecoverableError(ws.ErrorCategory), nil
 }
 
 // unrecoverableError returns true iff errorCategory encodes that
