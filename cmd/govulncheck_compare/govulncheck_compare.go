@@ -75,6 +75,7 @@ func run(w io.Writer, args []string) {
 		binResp, err := govulncheck.RunGovulncheckCmd(govulncheckPath, govulncheck.FlagBinary, binary.BinaryPath, modulePath, vulndbPath)
 		if err != nil {
 			pair.Error = err.Error()
+			continue
 		}
 		pair.BinaryResults = *binResp
 		pair.BinaryResults.Stats.BuildTime = binary.BuildTime
