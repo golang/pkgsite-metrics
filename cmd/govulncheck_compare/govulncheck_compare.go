@@ -57,28 +57,11 @@ func run(w io.Writer, args []string) {
 		FindingsForMod: make(map[string]*govulncheck.ComparePair),
 	}
 	for _, binary := range binaries {
-		pair := &govulncheck.ComparePair{}
+		pair, err := runComparison(binary, govulncheckPath, modulePath, vulndbPath)
+		if err != nil {
+			pair = &govulncheck.ComparePair{Error: err.Error()}
+		}
 		response.FindingsForMod[binary.ImportPath] = pair
-
-		if binary.Error != nil {
-			pair.Error = binary.Error.Error()
-			continue // there was an error in building the binary
-		}
-
-		srcResp, err := govulncheck.RunGovulncheckCmd(govulncheckPath, govulncheck.FlagSource, binary.ImportPath, modulePath, vulndbPath)
-		if err != nil {
-			pair.Error = err.Error()
-			continue
-		}
-		pair.SourceResults = *srcResp
-
-		binResp, err := govulncheck.RunGovulncheckCmd(govulncheckPath, govulncheck.FlagBinary, binary.BinaryPath, modulePath, vulndbPath)
-		if err != nil {
-			pair.Error = err.Error()
-			continue
-		}
-		pair.BinaryResults = *binResp
-		pair.BinaryResults.Stats.BuildTime = binary.BuildTime
 	}
 
 	b, err := json.MarshalIndent(response, "", "\t")
@@ -89,6 +72,30 @@ func run(w io.Writer, args []string) {
 
 	w.Write(b)
 	fmt.Println()
+}
+
+// runComparison runs both a source mode and an binary mode comparison,
+// and returns a govulncheck.ComparePair on success. Otherwise, returns an error.
+func runComparison(binary *buildbinary.BinaryInfo, govulncheckPath, modulePath, vulndbPath string) (*govulncheck.ComparePair, error) {
+	if binary.Error != nil { // there was an error in building the binary
+		return nil, binary.Error
+	}
+
+	srcResp, err := govulncheck.RunGovulncheckCmd(govulncheckPath, govulncheck.FlagSource, binary.ImportPath, modulePath, vulndbPath)
+	if err != nil {
+		return nil, err
+	}
+	binResp, err := govulncheck.RunGovulncheckCmd(govulncheckPath, govulncheck.FlagBinary, binary.BinaryPath, modulePath, vulndbPath)
+	if err != nil {
+		return nil, err
+	}
+
+	pair := &govulncheck.ComparePair{
+		SourceResults: *srcResp,
+		BinaryResults: *binResp,
+	}
+	pair.BinaryResults.Stats.BuildTime = binary.BuildTime
+	return pair, nil
 }
 
 func removeBinaries(binaryPaths []*buildbinary.BinaryInfo) {
