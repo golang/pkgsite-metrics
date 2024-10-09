@@ -42,7 +42,7 @@ RUN mkdir $BINARY_DIR
 #### Sandbox setup
 
 # Install runsc.
-ADD https://storage.googleapis.com/gvisor/releases/release/20240722.0/x86_64/runsc /usr/local/bin/
+ADD https://storage.googleapis.com/gvisor/releases/release/20240930.0/x86_64/runsc /usr/local/bin/
 RUN chmod a+rx /usr/local/bin/runsc
 
 # Set up for runsc.
