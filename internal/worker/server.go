@@ -223,7 +223,7 @@ func (s *Server) registerAnalysisHandlers(ctx context.Context) error {
 // incoming request that triggers the reset will be disregarded. Cloud Run will retry
 // that request.
 func reqMonitorHandler(s *Server, h func(http.ResponseWriter, *http.Request) error) func(http.ResponseWriter, *http.Request) error {
-	const reqLimit = 500 // experimentally shown to be a good threshold
+	const reqLimit = 250 // experimentally shown to be a good threshold
 	return func(w http.ResponseWriter, r *http.Request) error {
 		// Reset the server after a certain number of requests due to a process leak.
 		// TODO(#65215): why does this happen? It seems to be due to gvisor.
