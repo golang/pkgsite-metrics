@@ -454,6 +454,7 @@ func createRows(mode string, f func(string) *govulncheck.Result) []bigquery.Row 
 	return rows
 }
 
+// runScanModule fetches the module version from the proxy, and analyzes its source
 // code for vulnerabilities. The analysis of binaries is done in CompareModule.
 func (s *scanner) runScanModule(ctx context.Context, modulePath, version, mode string) (response *govulncheck.AnalysisResponse, err error) {
 	err = doScan(ctx, modulePath, version, s.insecure, func() (err error) {
