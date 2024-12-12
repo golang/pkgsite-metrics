@@ -32,6 +32,8 @@ import (
 	"golang.org/x/pkgsite-metrics/internal/sandbox"
 	"golang.org/x/pkgsite-metrics/internal/scan"
 	"golang.org/x/pkgsite-metrics/internal/version"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
 )
 
 type analysisServer struct {
@@ -82,8 +84,19 @@ func (s *analysisServer) handleScan(w http.ResponseWriter, r *http.Request) (err
 	// If there is an error, it logs it instead of failing.
 	incrementJob := func(name string) {
 		if req.JobID != "" && s.jobDB != nil {
-			if err := s.jobDB.Increment(ctx, req.JobID, name, 1); err != nil {
-				log.Errorf(ctx, err, "failed to update job for id %q", req.JobID)
+			// There can be contention on updating job stats,
+			// in which case we retry it a few times.
+			retries := 0
+			for {
+				if err := s.jobDB.Increment(ctx, req.JobID, name, 1); err != nil {
+					if e := status.Code(err); e == codes.Aborted && retries < 5 {
+						time.Sleep(50 * time.Millisecond * (1 << retries))
+						retries++
+						continue
+					}
+					log.Errorf(ctx, err, "failed to update job for id %q", req.JobID)
+				}
+				return
 			}
 		}
 	}
