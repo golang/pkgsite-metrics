@@ -47,6 +47,7 @@ var (
 
 var (
 	minImporters int           // for start
+	noDeps       bool          // for start
 	waitInterval time.Duration // for wait
 	force        bool          // for results
 	errs         bool          // for results
@@ -69,6 +70,7 @@ var commands = []command{
 		func(fs *flag.FlagSet) {
 			fs.IntVar(&minImporters, "min", -1,
 				"run on modules with at least this many importers (<0: use server default of 10)")
+			fs.BoolVar(&noDeps, "nodeps", false, "do not download dependencies for modules")
 		},
 	},
 	{"wait", "JOBID",
@@ -269,7 +271,7 @@ func doWait(ctx context.Context, args []string) error {
 func doStart(ctx context.Context, args []string) error {
 	// Validate arguments.
 	if len(args) == 0 {
-		return errors.New("wrong number of args: want [-min N] BINARY [ARG1 ARG2 ...]")
+		return errors.New("wrong number of args: want [-min N] [-nodeps] BINARY [ARG1 ARG2 ...]")
 	}
 	binaryFile := args[0]
 	if fi, err := os.Stat(binaryFile); err != nil {
@@ -300,7 +302,8 @@ func doStart(ctx context.Context, args []string) error {
 	if err != nil {
 		return err
 	}
-	u := fmt.Sprintf("%s/analysis/enqueue?binary=%s&user=%s", workerURL, filepath.Base(binaryFile), os.Getenv("USER"))
+	u := fmt.Sprintf("%s/analysis/enqueue?binary=%s&user=%s&nodeps=%t",
+		workerURL, filepath.Base(binaryFile), os.Getenv("USER"), noDeps)
 	if len(binaryArgs) > 0 {
 		u += fmt.Sprintf("&args=%s", url.QueryEscape(strings.Join(binaryArgs, " ")))
 	}

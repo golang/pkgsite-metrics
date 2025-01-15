@@ -262,6 +262,7 @@ func (s *analysisServer) scanInternal(ctx context.Context, req *analysis.ScanReq
 		proxyClient: s.proxyClient,
 		insecure:    req.Insecure,
 		init:        !req.SkipInit,
+		noDeps:      req.NoDeps,
 	}
 	if err := prepareModule(ctx, args); err != nil {
 		return nil, err
@@ -496,6 +497,7 @@ func createAnalysisQueueTasks(params *analysis.EnqueueParams, jobID string, bina
 				Insecure:      params.Insecure,
 				JobID:         jobID,
 				SkipInit:      params.SkipInit,
+				NoDeps:        params.NoDeps,
 			},
 		})
 	}

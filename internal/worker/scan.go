@@ -244,6 +244,7 @@ type prepareModuleArgs struct {
 	proxyClient         *proxy.Client // for downloading
 	insecure            bool          // run without sandbox
 	init                bool          // run `go mod init` and `go mod tidy` on modules with no go.mod file
+	noDeps              bool          // do not download dependencies
 }
 
 // prepareModule prepares a module for scanning, and takes other actions that increase
@@ -253,6 +254,9 @@ func prepareModule(ctx context.Context, args prepareModuleArgs) error {
 	if err := modules.Download(ctx, args.modulePath, args.version, args.dir, args.proxyClient); err != nil {
 		log.Debugf(ctx, "download error: %v (%[1]T)", err)
 		return err
+	}
+	if args.noDeps {
+		return nil
 	}
 
 	hasGoMod := fileExists(filepath.Join(args.dir, "go.mod"))
