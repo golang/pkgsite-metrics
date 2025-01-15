@@ -274,14 +274,21 @@ func JSONTreeToDiagnostics(jsonTree JSONTree) []*Diagnostic {
 	return diags
 }
 
-func ReadResults(ctx context.Context, c *bigquery.Client, binaryName, binaryVersion, binaryArgs string) (_ []*Result, err error) {
+// ReadResults reads non-error rows with binaryName, binaryVersion, and binaryArgs
+// from the analysis table of c. If errs is "true", error rows are included as well.
+func ReadResults(ctx context.Context, c *bigquery.Client, binaryName, binaryVersion, binaryArgs, errs string) (_ []*Result, err error) {
 	defer derrors.Wrap(&err, "ReadResults")
 	q := bigquery.PartitionQuery{
 		From:        c.FullTableName(TableName),
 		PartitionOn: "module_path, version",
-		Where: fmt.Sprintf("binary_name='%s' AND binary_version='%s' AND binary_args='%s'",
-			binaryName, binaryVersion, binaryArgs),
-		OrderBy: "created_at DESC",
+		OrderBy:     "created_at DESC",
+	}
+	if errs == "true" {
+		q.Where = fmt.Sprintf("binary_name='%s' AND binary_version='%s' AND binary_args='%s'",
+			binaryName, binaryVersion, binaryArgs)
+	} else {
+		q.Where = fmt.Sprintf("binary_name='%s' AND binary_version='%s' AND binary_args='%s' AND error=''",
+			binaryName, binaryVersion, binaryArgs)
 	}
 	iter, err := c.Query(ctx, q.String())
 	if err != nil {

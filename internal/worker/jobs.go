@@ -4,11 +4,10 @@
 
 // Handlers for jobs.
 //
-// jobs/describe?jobid=xxx		describe a job
-
-// TODO:
+// jobs/describe?jobid=xxx			describe a job
 // jobs/list					list all jobs
-// jobs/cancel?jobid=xxx		cancel a job
+// jobs/cancel?jobid=xxx			cancel a job
+// jobs/results?jobid=xxx&errors={true|false}	get job results
 
 package worker
 
@@ -37,7 +36,8 @@ func (s *Server) handleJobs(w http.ResponseWriter, r *http.Request) (err error) 
 	}
 
 	jobID := r.FormValue("jobid")
-	return s.processJobRequest(ctx, w, r.URL.Path, jobID, s.jobDB)
+	errs := r.FormValue("errors") // for results
+	return s.processJobRequest(ctx, w, r.URL.Path, jobID, errs, s.jobDB)
 }
 
 type jobDB interface {
@@ -47,7 +47,7 @@ type jobDB interface {
 	ListJobs(context.Context, func(*jobs.Job, time.Time) error) error
 }
 
-func (s *Server) processJobRequest(ctx context.Context, w io.Writer, path, jobID string, db jobDB) error {
+func (s *Server) processJobRequest(ctx context.Context, w io.Writer, path, jobID, errs string, db jobDB) error {
 	path = strings.TrimPrefix(path, "/jobs/")
 	switch path {
 	case "describe": // describe one job
@@ -91,7 +91,7 @@ func (s *Server) processJobRequest(ctx context.Context, w io.Writer, path, jobID
 		if s.bqClient == nil {
 			return errors.New("bq client is nil")
 		}
-		results, err := analysis.ReadResults(ctx, s.bqClient, job.Binary, job.BinaryVersion, job.BinaryArgs)
+		results, err := analysis.ReadResults(ctx, s.bqClient, job.Binary, job.BinaryVersion, job.BinaryArgs, errs)
 		if err != nil {
 			return err
 		}

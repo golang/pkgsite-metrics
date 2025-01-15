@@ -49,6 +49,7 @@ var (
 	minImporters int           // for start
 	waitInterval time.Duration // for wait
 	force        bool          // for results
+	errs         bool          // for results
 	outfile      string        // for results
 )
 
@@ -77,11 +78,12 @@ var commands = []command{
 			fs.DurationVar(&waitInterval, "i", 0, "display updates at this interval")
 		},
 	},
-	{"results", "[-f] [-o FILE.json] JOBID",
+	{"results", "[-f] [-e] [-o FILE.json] JOBID",
 		"download results as JSON",
 		doResults,
 		func(fs *flag.FlagSet) {
 			fs.BoolVar(&force, "f", false, "download even if unfinished")
+			fs.BoolVar(&errs, "e", false, "also download error results (by default, only non-error results are downloaded)")
 			fs.StringVar(&outfile, "o", "", "output filename")
 		},
 	},
@@ -455,7 +457,7 @@ func copyToGCS(ctx context.Context, object *storage.ObjectHandle, filename strin
 
 func doResults(ctx context.Context, args []string) (err error) {
 	if len(args) == 0 {
-		return errors.New("wrong number of args: want [-f] [-o FILE.json] JOB_ID")
+		return errors.New("wrong number of args: want [-f] [-e] [-o FILE.json] JOB_ID")
 	}
 	jobID := args[0]
 	ts, err := identityTokenSource(ctx)
@@ -470,7 +472,7 @@ func doResults(ctx context.Context, args []string) (err error) {
 	if !force && done < job.NumEnqueued {
 		return fmt.Errorf("job not finished (%d/%d completed); use -f for partial results", done, job.NumEnqueued)
 	}
-	results, err := requestJSON[[]*analysis.Result](ctx, "jobs/results?jobid="+jobID, ts)
+	results, err := requestJSON[[]*analysis.Result](ctx, fmt.Sprintf("jobs/results?jobid=%s&errors=%t", jobID, errs), ts)
 	if err != nil {
 		return err
 	}
