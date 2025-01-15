@@ -238,32 +238,38 @@ func gcsOpenFileFunc(ctx context.Context, bucket *storage.BucketHandle) openFile
 	}
 }
 
-// prepareModule prepares a module for scanning. It downloads the module to the given
-// directory and takes other actions that increase the chance that package loading will succeed.
-// If init is true, those other actions include calling `go mod init` and `go mod tidy` on modules
-// that don't have go.mod files.
-func prepareModule(ctx context.Context, modulePath, version, dir string, proxyClient *proxy.Client, insecure, init bool) error {
-	log.Debugf(ctx, "downloading %s@%s to %s", modulePath, version, dir)
-	if err := modules.Download(ctx, modulePath, version, dir, proxyClient); err != nil {
+type prepareModuleArgs struct {
+	modulePath, version string
+	dir                 string        // where to download the module
+	proxyClient         *proxy.Client // for downloading
+	insecure            bool          // run without sandbox
+	init                bool          // run `go mod init` and `go mod tidy` on modules with no go.mod file
+}
+
+// prepareModule prepares a module for scanning, and takes other actions that increase
+// the chance that package loading will succeed.
+func prepareModule(ctx context.Context, args prepareModuleArgs) error {
+	log.Debugf(ctx, "downloading %s@%s to %s", args.modulePath, args.version, args.dir)
+	if err := modules.Download(ctx, args.modulePath, args.version, args.dir, args.proxyClient); err != nil {
 		log.Debugf(ctx, "download error: %v (%[1]T)", err)
 		return err
 	}
 
-	hasGoMod := fileExists(filepath.Join(dir, "go.mod"))
-	if !init || hasGoMod {
+	hasGoMod := fileExists(filepath.Join(args.dir, "go.mod"))
+	if !args.init || hasGoMod {
 		// Download all dependencies, using the given directory for the Go module cache
 		// if it is non-empty.
 		opts := &goCommandOptions{
-			dir:      dir,
-			insecure: insecure,
+			dir:      args.dir,
+			insecure: args.insecure,
 		}
-		return runGoCommand(ctx, modulePath, version, opts, "mod", "download")
+		return runGoCommand(ctx, args.modulePath, args.version, opts, "mod", "download")
 	}
 	// Run `go mod init` and `go mod tidy`.
-	if err := goModInit(ctx, modulePath, version, dir, modulePath, insecure); err != nil {
+	if err := goModInit(ctx, args.modulePath, args.version, args.dir, args.modulePath, args.insecure); err != nil {
 		return err
 	}
-	return goModTidy(ctx, modulePath, version, dir, insecure)
+	return goModTidy(ctx, args.modulePath, args.version, args.dir, args.insecure)
 }
 
 // moduleDir returns a the path of a directory where the module can be downloaded.

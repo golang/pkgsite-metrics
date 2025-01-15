@@ -255,7 +255,15 @@ func (s *analysisServer) scan(ctx context.Context, req *analysis.ScanRequest, lo
 }
 
 func (s *analysisServer) scanInternal(ctx context.Context, req *analysis.ScanRequest, binaryPath, moduleDir string) (jt analysis.JSONTree, err error) {
-	if err := prepareModule(ctx, req.Module, req.Version, moduleDir, s.proxyClient, req.Insecure, !req.SkipInit); err != nil {
+	args := prepareModuleArgs{
+		modulePath:  req.Module,
+		version:     req.Version,
+		dir:         moduleDir,
+		proxyClient: s.proxyClient,
+		insecure:    req.Insecure,
+		init:        !req.SkipInit,
+	}
+	if err := prepareModule(ctx, args); err != nil {
 		return nil, err
 	}
 	var sbox *sandbox.Sandbox

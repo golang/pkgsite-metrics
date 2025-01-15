@@ -49,7 +49,15 @@ func TestPrepareModule(t *testing.T) {
 	} {
 		t.Run(fmt.Sprintf("%s@%s,%t", test.modulePath, test.version, test.init), func(t *testing.T) {
 			dir := t.TempDir()
-			err := prepareModule(ctx, test.modulePath, test.version, dir, proxyClient, insecure, test.init)
+			args := prepareModuleArgs{
+				modulePath:  test.modulePath,
+				version:     test.version,
+				dir:         dir,
+				proxyClient: proxyClient,
+				insecure:    insecure,
+				init:        test.init,
+			}
+			err := prepareModule(ctx, args)
 			if !errors.Is(err, test.want) {
 				t.Errorf("got %v, want %v", err, test.want)
 			}

@@ -20,8 +20,8 @@ import (
 	"golang.org/x/pkgsite-metrics/internal/proxy"
 )
 
-// Download fetches module at version via proxyClient and writes the modules
-// down to disk at dir.
+// Download fetches module at version via proxyClient and unzips the module
+// into dir.
 func Download(ctx context.Context, module, version, dir string, proxyClient *proxy.Client) error {
 	zipr, err := proxyClient.Zip(ctx, module, version)
 	if err != nil {

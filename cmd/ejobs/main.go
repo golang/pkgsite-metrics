@@ -243,11 +243,13 @@ func doWait(ctx context.Context, args []string) error {
 		return err
 	}
 	start := time.Now()
+	var jobStartedAt time.Time
 	for {
 		job, err := requestJSON[jobs.Job](ctx, "jobs/describe?jobid="+jobID, ts)
 		if err != nil {
 			return err
 		}
+		jobStartedAt = job.StartedAt
 		done := job.NumFinished()
 		if done >= job.NumEnqueued {
 			break
@@ -258,7 +260,7 @@ func doWait(ctx context.Context, args []string) error {
 		}
 		time.Sleep(sleepInterval)
 	}
-	fmt.Printf("Job %s finished.\n", jobID)
+	fmt.Printf("Job %s finished in %s.\n", jobID, time.Since(jobStartedAt))
 	return nil
 }
 

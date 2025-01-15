@@ -237,7 +237,15 @@ func (s *scanner) CompareModule(ctx context.Context, w http.ResponseWriter, sreq
 		inputPath := moduleDir(baseRow.ModulePath, baseRow.Version)
 		defer derrors.Cleanup(&err, func() error { return os.RemoveAll(inputPath) })
 		const init = true
-		if err := prepareModule(ctx, baseRow.ModulePath, baseRow.Version, inputPath, s.proxyClient, s.insecure, init); err != nil {
+		args := prepareModuleArgs{
+			modulePath:  baseRow.ModulePath,
+			version:     baseRow.Version,
+			dir:         inputPath,
+			proxyClient: s.proxyClient,
+			insecure:    s.insecure,
+			init:        init,
+		}
+		if err := prepareModule(ctx, args); err != nil {
 			log.Errorf(ctx, err, "error trying to prepare module %s", baseRow.ModulePath)
 			return nil
 		}
@@ -462,7 +470,15 @@ func (s *scanner) runScanModule(ctx context.Context, modulePath, version, mode s
 		inputPath := moduleDir(modulePath, version)
 		defer derrors.Cleanup(&err, func() error { return os.RemoveAll(inputPath) })
 		const init = true
-		if err := prepareModule(ctx, modulePath, version, inputPath, s.proxyClient, s.insecure, init); err != nil {
+		args := prepareModuleArgs{
+			modulePath:  modulePath,
+			version:     version,
+			dir:         inputPath,
+			proxyClient: s.proxyClient,
+			insecure:    s.insecure,
+			init:        init,
+		}
+		if err := prepareModule(ctx, args); err != nil {
 			return err
 		}
 
