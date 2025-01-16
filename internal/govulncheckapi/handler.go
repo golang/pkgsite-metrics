@@ -19,6 +19,9 @@ type Handler interface {
 	// Config communicates introductory message to the user.
 	Config(config *Config) error
 
+	// SBOM shows information about what govulncheck is scanning.
+	SBOM(sbom *SBOM) error
+
 	// Progress is called to display a progress message.
 	Progress(progress *Progress) error
 

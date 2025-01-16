@@ -30,6 +30,10 @@ func (h *MetricsHandler) Progress(p *govulncheckapi.Progress) error {
 	return nil
 }
 
+func (h *MetricsHandler) SBOM(sbom *govulncheckapi.SBOM) error {
+	return nil
+}
+
 func (h *MetricsHandler) OSV(e *osv.Entry) error {
 	h.osvs[e.ID] = e
 	return nil

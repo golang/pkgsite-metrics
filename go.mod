@@ -29,7 +29,7 @@ require (
 	golang.org/x/oauth2 v0.25.0
 	golang.org/x/sync v0.10.0
 	golang.org/x/tools v0.29.0
-	golang.org/x/vuln v1.1.3
+	golang.org/x/vuln v1.1.4
 	google.golang.org/api v0.132.0
 	google.golang.org/genproto/googleapis/api v0.0.0-20230706204954-ccb25ca9f130
 	google.golang.org/grpc v1.56.2

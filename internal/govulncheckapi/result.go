@@ -17,6 +17,7 @@ import (
 type Message struct {
 	Config   *Config    `json:"config,omitempty"`
 	Progress *Progress  `json:"progress,omitempty"`
+	SBOM     *SBOM      `json:"SBOM,omitempty"`
 	OSV      *osv.Entry `json:"osv,omitempty"`
 	Finding  *Finding   `json:"finding,omitempty"`
 }
@@ -51,6 +52,29 @@ type Config struct {
 	// ScanLevel instructs govulncheck to analyze at a specific level of detail.
 	// Valid values include module, package and symbol.
 	ScanLevel ScanLevel `json:"scan_level,omitempty"`
+}
+
+// SBOM contains minimal information about the artifacts govulncheck is scanning.
+type SBOM struct {
+	// The go version used by govulncheck when scanning, which also defines
+	// the version of the standard library used for detecting vulns.
+	GoVersion string `json:"go_version,omitempty"`
+
+	// The set of modules included in the scan.
+	Modules []*Module `json:"modules,omitempty"`
+
+	// The roots of the scan, as package paths.
+	// For binaries, this will be the main package.
+	// For source code, this will be the packages matching the provided package patterns.
+	Roots []string `json:"roots,omitempty"`
+}
+
+type Module struct {
+	// The full module path.
+	Path string `json:"path,omitempty"`
+
+	// The version of the module.
+	Version string `json:"version,omitempty"`
 }
 
 // Progress messages are informational only, intended to allow users to monitor
