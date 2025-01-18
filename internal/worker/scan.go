@@ -181,7 +181,7 @@ func writeResults(ctx context.Context, serve bool, w http.ResponseWriter, client
 		log.Infof(ctx, "bigquery disabled, not uploading")
 		return nil
 	}
-	return bigquery.UploadMany(ctx, client, table, rows, 0)
+	return bigquery.UploadMany(ctx, client, table, rows, 100)
 }
 
 func serveJSON(ctx context.Context, content interface{}, w http.ResponseWriter) error {

@@ -61,13 +61,13 @@ func writeToBigQuery(ctx context.Context, client *bigquery.Client, rcs []*Reques
 	if _, err := client.CreateOrUpdateTable(ctx, RequestCountTableName); err != nil {
 		return err
 	}
-	if err := bigquery.UploadMany(ctx, client, RequestCountTableName, rcs, 0); err != nil {
+	if err := bigquery.UploadMany(ctx, client, RequestCountTableName, rcs, 100); err != nil {
 		return err
 	}
 	if _, err := client.CreateOrUpdateTable(ctx, IPRequestCountTableName); err != nil {
 		return err
 	}
-	return bigquery.UploadMany(ctx, client, IPRequestCountTableName, ircs, 0)
+	return bigquery.UploadMany(ctx, client, IPRequestCountTableName, ircs, 100)
 }
 
 // ReadRequestCountsFromBigQuery returns daily counts for requests to the vuln DB, most recent first.

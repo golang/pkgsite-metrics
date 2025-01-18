@@ -20,6 +20,7 @@ import (
 	bq "cloud.google.com/go/bigquery"
 	"cloud.google.com/go/civil"
 	"golang.org/x/pkgsite-metrics/internal/derrors"
+	"golang.org/x/pkgsite-metrics/internal/log"
 	"google.golang.org/api/googleapi"
 	"google.golang.org/api/iterator"
 )
@@ -215,6 +216,7 @@ func UploadMany[T Row](ctx context.Context, client *Client, tableID string, rows
 			end = len(rows)
 		}
 		for {
+			log.Infof(ctx, "bigquery.UploadMany: uploading rows[%d:%d]", start, end)
 			if err := ins.Put(ctx, rows[start:end]); err == nil {
 				break
 			} else if hasCode(err, http.StatusRequestEntityTooLarge) && end-start > 1 {
