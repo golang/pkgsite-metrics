@@ -5,14 +5,18 @@
 package scan
 
 import (
+	"flag"
 	"net/http"
 	"reflect"
+	"slices"
 	"strings"
 	"testing"
 
 	"github.com/google/go-cmp/cmp"
 	"golang.org/x/pkgsite-metrics/internal/version"
 )
+
+var useGCS = flag.Bool("gcs", false, "use GCS in tests")
 
 func TestParseModuleURLPath(t *testing.T) {
 	for _, test := range []struct {
@@ -117,6 +121,27 @@ func TestParseCorpusFile(t *testing.T) {
 	want = want[:1]
 	if !cmp.Equal(got, want) {
 		t.Errorf("\n got %v\nwant %v", got, want)
+	}
+}
+
+func TestReadFileLines(t *testing.T) {
+	// Effectively tested for local files by ParseCorpusFile.
+	// So just test for GCS.
+	// This doesn't work in CI so protecct it with a flag.
+	if !*useGCS {
+		t.Skip("need -gcs")
+	}
+	got, err := ReadFileLines("gs://go-ecosystem/test-modfile")
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := []string{
+		"mod1 v1.2.3 5",
+		"mod2 v1.0.0 10",
+		"mod3/v2 v2.1.2 0",
+	}
+	if !slices.Equal(got, want) {
+		t.Errorf("\ngot  %v\nwant %v", got, want)
 	}
 }
 

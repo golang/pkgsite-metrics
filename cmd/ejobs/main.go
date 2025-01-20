@@ -48,6 +48,7 @@ var (
 var (
 	minImporters int           // for start
 	noDeps       bool          // for start
+	moduleFile   string        // for start
 	waitInterval time.Duration // for wait
 	force        bool          // for results
 	errs         bool          // for results
@@ -64,12 +65,14 @@ var commands = []command{
 	{"cancel", "JOBID...",
 		"cancel the jobs",
 		doCancel, nil},
-	{"start", "[-min MIN_IMPORTERS] BINARY ARGS...",
+	{"start", "[-min MIN_IMPORTERS] [-file MODULE_FILE] [-nodeps] BINARY ARGS...",
 		"start a job",
 		doStart,
 		func(fs *flag.FlagSet) {
 			fs.IntVar(&minImporters, "min", -1,
 				"run on modules with at least this many importers (<0: use server default of 10)")
+			fs.StringVar(&moduleFile, "file", "",
+				"file with modules to use: each line is MODULE_PATH VERSION NUM_IMPORTERS")
 			fs.BoolVar(&noDeps, "nodeps", false, "do not download dependencies for modules")
 		},
 	},
@@ -268,10 +271,18 @@ func doWait(ctx context.Context, args []string) error {
 	return nil
 }
 
+// GCS folders for types of files.
+const (
+	binaryFolder     = "analysis-binaries"
+	moduleFileFolder = "module-files"
+)
+
 func doStart(ctx context.Context, args []string) error {
+	user := os.Getenv("USER")
+
 	// Validate arguments.
 	if len(args) == 0 {
-		return errors.New("wrong number of args: want [-min N] [-nodeps] BINARY [ARG1 ARG2 ...]")
+		return errors.New("wrong number of args: want [-min N] [-file MODULE_FILE] [-nodeps] BINARY [ARG1 ARG2 ...]")
 	}
 	binaryFile := args[0]
 	if fi, err := os.Stat(binaryFile); err != nil {
@@ -291,24 +302,49 @@ func doStart(ctx context.Context, args []string) error {
 			return fmt.Errorf("arg %q contains whitespace: not supported", arg)
 		}
 	}
+
 	// Copy binary to GCS if it's not already there.
-	if canceled, err := uploadAnalysisBinary(ctx, binaryFile); err != nil {
+	if _, canceled, err := uploadFile(ctx, binaryFile, binaryFolder); err != nil {
 		return err
 	} else if canceled {
 		return nil
 	}
+
+	// Copy file to GCS if one is given.
+	modFileFolder := moduleFileFolder
+	if user != "" {
+		modFileFolder = path.Join(user, modFileFolder)
+	}
+
+	var gcsPath string
+	if moduleFile != "" {
+		var canceled bool
+		var err error
+		gcsPath, canceled, err = uploadFile(ctx, moduleFile, modFileFolder)
+		if err != nil {
+			return err
+		}
+		if canceled {
+			return nil
+		}
+	}
+
 	// Ask the server to enqueue scan tasks.
 	its, err := identityTokenSource(ctx)
 	if err != nil {
 		return err
 	}
 	u := fmt.Sprintf("%s/analysis/enqueue?binary=%s&user=%s&nodeps=%t",
-		workerURL, filepath.Base(binaryFile), os.Getenv("USER"), noDeps)
+		workerURL, filepath.Base(binaryFile), user, noDeps)
 	if len(binaryArgs) > 0 {
 		u += fmt.Sprintf("&args=%s", url.QueryEscape(strings.Join(binaryArgs, " ")))
 	}
 	if minImporters >= 0 {
 		u += fmt.Sprintf("&min=%d", minImporters)
+	}
+	if gcsPath != "" {
+		gurl := "gs://" + gcsPath
+		u += fmt.Sprintf("&file=%s", url.QueryEscape(gurl))
 	}
 	if *dryRun {
 		fmt.Printf("dryrun: GET %s\n", u)
@@ -352,54 +388,59 @@ func checkIsLinuxAmd64(binaryFile string) error {
 	return nil
 }
 
-// uploadAnalysisBinary copies binaryFile to the GCS location used for
-// analysis binaries. The user can cancel the upload if the file with
-// the same name is already on GCS, upon which true is returned. Otherwise,
-// false is returned.
+// uploadFile copies localFile to the GCS location used for files.
+// The GCS bucket is the projectID, defined above.
+// The name of the destination object is the join of the remoteFolder and the basename
+// of the localFile. For example, file ~/things/data.txt uploaded to folder "stuff" will be written
+// to the object "stuff/data.txt".
 //
-// As an optimization, it skips the upload if the file on GCS has the
-// same checksum as the local file.
-func uploadAnalysisBinary(ctx context.Context, binaryFile string) (canceled bool, err error) {
-	if *dryRun {
-		fmt.Printf("dryrun: upload analysis binary %s\n", binaryFile)
-		return false, nil
-	}
+// The user can cancel the upload if the file with the same name is already on GCS,
+// upon which true is returned. Otherwise, false is returned.
+//
+// As an optimization, the upload is skipped if the file on GCS has the same checksum as the local file.
+func uploadFile(ctx context.Context, localFile, remoteFolder string) (gcsPath string, canceled bool, err error) {
 	const bucketName = projectID
-	binaryName := filepath.Base(binaryFile)
-	objectName := path.Join("analysis-binaries", binaryName)
+	baseName := filepath.Base(localFile)
+	objectName := path.Join(remoteFolder, baseName)
+	gcsPath = path.Join(bucketName, objectName)
+
+	if *dryRun {
+		fmt.Printf("dryrun: upload file %s\n", localFile)
+		return gcsPath, false, nil
+	}
 
 	ts, err := accessTokenSource(ctx)
 	if err != nil {
-		return false, err
+		return "", false, err
 	}
 	c, err := storage.NewClient(ctx, option.WithTokenSource(ts))
 	if err != nil {
-		return false, err
+		return "", false, err
 	}
 	defer c.Close()
 	bucket := c.Bucket(bucketName)
 	object := bucket.Object(objectName)
 	attrs, err := object.Attrs(ctx)
 	if errors.Is(err, storage.ErrObjectNotExist) {
-		fmt.Printf("%s binary does not exist on GCS: uploading\n", binaryName)
+		fmt.Printf("%s file does not exist on GCS: uploading\n", baseName)
 	} else if err != nil {
-		return false, err
+		return "", false, err
 	} else if g, w := len(attrs.MD5), md5.Size; g != w {
-		return false, fmt.Errorf("len(attrs.MD5) = %d, wanted %d", g, w)
+		return "", false, fmt.Errorf("len(attrs.MD5) = %d, wanted %d", g, w)
 
 	} else {
-		localMD5, err := fileMD5(binaryFile)
+		localMD5, err := fileMD5(localFile)
 		if err != nil {
-			return false, err
+			return "", false, err
 		}
 		if bytes.Equal(localMD5, attrs.MD5) {
-			fmt.Printf("Binary %q on GCS has the same checksum: not uploading.\n", binaryName)
-			return false, nil
+			fmt.Printf("File %q on GCS has the same checksum: not uploading.\n", baseName)
+			return gcsPath, false, nil
 		}
-		// Ask the users if they want to overwrite the existing binary
+		// Ask the users if they want to overwrite the existing file
 		// while providing more info to help them with their decision.
 		updated := attrs.Updated.In(time.Local).Format(time.RFC1123) // use local time zone
-		fmt.Printf("The binary %q already exists on GCS.\n", binaryName)
+		fmt.Printf("The file %q already exists on GCS.\n", baseName)
 		fmt.Printf("It was last uploaded on %s", updated)
 		// Communicate uploader info if available.
 		if uploader := attrs.Metadata[uploaderMetadataKey]; uploader != "" {
@@ -412,12 +453,12 @@ func uploadAnalysisBinary(ctx context.Context, binaryFile string) (canceled bool
 		if r := strings.TrimSpace(response); r != "y" && r != "Y" {
 			// Accept "Y" and "y" as confirmation.
 			fmt.Println("Cancelling.")
-			return true, nil
+			return "", true, nil
 		}
 	}
 	fmt.Printf("Uploading.\n")
-	if err := copyToGCS(ctx, object, binaryFile); err != nil {
-		return false, err
+	if err := copyToGCS(ctx, object, localFile); err != nil {
+		return "", false, err
 	}
 
 	// Add the uploader information for better messaging in the future.
@@ -427,7 +468,7 @@ func uploadAnalysisBinary(ctx context.Context, binaryFile string) (canceled bool
 	// Refetch the object, otherwise attribute uploading won't have effect.
 	object = bucket.Object(objectName)
 	object.Update(ctx, toUpdate) // disregard errors
-	return false, nil
+	return gcsPath, false, nil
 }
 
 // fileMD5 computes the MD5 checksum of the given file.

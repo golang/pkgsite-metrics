@@ -7,7 +7,9 @@ package scan
 
 import (
 	"bufio"
+	"context"
 	"fmt"
+	"io"
 	"net/http"
 	"net/url"
 	"os"
@@ -15,6 +17,7 @@ import (
 	"strconv"
 	"strings"
 
+	"cloud.google.com/go/storage"
 	"golang.org/x/pkgsite-metrics/internal/derrors"
 	"golang.org/x/pkgsite-metrics/internal/version"
 )
@@ -33,7 +36,7 @@ type ModuleSpec struct {
 }
 
 func ParseCorpusFile(filename string, minImportedByCount int) (ms []ModuleSpec, err error) {
-	defer derrors.Wrap(&err, "parseCorpusFile(%q)", filename)
+	defer derrors.Wrap(&err, "ParseCorpusFile(%q)", filename)
 	lines, err := ReadFileLines(filename)
 	if err != nil {
 		return nil, err
@@ -67,11 +70,13 @@ func ParseCorpusFile(filename string, minImportedByCount int) (ms []ModuleSpec, 
 // ReadFileLines reads and returns the lines from a file.
 // Whitespace on each line is trimmed.
 // Blank lines and lines beginning with '#' are ignored.
+//
+// If filename begins "gs://", it is intepreted as a GCS object.
 func ReadFileLines(filename string) (lines []string, err error) {
-	defer derrors.Wrap(&err, "readFileLines(%q)", filename)
-	f, err := os.Open(filename)
+	defer derrors.Wrap(&err, "ReadFileLines(%q)", filename)
+	f, err := openFile(context.TODO(), filename)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("openFile(%q): %w", filename, err)
 	}
 	defer f.Close()
 
@@ -87,6 +92,22 @@ func ReadFileLines(filename string) (lines []string, err error) {
 		return nil, s.Err()
 	}
 	return lines, nil
+}
+
+func openFile(ctx context.Context, filename string) (io.ReadCloser, error) {
+	if !strings.HasPrefix(filename, "gs://") {
+		return os.Open(filename)
+	}
+	url := strings.TrimPrefix(filename, "gs://")
+	bucket, object, found := strings.Cut(url, "/")
+	if !found {
+		return nil, fmt.Errorf("bad GCS url (no slash): %q", filename)
+	}
+	c, err := storage.NewClient(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("storage.NewClient: %w", err)
+	}
+	return c.Bucket(bucket).Object(object).NewReader(ctx)
 }
 
 // A ModuleURLPath holds the components of a URL path parsed
