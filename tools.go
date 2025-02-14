@@ -13,7 +13,6 @@
 // integrations where network connection is limited.
 
 //go:build tools
-// +build tools
 
 package main
 
