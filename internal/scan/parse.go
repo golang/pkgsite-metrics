@@ -35,7 +35,7 @@ type ModuleSpec struct {
 	ImportedBy    int
 }
 
-func ParseCorpusFile(filename string, minImportedByCount int) (ms []ModuleSpec, err error) {
+func ParseCorpusFile(filename string, minImports, maxImports int) (ms []ModuleSpec, err error) {
 	defer derrors.Wrap(&err, "ParseCorpusFile(%q)", filename)
 	lines, err := ReadFileLines(filename)
 	if err != nil {
@@ -60,7 +60,7 @@ func ParseCorpusFile(filename string, minImportedByCount int) (ms []ModuleSpec, 
 		if err != nil {
 			return nil, fmt.Errorf("%v on line %q", err, line)
 		}
-		if n >= minImportedByCount {
+		if minImports <= n && n <= maxImports {
 			ms = append(ms, ModuleSpec{Path: path, Version: vers, ImportedBy: n})
 		}
 	}

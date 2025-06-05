@@ -47,6 +47,7 @@ var (
 
 var (
 	minImporters int           // for start
+	maxImporters int           // for start
 	noDeps       bool          // for start
 	moduleFile   string        // for start
 	waitInterval time.Duration // for wait
@@ -69,8 +70,10 @@ var commands = []command{
 		"start a job",
 		doStart,
 		func(fs *flag.FlagSet) {
-			fs.IntVar(&minImporters, "min", -1,
+			fs.IntVar(&maxImporters, "min", -1,
 				"run on modules with at least this many importers (<0: use server default of 10)")
+			fs.IntVar(&minImporters, "max", -1,
+				"run on modules with at most this many importers (<0: use server default of math.MaxInt)")
 			fs.StringVar(&moduleFile, "file", "",
 				"file with modules to use: each line is MODULE_PATH VERSION NUM_IMPORTERS")
 			fs.BoolVar(&noDeps, "nodeps", false, "do not download dependencies for modules")
@@ -341,6 +344,9 @@ func doStart(ctx context.Context, args []string) error {
 	}
 	if minImporters >= 0 {
 		u += fmt.Sprintf("&min=%d", minImporters)
+	}
+	if maxImporters >= 0 {
+		u += fmt.Sprintf("&max=%d", maxImporters)
 	}
 	if gcsPath != "" {
 		gurl := "gs://" + gcsPath

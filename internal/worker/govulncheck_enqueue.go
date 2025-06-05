@@ -8,6 +8,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"math"
 	"net/http"
 	"sort"
 	"strings"
@@ -80,7 +81,7 @@ func createGovulncheckQueueTasks(ctx context.Context, cfg *config.Config, params
 	)
 	for _, mode := range modes {
 		if modspecs == nil {
-			modspecs, err = readModules(ctx, cfg, params.File, params.Min)
+			modspecs, err = readModules(ctx, cfg, params.File, params.Min, math.MaxInt)
 			if err != nil {
 				return nil, err
 			}

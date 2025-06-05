@@ -12,6 +12,7 @@ import (
 	"database/sql"
 	"flag"
 	"fmt"
+	"math"
 	"net/url"
 	"strings"
 	"testing"
@@ -50,7 +51,7 @@ func TestModuleSpecs(t *testing.T) {
 	if err := db.PingContext(ctx); err != nil {
 		t.Fatal(err)
 	}
-	got, err := ModuleSpecs(ctx, db, 1000)
+	got, err := ModuleSpecs(ctx, db, 1000, math.MaxInt)
 	if err != nil {
 		t.Fatal(err)
 	}

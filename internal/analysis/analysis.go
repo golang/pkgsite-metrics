@@ -45,6 +45,7 @@ type EnqueueParams struct {
 	Args     string // command-line arguments to binary; split on whitespace
 	Insecure bool   // if true, run outside sandbox
 	Min      int    // minimum import-by count for a module to be included
+	Max      int    // maximum import-by count for a module to be included
 	File     string // path to file containing modules; if missing, use DB
 	Suffix   string // appended to task queue IDs to generate unique tasks
 	User     string // user initiating enqueue

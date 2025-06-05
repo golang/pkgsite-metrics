@@ -426,9 +426,12 @@ func readSource(file string, line int, nContext int) (_ string, err error) {
 func (s *analysisServer) handleEnqueue(w http.ResponseWriter, r *http.Request) (err error) {
 	defer derrors.Wrap(&err, "analysisServer.handleEnqueue")
 	ctx := r.Context()
-	params := &analysis.EnqueueParams{Min: defaultMinImportedByCount}
+	params := &analysis.EnqueueParams{Min: defaultMinImportedByCount, Max: defaultMaxImportedByCount}
 	if err := scan.ParseParams(r, params); err != nil {
 		return fmt.Errorf("%w: %v", derrors.InvalidArgument, err)
+	}
+	if params.Min > params.Max {
+		return fmt.Errorf("%w: analysis: bad min/max range", derrors.InvalidArgument)
 	}
 	if params.Binary == "" {
 		return fmt.Errorf("%w: analysis: missing binary", derrors.InvalidArgument)
@@ -446,7 +449,7 @@ func (s *analysisServer) handleEnqueue(w http.ResponseWriter, r *http.Request) (
 	if err != nil {
 		return err
 	}
-	mods, err := readModules(ctx, s.cfg, params.File, params.Min)
+	mods, err := readModules(ctx, s.cfg, params.File, params.Min, params.Max)
 	if err != nil {
 		return err
 	}
