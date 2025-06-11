@@ -101,7 +101,7 @@ func TestModuleURLPathError(t *testing.T) {
 
 func TestParseCorpusFile(t *testing.T) {
 	const file = "testdata/modules.txt"
-	got, err := ParseCorpusFile(file, 1, math.MaxInt)
+	got, err := ParseCorpusFile(file, 1, math.MaxInt32)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -115,7 +115,7 @@ func TestParseCorpusFile(t *testing.T) {
 		t.Errorf("\n got %v\nwant %v", got, want)
 	}
 
-	got, err = ParseCorpusFile(file, 10, math.MaxInt)
+	got, err = ParseCorpusFile(file, 10, math.MaxInt32)
 	if err != nil {
 		t.Fatal(err)
 	}

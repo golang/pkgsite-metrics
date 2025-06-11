@@ -35,7 +35,7 @@ type ModuleSpec struct {
 	ImportedBy    int
 }
 
-func ParseCorpusFile(filename string, minImports, maxImports int) (ms []ModuleSpec, err error) {
+func ParseCorpusFile(filename string, minImports, maxImports int32) (ms []ModuleSpec, err error) {
 	defer derrors.Wrap(&err, "ParseCorpusFile(%q)", filename)
 	lines, err := ReadFileLines(filename)
 	if err != nil {
@@ -56,12 +56,12 @@ func ParseCorpusFile(filename string, minImports, maxImports int) (ms []ModuleSp
 		default:
 			return nil, fmt.Errorf("wrong number of fields on line %q", line)
 		}
-		n, err := strconv.Atoi(imps)
+		n, err := strconv.ParseInt(imps, 10, 32)
 		if err != nil {
-			return nil, fmt.Errorf("%v on line %q", err, line)
+			return nil, fmt.Errorf("number of imports: invalid integer %q", imps)
 		}
-		if minImports <= n && n <= maxImports {
-			ms = append(ms, ModuleSpec{Path: path, Version: vers, ImportedBy: n})
+		if minImports <= int32(n) && int32(n) <= maxImports {
+			ms = append(ms, ModuleSpec{Path: path, Version: vers, ImportedBy: int(n)})
 		}
 	}
 	return ms, nil

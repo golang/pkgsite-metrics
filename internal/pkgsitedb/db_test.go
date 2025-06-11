@@ -51,7 +51,7 @@ func TestModuleSpecs(t *testing.T) {
 	if err := db.PingContext(ctx); err != nil {
 		t.Fatal(err)
 	}
-	got, err := ModuleSpecs(ctx, db, 1000, math.MaxInt)
+	got, err := ModuleSpecs(ctx, db, 1000, math.MaxInt32)
 	if err != nil {
 		t.Fatal(err)
 	}

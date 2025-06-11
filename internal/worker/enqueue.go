@@ -19,10 +19,10 @@ import (
 
 const (
 	defaultMinImportedByCount = 10
-	defaultMaxImportedByCount = math.MaxInt
+	defaultMaxImportedByCount = math.MaxInt32
 )
 
-func readModules(ctx context.Context, cfg *config.Config, file string, minImports, maxImports int) ([]scan.ModuleSpec, error) {
+func readModules(ctx context.Context, cfg *config.Config, file string, minImports, maxImports int32) ([]scan.ModuleSpec, error) {
 	if file != "" {
 		log.Infof(ctx, "reading modules from file %s", file)
 		return scan.ParseCorpusFile(file, minImports, maxImports)
@@ -31,7 +31,7 @@ func readModules(ctx context.Context, cfg *config.Config, file string, minImport
 	return readFromDB(ctx, cfg, minImports, maxImports)
 }
 
-func readFromDB(ctx context.Context, cfg *config.Config, minImports, maxImports int) ([]scan.ModuleSpec, error) {
+func readFromDB(ctx context.Context, cfg *config.Config, minImports, maxImports int32) ([]scan.ModuleSpec, error) {
 	db, err := pkgsitedb.Open(ctx, cfg)
 	if err != nil {
 		return nil, err

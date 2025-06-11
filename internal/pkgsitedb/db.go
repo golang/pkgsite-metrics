@@ -52,7 +52,7 @@ func redactPassword(dbinfo string) string {
 // ModuleSpecs retrieves all modules that contain packages that are
 // imported by minImportedByCount or more packages.
 // It looks for the information in the search_documents table of the given pkgsite DB.
-func ModuleSpecs(ctx context.Context, db *sql.DB, minImports, maxImports int) (specs []scan.ModuleSpec, err error) {
+func ModuleSpecs(ctx context.Context, db *sql.DB, minImports, maxImports int32) (specs []scan.ModuleSpec, err error) {
 	defer derrors.Wrap(&err, "moduleSpecsFromDB")
 	query := `
 		SELECT module_path, version, max(imported_by_count)

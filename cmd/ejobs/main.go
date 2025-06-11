@@ -70,10 +70,10 @@ var commands = []command{
 		"start a job",
 		doStart,
 		func(fs *flag.FlagSet) {
-			fs.IntVar(&maxImporters, "min", -1,
+			fs.IntVar(&minImporters, "min", -1,
 				"run on modules with at least this many importers (<0: use server default of 10)")
-			fs.IntVar(&minImporters, "max", -1,
-				"run on modules with at most this many importers (<0: use server default of math.MaxInt)")
+			fs.IntVar(&maxImporters, "max", -1,
+				"run on modules with at most this many importers (<0: use server default of unlimited)")
 			fs.StringVar(&moduleFile, "file", "",
 				"file with modules to use: each line is MODULE_PATH VERSION NUM_IMPORTERS")
 			fs.BoolVar(&noDeps, "nodeps", false, "do not download dependencies for modules")

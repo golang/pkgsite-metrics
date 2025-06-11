@@ -81,7 +81,7 @@ func createGovulncheckQueueTasks(ctx context.Context, cfg *config.Config, params
 	)
 	for _, mode := range modes {
 		if modspecs == nil {
-			modspecs, err = readModules(ctx, cfg, params.File, params.Min, math.MaxInt)
+			modspecs, err = readModules(ctx, cfg, params.File, params.Min, math.MaxInt32)
 			if err != nil {
 				return nil, err
 			}

@@ -48,7 +48,7 @@ const (
 type EnqueueQueryParams struct {
 	Suffix string // appended to task queue IDs to generate unique tasks
 	Mode   string // type of analysis to run
-	Min    int    // minimum import-by count for a module to be included
+	Min    int32  // minimum import-by count for a module to be included
 	File   string // path to file containing modules; if missing, use DB
 }
 
