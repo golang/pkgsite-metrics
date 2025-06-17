@@ -203,6 +203,8 @@ func parseParam(param string, kind reflect.Kind) (any, error) {
 	switch kind {
 	case reflect.String:
 		return param, nil
+	case reflect.Int32:
+		return strconv.ParseInt(param, 10, 32)
 	case reflect.Int:
 		return strconv.Atoi(param)
 	case reflect.Bool:
