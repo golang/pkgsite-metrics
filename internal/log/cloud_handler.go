@@ -5,10 +5,9 @@
 package log
 
 import (
+	"log/slog"
 	"os"
 	"time"
-
-	"golang.org/x/exp/slog"
 )
 
 // NewGoogleCloudHandler returns a Handler that outputs JSON for the Google
@@ -16,8 +15,7 @@ import (
 // See https://cloud.google.com/logging/docs/agent/logging/configuration#special-fields
 // for treatment of special fields.
 func NewGoogleCloudHandler() slog.Handler {
-	return slog.HandlerOptions{ReplaceAttr: gcpReplaceAttr, Level: slog.LevelDebug}.
-		NewJSONHandler(os.Stderr)
+	return slog.NewJSONHandler(os.Stderr, &slog.HandlerOptions{ReplaceAttr: gcpReplaceAttr, Level: slog.LevelDebug})
 }
 
 func gcpReplaceAttr(groups []string, a slog.Attr) slog.Attr {

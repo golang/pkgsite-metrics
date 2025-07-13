@@ -9,10 +9,10 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"log/slog"
 	"sync"
 
 	"github.com/jba/slog/withsupport"
-	"golang.org/x/exp/slog"
 )
 
 // LineHandler is a slog.Handler that writes log events one per line
@@ -36,6 +36,7 @@ func (h *LineHandler) Enabled(ctx context.Context, level slog.Level) bool {
 func (h *LineHandler) WithGroup(name string) slog.Handler {
 	return &LineHandler{w: h.w, gora: h.gora.WithGroup(name)}
 }
+
 func (h *LineHandler) WithAttrs(as []slog.Attr) slog.Handler {
 	return &LineHandler{w: h.w, gora: h.gora.WithAttrs(as)}
 }
@@ -57,7 +58,7 @@ func (h *LineHandler) Handle(ctx context.Context, r slog.Record) error {
 			}
 		}
 	}
-	r.Attrs(func(a slog.Attr) { writeAttr(&buf, prefix, a) })
+	r.Attrs(func(a slog.Attr) bool { writeAttr(&buf, prefix, a); return true })
 	buf.WriteByte('\n')
 	h.mu.Lock()
 	defer h.mu.Unlock()

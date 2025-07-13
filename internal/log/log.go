@@ -8,8 +8,7 @@ package log
 import (
 	"context"
 	"fmt"
-
-	"golang.org/x/exp/slog"
+	"log/slog"
 )
 
 type loggerKey struct{}
@@ -32,7 +31,8 @@ func Debug(ctx context.Context, msg string, args ...any) { FromContext(ctx).Debu
 func Info(ctx context.Context, msg string, args ...any)  { FromContext(ctx).Info(msg, args...) }
 func Warn(ctx context.Context, msg string, args ...any)  { FromContext(ctx).Warn(msg, args...) }
 func Error(ctx context.Context, msg string, err error, args ...any) {
-	FromContext(ctx).Error(msg, err, args...)
+	args = append([]any{"err", err}, args...)
+	FromContext(ctx).Error(msg, args...)
 }
 
 func Logf(ctx context.Context, level slog.Level, format string, args ...any) {
@@ -45,9 +45,11 @@ func Logf(ctx context.Context, level slog.Level, format string, args ...any) {
 func Debugf(ctx context.Context, format string, args ...any) {
 	Logf(ctx, slog.LevelDebug, format, args...)
 }
+
 func Infof(ctx context.Context, format string, args ...any) {
 	Logf(ctx, slog.LevelInfo, format, args...)
 }
+
 func Warnf(ctx context.Context, format string, args ...any) {
 	Logf(ctx, slog.LevelWarn, format, args...)
 }
@@ -56,6 +58,6 @@ func Errorf(ctx context.Context, err error, format string, args ...any) {
 	level := slog.LevelError
 	l := FromContext(ctx)
 	if l.Enabled(ctx, level) {
-		l.Log(ctx, level, fmt.Sprintf(format, args...), slog.ErrorKey, err)
+		l.Log(ctx, level, fmt.Sprintf(format, args...), "err", err)
 	}
 }

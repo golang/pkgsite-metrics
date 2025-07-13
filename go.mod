@@ -17,7 +17,7 @@ require (
 	github.com/client9/misspell v0.3.4
 	github.com/google/go-cmp v0.6.0
 	github.com/google/safehtml v0.1.0
-	github.com/jba/slog v0.0.0-20230225143746-b07e7e61ec27
+	github.com/jba/slog v0.2.0
 	github.com/lib/pq v1.10.7
 	go.opencensus.io v0.24.0
 	go.opentelemetry.io/otel v1.11.2
