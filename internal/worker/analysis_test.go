@@ -11,6 +11,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	bq "cloud.google.com/go/bigquery"
 	"github.com/google/go-cmp/cmp"
@@ -18,15 +19,16 @@ import (
 	"golang.org/x/pkgsite-metrics/internal/analysis"
 	"golang.org/x/pkgsite-metrics/internal/buildtest"
 	"golang.org/x/pkgsite-metrics/internal/config"
-	"golang.org/x/pkgsite-metrics/internal/proxy/proxytest"
+	"golang.org/x/pkgsite-metrics/internal/proxy"
 	"golang.org/x/pkgsite-metrics/internal/queue"
 	"golang.org/x/pkgsite-metrics/internal/scan"
+	test "golang.org/x/pkgsite-metrics/internal/testing"
 )
 
 func TestRunAnalysisBinary(t *testing.T) {
 	binPath := buildtest.GoBuild(t, "testdata/analyzer", "")
 
-	got, err := runAnalysisBinary(nil, binPath, "-name Fact", "testdata/module")
+	got, err := runAnalysisBinary(nil, binPath, "-name Fact ./...", "testdata/module")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -105,30 +107,21 @@ func TestCreateAnalysisQueueTasks(t *testing.T) {
 }
 
 func TestAnalysisScan(t *testing.T) {
+	test.NeedsIntegrationEnv(t)
 	const (
-		modulePath = "a.com/m"
-		version    = "v1.2.3"
+		modulePath = "golang.org/x/scratch/kusano/replacement"
+		version    = "v0.0.0-20250813163312-416cbb1e76e6"
 	)
 	binaryPath := buildtest.GoBuild(t, "testdata/analyzer", "")
-	proxyClient, cleanup2 := proxytest.SetupTestClient(t, []*proxytest.Module{
-		{
-			ModulePath: modulePath,
-			Version:    version,
-			Files: map[string]string{
-				"go.mod": `module ` + modulePath,
-				"a.go": `
-package p
-func F()  { G() }
-func G() {}
-`},
-		},
-	})
-	defer cleanup2()
+	proxyClient, err := proxy.New("https://proxy.golang.org/cached-only")
+	if err != nil {
+		t.Fatal(err)
+	}
 
 	diff := func(want, got *analysis.Result) {
 		t.Helper()
 		d := cmp.Diff(want, got,
-			cmpopts.IgnoreFields(analysis.Diagnostic{}, "Position"))
+			cmpopts.IgnoreFields(analysis.Diagnostic{}, "Position", "Source"))
 		if d != "" {
 			t.Errorf("mismatch (-want, +got)\n%s", d)
 		}
@@ -147,31 +140,34 @@ func G() {}
 		ModuleURLPath: scan.ModuleURLPath{Module: modulePath, Version: version},
 		ScanParams: analysis.ScanParams{
 			Binary:   "analyzer",
-			Args:     "-name G",
+			Args:     "-name GenerateFromPassword",
 			Insecure: true,
 			JobID:    "jid",
+			NoDeps:   false,
+			SkipInit: true,
 		},
 	}
-	wv := analysis.WorkVersion{BinaryArgs: "-name G", BinaryVersion: "bv", SchemaVersion: "sv"}
+	wv := analysis.WorkVersion{BinaryArgs: "-name GenerateFromPassword", BinaryVersion: "bv", SchemaVersion: "sv"}
 	got := s.scan(context.Background(), req, binaryPath, wv)
+	commitTime, err := time.Parse("2006-01-02 15:04:05 -0700 MST", "2025-08-13 16:33:12 +0000 UTC")
+	if err != nil {
+		t.Fatal(err)
+	}
 	want := &analysis.Result{
 		ModulePath:    modulePath,
 		Version:       version,
-		SortVersion:   "1,2,3~",
-		CommitTime:    proxytest.CommitTime,
+		SortVersion:   "0,0,0,~20250813163312-416cbb1e76e6",
+		CommitTime:    commitTime,
 		BinaryName:    "analyzer",
 		WorkVersion:   wv,
 		Error:         "",
 		ErrorCategory: "",
 		Diagnostics: []*analysis.Diagnostic{
 			{
-				PackageID:    "a.com/m",
+				PackageID:    "golang.org/x/scratch/kusano/replacement",
 				AnalyzerName: "findcall",
-				Message:      "call of G(...)",
-				Source: bq.NullString{
-					StringVal: "package p\nfunc F()  { G() }\nfunc G() {}",
-					Valid:     true,
-				},
+				Message:      "call of GenerateFromPassword(...)",
+				Source:       bq.NullString{},
 			},
 		},
 	}
@@ -196,7 +192,7 @@ func G() {}
 	want = &analysis.Result{
 		ModulePath:    modulePath,
 		Version:       version,
-		SortVersion:   "1,2,3~",
+		SortVersion:   "0,0,0,~20250813163312-416cbb1e76e6",
 		BinaryName:    "bad",
 		WorkVersion:   wv,
 		ErrorCategory: "SYNTHETIC - MISC",

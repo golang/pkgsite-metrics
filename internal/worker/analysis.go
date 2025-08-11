@@ -195,15 +195,17 @@ func (s *analysisServer) scan(ctx context.Context, req *analysis.ScanRequest, lo
 	err := doScan(ctx, req.Module, req.Version, req.Insecure, func() (err error) {
 		// Create a module directory. scanInternal will write the module contents there,
 		// and both the analysis binary and addSource will read them.
-		mdir := moduleDir(req.Module, req.Version)
-		defer derrors.Cleanup(&err, func() error { return os.RemoveAll(mdir) })
+		modDir := moduleDir(req.Module, req.Version)
+		if err := os.MkdirAll(modDir, os.ModePerm); err != nil {
+			return fmt.Errorf("failed to mkdir %s: %w", modDir, err)
+		}
+		defer derrors.Cleanup(&err, func() error { return os.RemoveAll(modDir) })
 
-		hasGoMod = fileExists(filepath.Join(mdir, "go.mod")) // for precise error breakdown
-
-		jsonTree, err := s.scanInternal(ctx, req, localBinaryPath, mdir)
+		jsonTree, err := s.scanInternal(ctx, req, localBinaryPath, modDir)
 		if err != nil {
 			return err
 		}
+		hasGoMod = fileExists(filepath.Join(modDir, "go.mod")) // for precise error breakdown
 		info, err := s.proxyClient.Info(ctx, req.Module, req.Version)
 		if err != nil {
 			return fmt.Errorf("%w: %v", derrors.ProxyError, err)
@@ -255,7 +257,7 @@ func (s *analysisServer) scan(ctx context.Context, req *analysis.ScanRequest, lo
 }
 
 func (s *analysisServer) scanInternal(ctx context.Context, req *analysis.ScanRequest, binaryPath, moduleDir string) (jt analysis.JSONTree, err error) {
-	args := prepareModuleArgs{
+	prepareArgs := prepareModuleArgs{
 		modulePath:  req.Module,
 		version:     req.Version,
 		dir:         moduleDir,
@@ -264,7 +266,7 @@ func (s *analysisServer) scanInternal(ctx context.Context, req *analysis.ScanReq
 		init:        !req.SkipInit,
 		noDeps:      req.NoDeps,
 	}
-	if err := prepareModule(ctx, args); err != nil {
+	if err := prepareModule(ctx, prepareArgs); err != nil {
 		return nil, err
 	}
 	var sbox *sandbox.Sandbox
@@ -272,7 +274,9 @@ func (s *analysisServer) scanInternal(ctx context.Context, req *analysis.ScanReq
 		sbox = sandbox.New("/bundle")
 		sbox.Runsc = "/usr/local/bin/runsc"
 	}
-	return runAnalysisBinary(sbox, binaryPath, req.Args, moduleDir)
+
+	analysisArgs := req.Args + " " + filepath.Join(req.Module, "...")
+	return runAnalysisBinary(sbox, binaryPath, analysisArgs, moduleDir)
 }
 
 func hashFile(filename string) (_ string, err error) {
@@ -297,7 +301,6 @@ func hashReader(r io.Reader) (string, error) {
 func runAnalysisBinary(sbox *sandbox.Sandbox, binaryPath, reqArgs, moduleDir string) (analysis.JSONTree, error) {
 	args := []string{"-json"}
 	args = append(args, strings.Fields(reqArgs)...)
-	args = append(args, "./...")
 	out, err := runBinaryInDir(sbox, binaryPath, args, moduleDir)
 	if err != nil {
 		return nil, fmt.Errorf("running analysis binary %s: %s", binaryPath, derrors.IncludeStderr(err))
@@ -426,7 +429,7 @@ func readSource(file string, line int, nContext int) (_ string, err error) {
 func (s *analysisServer) handleEnqueue(w http.ResponseWriter, r *http.Request) (err error) {
 	defer derrors.Wrap(&err, "analysisServer.handleEnqueue")
 	ctx := r.Context()
-	params := &analysis.EnqueueParams{Min: defaultMinImportedByCount, Max: defaultMaxImportedByCount}
+	params := &analysis.EnqueueParams{Min: defaultMinImportedByCount, Max: defaultMaxImportedByCount, SkipInit: true}
 	if err := scan.ParseParams(r, params); err != nil {
 		return fmt.Errorf("%w: %v", derrors.InvalidArgument, err)
 	}

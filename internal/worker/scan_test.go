@@ -46,6 +46,7 @@ func TestPrepareModule(t *testing.T) {
 		// This module has a dependency (github.com/decred/blake256) for which
 		// the proxy returns 404 when fetch is disabled.
 		{"github.com/decred/gominer", "v1.0.0", true, derrors.BadModule},
+		{"golang.org/x/scratch/kusano/replacement", "v0.0.0-20250813163312-416cbb1e76e6", false, nil},
 	} {
 		t.Run(fmt.Sprintf("%s@%s,%t", test.modulePath, test.version, test.init), func(t *testing.T) {
 			dir := t.TempDir()
