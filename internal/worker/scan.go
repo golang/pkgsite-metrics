@@ -324,6 +324,7 @@ func runGoCommand(ctx context.Context, modulePath, version string, opts *goComma
 	cmd.Dir = opts.dir
 	cmd.Env = cmd.Environ()
 	cmd.Env = append(cmd.Env, "GOPROXY=https://proxy.golang.org/cached-only")
+	cmd.Env = append(cmd.Env, "GOSUMDB=off")
 	if !opts.insecure {
 		// Use sandbox mod cache.
 		cmd.Env = append(cmd.Env, "GOMODCACHE="+filepath.Join(sandboxRoot, sandboxGoModCache))
