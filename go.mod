@@ -22,7 +22,6 @@ require (
 	go.opencensus.io v0.24.0
 	go.opentelemetry.io/otel v1.11.2
 	go.opentelemetry.io/otel/sdk v1.4.0
-	golang.org/x/exp v0.0.0-20230224173230-c95f2b4c22f2
 	golang.org/x/exp/event v0.0.0-20220218215828-6cf2b201936e
 	golang.org/x/mod v0.26.0
 	golang.org/x/net v0.42.0
@@ -72,6 +71,7 @@ require (
 	go.opentelemetry.io/otel/sdk/metric v0.26.0 // indirect
 	go.opentelemetry.io/otel/trace v1.11.2 // indirect
 	golang.org/x/crypto v0.40.0 // indirect
+	golang.org/x/exp v0.0.0-20230224173230-c95f2b4c22f2 // indirect
 	golang.org/x/exp/typeparams v0.0.0-20250711185948-6ae5c78190dc // indirect
 	golang.org/x/sys v0.34.0 // indirect
 	golang.org/x/telemetry v0.0.0-20250710130107-8d8967aff50b // indirect

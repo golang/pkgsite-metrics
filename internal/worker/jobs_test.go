@@ -9,13 +9,13 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"maps"
+	"slices"
 	"strings"
 	"testing"
 	"time"
 
 	"github.com/google/go-cmp/cmp"
-	"golang.org/x/exp/maps"
-	"golang.org/x/exp/slices"
 	"golang.org/x/pkgsite-metrics/internal/derrors"
 	"golang.org/x/pkgsite-metrics/internal/jobs"
 )
@@ -107,12 +107,11 @@ func (d *testJobDB) UpdateJob(ctx context.Context, id string, f func(*jobs.Job) 
 }
 
 func (d *testJobDB) ListJobs(ctx context.Context, f func(*jobs.Job, time.Time) error) error {
-	jobslice := maps.Values(d.jobs)
 	// Sort by StartedAt descending.
-	slices.SortFunc(jobslice, func(j1, j2 *jobs.Job) bool {
-		return j1.StartedAt.After(j2.StartedAt)
+	sortedJobs := slices.SortedFunc(maps.Values(d.jobs), func(j1, j2 *jobs.Job) int {
+		return -1 * j1.StartedAt.Compare(j2.StartedAt)
 	})
-	for _, j := range jobslice {
+	for _, j := range sortedJobs {
 		if err := f(j, time.Time{}); err != nil {
 			return err
 		}

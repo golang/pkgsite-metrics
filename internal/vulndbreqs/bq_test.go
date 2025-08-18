@@ -6,13 +6,13 @@ package vulndbreqs
 
 import (
 	"context"
+	"slices"
 	"testing"
 	"time"
 
 	"cloud.google.com/go/civil"
 	"github.com/google/go-cmp/cmp"
 	"github.com/google/go-cmp/cmp/cmpopts"
-	"golang.org/x/exp/slices"
 	"golang.org/x/pkgsite-metrics/internal/bigquery"
 	test "golang.org/x/pkgsite-metrics/internal/testing"
 )
@@ -58,8 +58,23 @@ func TestBigQuery(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	slices.SortFunc(want, func(c1, c2 *RequestCount) bool { return c1.Date.After(c2.Date) })
+	slices.SortFunc(want, func(c1, c2 *RequestCount) int { return -1 * compareDate(c1.Date, c2.Date) })
 	if diff := cmp.Diff(want, got, cmpopts.IgnoreFields(RequestCount{}, "CreatedAt")); diff != "" {
 		t.Errorf("mismatch (-want, +got):\n%s", diff)
 	}
+}
+
+// compareDate compares d1 and d2. If d1 is before d2, it returns -1;
+// if d1 is after d2, it returns +1; otherwise it returns 0.
+//
+// TODO(go.dev/issue/74596): Delete and replace with
+// https://pkg.go.dev/cloud.google.com/go/civil#Date.Compare
+// after updating that module to v0.114.0 or higher.
+func compareDate(d1, d2 civil.Date) int {
+	if d1.Before(d2) {
+		return -1
+	} else if d1.After(d2) {
+		return +1
+	}
+	return 0
 }

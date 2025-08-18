@@ -10,13 +10,13 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"maps"
 	"net/http"
-	"sort"
+	"slices"
 	"strings"
 	"time"
 
 	bq "cloud.google.com/go/bigquery"
-	"golang.org/x/exp/maps"
 	"golang.org/x/pkgsite-metrics/internal/bigquery"
 	"golang.org/x/pkgsite-metrics/internal/derrors"
 	"golang.org/x/pkgsite-metrics/internal/queue"
@@ -247,12 +247,10 @@ func ReadWorkVersion(ctx context.Context, c *bigquery.Client, module_path, versi
 func JSONTreeToDiagnostics(jsonTree JSONTree) []*Diagnostic {
 	var diags []*Diagnostic
 	// Sort for determinism.
-	pkgIDs := maps.Keys(jsonTree)
-	sort.Strings(pkgIDs)
+	pkgIDs := slices.Sorted(maps.Keys(jsonTree))
 	for _, pkgID := range pkgIDs {
 		amap := jsonTree[pkgID]
-		aNames := maps.Keys(amap)
-		sort.Strings(aNames)
+		aNames := slices.Sorted(maps.Keys(amap))
 		for _, aName := range aNames {
 			diagsOrErr := amap[aName]
 			if diagsOrErr.Error != nil {

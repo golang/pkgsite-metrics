@@ -8,10 +8,10 @@ import (
 	"bytes"
 	"path/filepath"
 	"runtime"
+	"slices"
 	"strings"
 	"testing"
 
-	"golang.org/x/exp/slices"
 	"golang.org/x/pkgsite-metrics/internal/buildtest"
 	"golang.org/x/pkgsite-metrics/internal/govulncheck"
 	"golang.org/x/pkgsite-metrics/internal/govulncheckapi"

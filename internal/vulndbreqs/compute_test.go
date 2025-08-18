@@ -5,9 +5,12 @@
 package vulndbreqs
 
 import (
+	cmppkg "cmp"
 	"context"
+	"maps"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -16,8 +19,6 @@ import (
 	"cloud.google.com/go/storage"
 	"github.com/google/go-cmp/cmp"
 	"github.com/google/go-cmp/cmp/cmpopts"
-	"golang.org/x/exp/maps"
-	"golang.org/x/exp/slices"
 	test "golang.org/x/pkgsite-metrics/internal/testing"
 )
 
@@ -56,8 +57,8 @@ func TestComputeFromStorage(t *testing.T) {
 		t.Fatal(err)
 	}
 	// The returned slice comes from a map, so sort for determinism.
-	slices.SortFunc(got, func(r1, r2 *IPRequestCount) bool {
-		return r1.Count < r2.Count
+	slices.SortFunc(got, func(r1, r2 *IPRequestCount) int {
+		return cmppkg.Compare(r1.Count, r2.Count)
 	})
 	want := []*IPRequestCount{
 		{Date: testDate, Count: 30},
