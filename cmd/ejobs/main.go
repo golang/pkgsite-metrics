@@ -54,12 +54,17 @@ var (
 	force        bool          // for results
 	errs         bool          // for results
 	outfile      string        // for results
+	userFilter   string        // for list
 )
 
 var commands = []command{
-	{"list", "",
+	{"list", "[-user USERNAME]",
 		"list jobs",
-		doList, nil},
+		doList,
+		func(fs *flag.FlagSet) {
+			fs.StringVar(&userFilter, "user", "", "filter jobs by user")
+		},
+	},
 	{"show", "JOBID...",
 		"display information about jobs in the last 7 days",
 		doShow, nil},
@@ -208,6 +213,9 @@ func doList(ctx context.Context, _ []string) error {
 	tw := tabwriter.NewWriter(os.Stdout, 2, 8, 1, ' ', 0)
 	fmt.Fprintf(tw, "ID\tUser\tStart Time\tStarted\tFinished\tTotal\tCanceled\n")
 	for _, j := range *joblist {
+		if userFilter != "" && j.User != userFilter {
+			continue
+		}
 		if j.StartedAt.After(weekBefore) {
 			fmt.Fprintf(tw, "%s\t%s\t%s\t%d\t%d\t%d\t%t\n",
 				j.ID(), j.User, j.StartedAt.Format(time.RFC3339),
