@@ -211,18 +211,33 @@ func doList(ctx context.Context, _ []string) error {
 	d7 := -time.Hour * 24 * 7
 	weekBefore := time.Now().Add(d7)
 	tw := tabwriter.NewWriter(os.Stdout, 2, 8, 1, ' ', 0)
-	fmt.Fprintf(tw, "ID\tUser\tStart Time\tStarted\tFinished\tTotal\tCanceled\n")
+	fmt.Fprintf(tw, "ID\tUser\tStart Time\tStarted\tFinished\tTotal\tCanceled\tEstimated Time Left\n")
 	for _, j := range *joblist {
 		if userFilter != "" && j.User != userFilter {
 			continue
 		}
 		if j.StartedAt.After(weekBefore) {
-			fmt.Fprintf(tw, "%s\t%s\t%s\t%d\t%d\t%d\t%t\n",
+			done := j.NumFinished()
+			etaLabel := func(d time.Duration) string {
+				if d >= 0 {
+					return d.String()
+				}
+				return "Done"
+			}
+			var eta time.Duration
+			if !(done >= j.NumEnqueued || j.Canceled) {
+				elapsed := time.Since(j.StartedAt)
+				rate := float64(done) / elapsed.Seconds()
+				remainingTasks := float64(j.NumEnqueued - done)
+				eta = time.Duration(remainingTasks / rate * float64(time.Second)).Round(time.Minute)
+			}
+			fmt.Fprintf(tw, "%s\t%s\t%s\t%d\t%d\t%d\t%t\t%s\n",
 				j.ID(), j.User, j.StartedAt.Format(time.RFC3339),
 				j.NumStarted,
 				j.NumSkipped+j.NumFailed+j.NumErrored+j.NumSucceeded,
 				j.NumEnqueued,
-				j.Canceled)
+				j.Canceled,
+				etaLabel(eta))
 		}
 	}
 	return tw.Flush()
