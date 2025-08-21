@@ -150,6 +150,7 @@ type Result struct {
 	Version     string    `bigquery:"version"`
 	SortVersion string    `bigquery:"sort_version"`
 	CommitTime  time.Time `bigquery:"commit_time"`
+	JobID       string    `bigquery:"job_id"`
 	// The name of the analysis binary that was executed.
 	// A single binary may run multiple analyzers.
 	BinaryName    string `bigquery:"binary_name"`
