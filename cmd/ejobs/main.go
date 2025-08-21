@@ -131,10 +131,17 @@ func main() {
 	flag.Parse()
 	if err := run(context.Background()); err != nil {
 		fmt.Fprintf(os.Stderr, "%v\n\n", err)
-		flag.Usage()
+		var httpErr *httpError
+		if !errors.As(err, &httpErr) {
+			flag.Usage()
+		}
 		os.Exit(2)
 	}
 }
+
+type httpError struct{ msg string }
+
+func (e *httpError) Error() string { return e.msg }
 
 var workerURL string
 
@@ -603,7 +610,7 @@ func httpGet(ctx context.Context, url string, ts oauth2.TokenSource) (body []byt
 		return nil, fmt.Errorf("reading body (%s): %v", res.Status, err)
 	}
 	if res.StatusCode != 200 {
-		return nil, fmt.Errorf("%s: %s", res.Status, body)
+		return nil, &httpError{msg: string(body)}
 	}
 	return body, nil
 }
