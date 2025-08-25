@@ -55,10 +55,7 @@ type Config struct {
 	// BigQueryDataset is the BigQuery dataset to write results to.
 	BigQueryDataset string
 
-	// QueueName is the name of the Cloud Tasks queue.
-	QueueName string
-
-	// QueueURL is the URL that the Cloud Tasks queue should send requests to.
+	// QueueURL is the URL that the Cloud Tasks queues should send requests to.
 	// It should be used when the worker is not on AppEngine.
 	QueueURL string
 
@@ -106,6 +103,9 @@ type Config struct {
 
 	// ProxyURL is the url for the Go module proxy.
 	ProxyURL string
+
+	// Cloud Task Queues
+	QueueNames []string
 }
 
 // Init resolves all configuration values provided by the config package. It
@@ -126,7 +126,7 @@ func Init(ctx context.Context) (_ *Config, err error) {
 		LocationID:            "us-central1",
 		StaticPath:            ts,
 		BigQueryDataset:       GetEnv("GO_ECOSYSTEM_BIGQUERY_DATASET", "disable"),
-		QueueName:             os.Getenv("GO_ECOSYSTEM_QUEUE_NAME"),
+		QueueNames:            strings.Split(os.Getenv("GO_ECOSYSTEM_QUEUE_NAMES"), ","),
 		QueueURL:              os.Getenv("GO_ECOSYSTEM_QUEUE_URL"),
 		VulnDBBucketProjectID: os.Getenv("GO_ECOSYSTEM_VULNDB_BUCKET_PROJECT"),
 		BinaryBucket:          os.Getenv("GO_ECOSYSTEM_BINARY_BUCKET"),
@@ -139,6 +139,7 @@ func Init(ctx context.Context) (_ *Config, err error) {
 		PkgsiteDBSecret:       os.Getenv("GO_ECOSYSTEM_PKGSITE_DB_SECRET"),
 		ProxyURL:              GetEnv("GO_MODULE_PROXY_URL", "https://proxy.golang.org"),
 	}
+
 	if OnCloudRun() {
 		sa, err := gceMetadata(ctx, "instance/service-accounts/default/email")
 		if err != nil {

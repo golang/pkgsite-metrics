@@ -102,6 +102,10 @@ resource "google_cloud_run_service" "worker" {
           name  = "GO_ECOSYSTEM_WORKER_USE_PROFILER"
           value = var.use_profiler
         }
+        env {
+          name = "GO_ECOSYSTEM_QUEUE_NAMES"
+          value = join(",", [for queue in google_cloud_tasks_queue.worker_queues : queue.name])
+        }
         resources {
           limits = {
             "cpu"    = "8000m"
@@ -111,10 +115,6 @@ resource "google_cloud_run_service" "worker" {
         env {
           name  = "GO_ECOSYSTEM_QUEUE_URL"
           value = local.worker_url
-        }
-        env {
-          name  = "GO_ECOSYSTEM_QUEUE_NAME"
-          value = "${var.env}-worker-tasks"
         }
         env {
           name = "GITHUB_ACCESS_TOKEN"
@@ -207,14 +207,15 @@ data "google_cloud_run_service" "worker" {
 ################################################################
 # Other components.
 
-resource "google_cloud_tasks_queue" "worker_tasks" {
-  name     = "${var.env}-worker-tasks"
-  location = var.region
+resource "google_cloud_tasks_queue" "worker_queues" {
+  count = var.env == "prod" ? 1 : 4
   project  = var.project
+  name     = "${var.env}-worker-queue-${count.index}"
+  location = var.region
 
   rate_limits {
-    max_concurrent_dispatches = 200
     max_dispatches_per_second = 500
+    max_concurrent_dispatches = 5000
   }
 
   retry_config {

@@ -53,8 +53,45 @@ func TestNewTaskRequest(t *testing.T) {
 		QueueURL:       "http://1.2.3.4:8000",
 		ServiceAccount: "sa",
 	}
+	queueIDs := []string{"queueID-0", "queueID-1", "queueID-2", "queueID-3"}
+	var possibleQueueNames []string
+	for _, qID := range queueIDs {
+		possibleQueueNames = append(possibleQueueNames, "projects/Project/locations/us-central1/queues/"+qID)
+	}
+
+	gcp, err := newGCP(&cfg, nil, queueIDs)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	opts := &Options{
+		Namespace:      "test",
+		TaskNameSuffix: "suf",
+	}
+	sreq := &testTask{
+		name:   "name",
+		path:   "mod@v1.2.3",
+		params: "importedby=0&mode=test&insecure=true",
+	}
+
+	got, err := gcp.newTaskRequest(sreq, opts)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	validParent := false
+	for _, pqn := range possibleQueueNames {
+		if got.Parent == pqn {
+			validParent = true
+			break
+		}
+	}
+	if !validParent {
+		t.Errorf("got.Parent = %q, want one of %v", got.Parent, possibleQueueNames)
+	}
+
 	want := &taskspb.CreateTaskRequest{
-		Parent: "projects/Project/locations/us-central1/queues/queueID",
+		Parent: got.Parent,
 		Task: &taskspb.Task{
 			DispatchDeadline: durationpb.New(maxCloudTasksTimeout),
 			MessageType: &taskspb.Task_HttpRequest{
@@ -70,35 +107,33 @@ func TestNewTaskRequest(t *testing.T) {
 			},
 		},
 	}
-	gcp, err := newGCP(&cfg, nil, "queueID")
-	if err != nil {
-		t.Fatal(err)
-	}
-	opts := &Options{
-		Namespace:      "test",
-		TaskNameSuffix: "suf",
-	}
-	sreq := &testTask{
-		name:   "name",
-		path:   "mod@v1.2.3",
-		params: "importedby=0&mode=test&insecure=true",
-	}
-	got, err := gcp.newTaskRequest(sreq, opts)
-	if err != nil {
-		t.Fatal(err)
-	}
 	want.Task.Name = got.Task.Name
+
 	if diff := cmp.Diff(want, got, protocmp.Transform()); diff != "" {
 		t.Errorf("mismatch (-want, +got):\n%s", diff)
 	}
 
 	opts.DisableProxyFetch = true
 	want.Task.MessageType.(*taskspb.Task_HttpRequest).HttpRequest.Url += "&proxyfetch=off"
+
 	got, err = gcp.newTaskRequest(sreq, opts)
 	if err != nil {
 		t.Fatal(err)
 	}
 	want.Task.Name = got.Task.Name
+
+	validParent = false
+	for _, pqn := range possibleQueueNames {
+		if got.Parent == pqn {
+			validParent = true
+			break
+		}
+	}
+	if !validParent {
+		t.Errorf("got.Parent = %q, want one of %v", got.Parent, possibleQueueNames)
+	}
+	want.Parent = got.Parent
+
 	if diff := cmp.Diff(want, got, protocmp.Transform()); diff != "" {
 		t.Errorf("mismatch (-want, +got):\n%s", diff)
 	}
