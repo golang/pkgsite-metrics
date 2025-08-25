@@ -224,10 +224,6 @@ resource "google_cloud_tasks_queue" "worker_tasks" {
     max_retry_duration = "604800s"
     min_backoff        = "60s"
   }
-
-  stackdriver_logging_config {
-    sampling_ratio = 1
-  }
 }
 
 resource "google_secret_manager_secret" "github_access_token" {
