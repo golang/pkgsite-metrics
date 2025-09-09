@@ -208,7 +208,7 @@ data "google_cloud_run_service" "worker" {
 # Other components.
 
 resource "google_cloud_tasks_queue" "worker_queues" {
-  count = var.env == "prod" ? 1 : 4
+  count = 4
   project  = var.project
   name     = "${var.env}-worker-queue-${count.index}"
   location = var.region
