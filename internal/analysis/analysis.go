@@ -145,12 +145,12 @@ const TableName = "analysis"
 // Result is a row in the BigQuery analysis table. It corresponds to a
 // result from the output for an analysis.
 type Result struct {
-	CreatedAt   time.Time `bigquery:"created_at"`
-	ModulePath  string    `bigquery:"module_path"`
-	Version     string    `bigquery:"version"`
-	SortVersion string    `bigquery:"sort_version"`
-	CommitTime  time.Time `bigquery:"commit_time"`
-	JobID       string    `bigquery:"job_id"`
+	CreatedAt   time.Time     `bigquery:"created_at"`
+	ModulePath  string        `bigquery:"module_path"`
+	Version     string        `bigquery:"version"`
+	SortVersion string        `bigquery:"sort_version"`
+	CommitTime  time.Time     `bigquery:"commit_time"`
+	JobID       bq.NullString `bigquery:"job_id"`
 	// The name of the analysis binary that was executed.
 	// A single binary may run multiple analyzers.
 	BinaryName    string `bigquery:"binary_name"`

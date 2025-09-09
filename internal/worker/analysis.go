@@ -187,7 +187,7 @@ func (s *analysisServer) readWorkVersion(ctx context.Context, module_path, versi
 func (s *analysisServer) scan(ctx context.Context, req *analysis.ScanRequest, localBinaryPath string, wv analysis.WorkVersion) *analysis.Result {
 	row := &analysis.Result{
 		ModulePath:  req.Module,
-		JobID:       req.JobID,
+		JobID:       bq.NullString{StringVal: req.JobID, Valid: req.JobID != ""},
 		Version:     req.Version,
 		BinaryName:  req.Binary,
 		WorkVersion: wv,
