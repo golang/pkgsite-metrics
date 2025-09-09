@@ -275,7 +275,7 @@ resource "google_cloudbuild_trigger" "deploy_prod_worker" {
 resource "google_secret_manager_secret" "vulndb-hmac-key" {
   secret_id = "vulndb-hmac-key"
   replication {
-    automatic = true
+    auto {}
   }
 }
 
