@@ -308,7 +308,7 @@ func runAnalysisBinary(sbox *sandbox.Sandbox, binaryPath, reqArgs, moduleDir str
 	}
 	var tree analysis.JSONTree
 	if err := json.Unmarshal(out, &tree); err != nil {
-		return nil, err
+		return nil, fmt.Errorf("Unable to parse analyzer's -json diagnostics: %w", err)
 	}
 	return tree, nil
 }
