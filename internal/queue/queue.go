@@ -55,20 +55,31 @@ func New(ctx context.Context, cfg *config.Config, processFunc inMemoryProcessFun
 	if err != nil {
 		return nil, err
 	}
-	log.Infof(ctx, "enqueuing to %d queues with URL=%q", len(g.queueNames), g.queueURL)
 	return g, nil
+}
+
+type taskQueue struct {
+	name string // full GCP name of the queue
+	url  string // non-AppEngine URL to post tasks to
 }
 
 // GCP provides a Queue implementation backed by the Google Cloud Tasks API.
 type GCP struct {
 	client     *cloudtasks.Client
-	queueNames []string // full GCP name of the queue
-	queueURL   string   // non-AppEngine URL to post tasks to
+	taskQueues []taskQueue
 	// token holds information that lets the task queue construct an authorized request to the worker.
 	// Since the worker sits behind the IAP, the queue needs an identity token that includes the
 	// identity of a service account that has access, and the client ID for the IAP.
 	// We use the service account of the current process.
 	token *taskspb.HttpRequest_OidcToken
+}
+
+func queueIdToLocation(id string) (string, error) {
+	parts := strings.Split(id, "-")
+	if len(parts) != 4 {
+		return "", fmt.Errorf("unable to extract location from queue ID: %s", id)
+	}
+	return strings.Join([]string{parts[1], parts[2]}, "-"), nil
 }
 
 // newGCP returns a new Queue that can be used to enqueue tasks using the
@@ -79,26 +90,30 @@ func newGCP(cfg *config.Config, client *cloudtasks.Client, queueIDs []string) (_
 	if len(queueIDs) == 0 {
 		return nil, errors.New("must provide at least one queueID")
 	}
+	if len(queueIDs) != len(cfg.QueueURLs) {
+		return nil, errors.New("must provide the same number of queue ids and queue urls")
+	}
 	if cfg.ProjectID == "" {
 		return nil, errors.New("empty ProjectID")
 	}
 	if cfg.LocationID == "" {
 		return nil, errors.New("empty LocationID")
 	}
-	if cfg.QueueURL == "" {
-		return nil, errors.New("empty QueueURL")
-	}
 	if cfg.ServiceAccount == "" {
 		return nil, errors.New("empty ServiceAccount")
 	}
-	var queueNames []string
-	for _, id := range queueIDs {
-		queueNames = append(queueNames, fmt.Sprintf("projects/%s/locations/%s/queues/%s", cfg.ProjectID, cfg.LocationID, id))
+	var taskQueues []taskQueue
+	for idx, id := range queueIDs {
+		location, err := queueIdToLocation(id)
+		if err != nil {
+			return nil, err
+		}
+		name := fmt.Sprintf("projects/%s/locations/%s/queues/%s", cfg.ProjectID, location, id)
+		taskQueues = append(taskQueues, taskQueue{name: name, url: cfg.QueueURLs[idx]})
 	}
 	return &GCP{
 		client:     client,
-		queueNames: queueNames,
-		queueURL:   cfg.QueueURL,
+		taskQueues: taskQueues,
 		token: &taskspb.HttpRequest_OidcToken{
 			OidcToken: &taskspb.OidcToken{
 				ServiceAccountEmail: cfg.ServiceAccount,
@@ -134,7 +149,7 @@ func (q *GCP) EnqueueScan(ctx context.Context, task Task, opts *Options) (enqueu
 			log.Debugf(ctx, "ignoring duplicate task ID %s", req.Task.Name)
 			enqueued = false
 		} else {
-			return false, fmt.Errorf("q.client.CreateTask(ctx, req): %v", err)
+			return false, fmt.Errorf("q.client.CreateTask(ctx, req): queue_name: %s, err: %v", req.Parent, err)
 		}
 	}
 	return enqueued, nil
@@ -176,23 +191,22 @@ func (q *GCP) newTaskRequest(task Task, opts *Options) (*taskspb.CreateTaskReque
 		relativeURI += "?" + params
 	}
 
-	queueIndex := rand.IntN(len(q.queueNames))
-	queueName := q.queueNames[queueIndex]
+	queue := q.taskQueues[rand.IntN(len(q.taskQueues))]
 
 	taskID := newTaskID(opts.Namespace, task)
 	taskpb := &taskspb.Task{
-		Name:             fmt.Sprintf("%s/tasks/%s", queueName, taskID),
+		Name:             fmt.Sprintf("%s/tasks/%s", queue.name, taskID),
 		DispatchDeadline: durationpb.New(maxCloudTasksTimeout),
 		MessageType: &taskspb.Task_HttpRequest{
 			HttpRequest: &taskspb.HttpRequest{
 				HttpMethod:          taskspb.HttpMethod_POST,
-				Url:                 q.queueURL + relativeURI,
+				Url:                 queue.url + relativeURI,
 				AuthorizationHeader: q.token,
 			},
 		},
 	}
 	req := &taskspb.CreateTaskRequest{
-		Parent: queueName,
+		Parent: queue.name,
 		Task:   taskpb,
 	}
 	// If suffix is non-empty, append it to the task name.

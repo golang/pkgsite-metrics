@@ -285,7 +285,7 @@ module "prod" {
   source                = "./environment"
   env                   = "prod"
   project               = var.prod_project
-  region                = local.region
+  regions                = [local.region]
   pkgsite_db_project    = var.pkgsite_db_project
   pkgsite_db_name       = var.pkgsite_db_name
   vulndb_bucket_project = var.vulndb_bucket_project
@@ -297,10 +297,9 @@ module "dev" {
   source                = "./environment"
   env                   = "dev"
   project               = var.dev_project
-  region                = local.region
+  regions                = ["us-central1", "us-east1"]
   pkgsite_db_project    = var.pkgsite_db_project
   pkgsite_db_name       = var.pkgsite_db_name
   vulndb_bucket_project = var.vulndb_bucket_project
   use_profiler          = false
 }
-

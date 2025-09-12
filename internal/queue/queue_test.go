@@ -5,6 +5,7 @@
 package queue
 
 import (
+	"strings"
 	"testing"
 
 	taskspb "cloud.google.com/go/cloudtasks/apiv2/cloudtaskspb"
@@ -50,14 +51,13 @@ func TestNewTaskRequest(t *testing.T) {
 	cfg := config.Config{
 		ProjectID:      "Project",
 		LocationID:     "us-central1",
-		QueueURL:       "http://1.2.3.4:8000",
+		QueueURLs:      []string{"url-for-region-0", "url-for-region-0", "url-for-region-1"},
 		ServiceAccount: "sa",
 	}
-	queueIDs := []string{"queueID-0", "queueID-1", "queueID-2", "queueID-3"}
-	var possibleQueueNames []string
-	for _, qID := range queueIDs {
-		possibleQueueNames = append(possibleQueueNames, "projects/Project/locations/us-central1/queues/"+qID)
-	}
+	queueIDs := []string{"env-some-region-0", "env-some-region-1", "env-other-region-0"}
+	possibleQueueNames := []string{"projects/Project/locations/some-region/queues/env-some-region-0",
+		"projects/Project/locations/some-region/queues/env-some-region-1",
+		"projects/Project/locations/other-region/queues/env-other-region-0"}
 
 	gcp, err := newGCP(&cfg, nil, queueIDs)
 	if err != nil {
@@ -90,6 +90,21 @@ func TestNewTaskRequest(t *testing.T) {
 		t.Errorf("got.Parent = %q, want one of %v", got.Parent, possibleQueueNames)
 	}
 
+	gotUrl := got.Task.GetHttpRequest().Url
+	if !strings.HasSuffix(gotUrl, "test/scan/mod@v1.2.3?importedby=0&mode=test&insecure=true") {
+		t.Errorf("Url = %q, want HasSuffix(got, test/scan/mod@v1.2.3?importedby=0&mode=test&insecure=true)", gotUrl)
+	}
+	validUrl := false
+	for _, url := range cfg.QueueURLs {
+		if strings.HasPrefix(gotUrl, url) {
+			validUrl = true
+			break
+		}
+	}
+	if !validUrl {
+		t.Errorf(".Url = %q, must start with one of %v", gotUrl, cfg.QueueURLs)
+	}
+
 	want := &taskspb.CreateTaskRequest{
 		Parent: got.Parent,
 		Task: &taskspb.Task{
@@ -97,7 +112,7 @@ func TestNewTaskRequest(t *testing.T) {
 			MessageType: &taskspb.Task_HttpRequest{
 				HttpRequest: &taskspb.HttpRequest{
 					HttpMethod: taskspb.HttpMethod_POST,
-					Url:        "http://1.2.3.4:8000/test/scan/mod@v1.2.3?importedby=0&mode=test&insecure=true",
+					Url:        gotUrl,
 					AuthorizationHeader: &taskspb.HttpRequest_OidcToken{
 						OidcToken: &taskspb.OidcToken{
 							ServiceAccountEmail: "sa",
@@ -114,7 +129,6 @@ func TestNewTaskRequest(t *testing.T) {
 	}
 
 	opts.DisableProxyFetch = true
-	want.Task.MessageType.(*taskspb.Task_HttpRequest).HttpRequest.Url += "&proxyfetch=off"
 
 	got, err = gcp.newTaskRequest(sreq, opts)
 	if err != nil {
@@ -133,6 +147,22 @@ func TestNewTaskRequest(t *testing.T) {
 		t.Errorf("got.Parent = %q, want one of %v", got.Parent, possibleQueueNames)
 	}
 	want.Parent = got.Parent
+
+	gotUrl = got.Task.GetHttpRequest().Url
+	if !strings.HasSuffix(gotUrl, "test/scan/mod@v1.2.3?importedby=0&mode=test&insecure=true&proxyfetch=off") {
+		t.Errorf("Url = %q, want HasSuffix(got, test/scan/mod@v1.2.3?importedby=0&mode=test&insecure=true)", gotUrl)
+	}
+	validUrl = false
+	for _, url := range cfg.QueueURLs {
+		if strings.HasPrefix(gotUrl, url) {
+			validUrl = true
+			break
+		}
+	}
+	if !validUrl {
+		t.Errorf(".Url = %q, must start with one of %v", gotUrl, cfg.QueueURLs)
+	}
+	want.Task.GetHttpRequest().Url = gotUrl
 
 	if diff := cmp.Diff(want, got, protocmp.Transform()); diff != "" {
 		t.Errorf("mismatch (-want, +got):\n%s", diff)

@@ -97,13 +97,15 @@ steps:
       - |
         image=$(cat /workspace/image.txt)
         service=${_ENV}-ecosystem-worker
-        args="--project $PROJECT_ID --region us-central1"
-        gcloud beta run deploy $args  $service --image $image --execution-environment=gen2
-        # If there was a rollback, `gcloud run deploy` will create a revision but
-        # not point traffic to it. The following command ensures that the new revision
-        # will get traffic.
-        latestTraffic=$(gcloud run services $args describe $service \
-                        --format='value(status.traffic.latestRevision)')
-        if [[ $latestTraffic != True ]]; then
-          gcloud run services $args update-traffic $service --to-latest
-        fi
+        for region in "us-central1" "us-east1"; do
+          args="--project $PROJECT_ID --region $region"
+          gcloud beta run deploy $args $service --image $image --execution-environment=gen2
+          # If there was a rollback, `gcloud run deploy` will create a revision but
+          # not point traffic to it. The following command ensures that the new revision
+          # will get traffic.
+          latestTraffic=$(gcloud run services $args describe $service \
+                          --format='value(status.traffic.latestRevision)')
+          if [[ $latestTraffic != True ]]; then
+            gcloud run services $args update-traffic $service --to-latest
+          fi
+        done

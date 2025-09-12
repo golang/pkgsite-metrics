@@ -55,10 +55,6 @@ type Config struct {
 	// BigQueryDataset is the BigQuery dataset to write results to.
 	BigQueryDataset string
 
-	// QueueURL is the URL that the Cloud Tasks queues should send requests to.
-	// It should be used when the worker is not on AppEngine.
-	QueueURL string
-
 	// LocalQueueWorkers is the number of concurrent requests to the fetch service,
 	// when running locally.
 	LocalQueueWorkers int
@@ -106,6 +102,10 @@ type Config struct {
 
 	// Cloud Task Queues
 	QueueNames []string
+
+	// QueueURLs are the URLs that the Cloud Tasks queues should send requests to.
+	// It should be used when the worker is not on AppEngine.
+	QueueURLs []string
 }
 
 // Init resolves all configuration values provided by the config package. It
@@ -127,7 +127,7 @@ func Init(ctx context.Context) (_ *Config, err error) {
 		StaticPath:            ts,
 		BigQueryDataset:       GetEnv("GO_ECOSYSTEM_BIGQUERY_DATASET", "disable"),
 		QueueNames:            strings.Split(os.Getenv("GO_ECOSYSTEM_QUEUE_NAMES"), ","),
-		QueueURL:              os.Getenv("GO_ECOSYSTEM_QUEUE_URL"),
+		QueueURLs:             strings.Split(os.Getenv("GO_ECOSYSTEM_QUEUE_URLS"), ","),
 		VulnDBBucketProjectID: os.Getenv("GO_ECOSYSTEM_VULNDB_BUCKET_PROJECT"),
 		BinaryBucket:          os.Getenv("GO_ECOSYSTEM_BINARY_BUCKET"),
 		BinaryDir:             GetEnv("GO_ECOSYSTEM_BINARY_DIR", "/tmp/binaries"),

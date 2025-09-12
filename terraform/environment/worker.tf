@@ -17,9 +17,9 @@ variable "project" {
   type        = string
 }
 
-variable "region" {
-  description = "GCP region"
-  type        = string
+variable "regions" {
+  description = "GCP region(s)"
+  type        = set(string)
 }
 
 variable "pkgsite_db_project" {
@@ -43,10 +43,24 @@ variable "vulndb_bucket_project" {
 }
 
 locals {
-  worker_url             = data.google_cloud_run_service.worker.status[0].url
+  worker_url             = data.google_cloud_run_service.worker[tolist(var.regions)[0]].status[0].url
   tz                     = "America/New_York"
   worker_service_account = "worker@${var.project}.iam.gserviceaccount.com"
-  pkgsite_db             = "${var.pkgsite_db_project}:${var.region}:${var.pkgsite_db_name}"
+  pkgsite_db             = "${var.pkgsite_db_project}:${tolist(var.regions)[0]}:${var.pkgsite_db_name}"
+  task_queues = flatten([
+    for region in var.regions : [
+      for i in range(5) : {
+        name = format("%s-%s-%05s", var.env, region, i)
+        region = region
+        url = data.google_cloud_run_service.worker[region].status[0].url
+      }
+    ]
+  ])
+  # Move task queues into a map to make them easier to use with for_each
+  task_queues_map = {
+    for q in local.task_queues :
+      q.name => q
+    }
 }
 
 
@@ -60,6 +74,7 @@ locals {
 }
 
 resource "google_cloud_run_service" "worker" {
+  for_each = var.regions
   provider = google-beta
 
   lifecycle {
@@ -79,7 +94,7 @@ resource "google_cloud_run_service" "worker" {
 
   name     = "${var.env}-ecosystem-worker"
   project  = var.project
-  location = var.region
+  location = each.value
 
   metadata {
     annotations = {
@@ -93,7 +108,7 @@ resource "google_cloud_run_service" "worker" {
         # Get the image from GCP (see the "data" block below).
         # Exception: when first creating the service, replace this with a hardcoded
         # image tag.
-        image = data.google_cloud_run_service.worker.template[0].spec[0].containers[0].image
+        image = data.google_cloud_run_service.worker[each.value].template[0].spec[0].containers[0].image
         env {
           name  = "GOOGLE_CLOUD_PROJECT"
           value = var.project
@@ -113,17 +128,9 @@ resource "google_cloud_run_service" "worker" {
           }
         }
         env {
-          name  = "GO_ECOSYSTEM_QUEUE_URL"
-          value = local.worker_url
-        }
-        env {
-          name = "GITHUB_ACCESS_TOKEN"
-          value_from {
-            secret_key_ref {
-              name = google_secret_manager_secret.github_access_token.secret_id
-              key  = "latest"
-            }
-          }
+          name  = "GO_ECOSYSTEM_QUEUE_URLS"
+          #value = data.google_cloud_run_service.worker[each.value].status[0].url
+          value = join(",", [for queue in local.task_queues_map : queue.url])
         }
         env {
           name  = "CLOUD_RUN_CONCURRENCY"
@@ -177,7 +184,7 @@ resource "google_cloud_run_service" "worker" {
     metadata {
       annotations = {
         "autoscaling.knative.dev/minScale"         = "10"
-        "autoscaling.knative.dev/maxScale"         = "500"
+        "autoscaling.knative.dev/maxScale"         = each.value == "us-central1" ? "2500" : "625"
         "run.googleapis.com/cloudsql-instances"    = local.pkgsite_db
         "run.googleapis.com/execution-environment" = "gen2"
       }
@@ -199,19 +206,20 @@ resource "google_cloud_run_service" "worker" {
 #
 # We use this data source is used to determine the deployed image.
 data "google_cloud_run_service" "worker" {
+  for_each = var.regions
   name     = "${var.env}-ecosystem-worker"
   project  = var.project
-  location = var.region
+  location = each.value
 }
 
 ################################################################
 # Other components.
 
 resource "google_cloud_tasks_queue" "worker_queues" {
-  count = 5
+  for_each = local.task_queues_map
   project  = var.project
-  name     = "${var.env}-worker-queue-${count.index}"
-  location = var.region
+  name     = each.value.name
+  location = each.value.region
 
   rate_limits {
     max_dispatches_per_second = 500
@@ -224,14 +232,6 @@ resource "google_cloud_tasks_queue" "worker_queues" {
     max_doublings      = 16
     max_retry_duration = "604800s"
     min_backoff        = "60s"
-  }
-}
-
-resource "google_secret_manager_secret" "github_access_token" {
-  secret_id = "${var.env}-github-access-token"
-  project   = var.project
-  replication {
-    automatic = true
   }
 }
 
