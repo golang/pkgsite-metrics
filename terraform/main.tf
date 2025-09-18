@@ -285,7 +285,7 @@ module "prod" {
   source                = "./environment"
   env                   = "prod"
   project               = var.prod_project
-  regions                = [local.region]
+  regions                = ["us-central1", "us-east1"]
   pkgsite_db_project    = var.pkgsite_db_project
   pkgsite_db_name       = var.pkgsite_db_name
   vulndb_bucket_project = var.vulndb_bucket_project
