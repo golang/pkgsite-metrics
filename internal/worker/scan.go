@@ -250,21 +250,31 @@ type prepareModuleArgs struct {
 // prepareModule prepares a module for scanning, and takes other actions that increase
 // the chance that package loading will succeed.
 func prepareModule(ctx context.Context, args prepareModuleArgs) error {
-	if args.noDeps || args.init {
-		log.Infof(ctx, "downloading %s@%s to %s", args.modulePath, args.version, args.dir)
-		if err := modules.Download(ctx, args.modulePath, args.version, args.dir, args.proxyClient); err != nil {
-			return err
-		}
-		hasGoMod := fileExists(filepath.Join(args.dir, "go.mod"))
-		if !hasGoMod && args.init {
-			return goModInit(ctx, args.modulePath, args.version, args.dir, args.modulePath, args.insecure)
-		}
-		return nil
-	}
-
 	opts := &goCommandOptions{
 		dir:      args.dir,
 		insecure: args.insecure,
+	}
+	if args.noDeps || args.init {
+		log.Infof(ctx, "downloading %s@%s to %s", args.modulePath, args.version, args.dir)
+		if err := modules.Download(ctx, args.modulePath, args.version, args.dir, args.proxyClient); err != nil {
+			log.Warnf(ctx, "`modules.Download` error: %v", err)
+			return err
+		}
+
+		if args.noDeps {
+			log.Infof(ctx, "Skipping downloading modules for %s@%s since args.dir is %t", args.modulePath, args.version, args.noDeps)
+			return nil
+		}
+
+		hasGoMod := fileExists(filepath.Join(args.dir, "go.mod"))
+		if hasGoMod {
+			return runGoCommand(ctx, args.modulePath, args.version, opts, "mod", "download")
+		} else {
+			if err := goModInit(ctx, args.modulePath, args.version, args.dir, args.modulePath, args.insecure); err != nil {
+				return err
+			}
+			return goModTidy(ctx, args.modulePath, args.version, args.dir, args.insecure)
+		}
 	}
 
 	log.Infof(ctx, "prepareModule %s@%s to %s", args.modulePath, args.version, args.dir)
