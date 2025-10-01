@@ -184,7 +184,7 @@ resource "google_cloud_run_service" "worker" {
     metadata {
       annotations = {
         "autoscaling.knative.dev/minScale"         = "10"
-        "autoscaling.knative.dev/maxScale"         = each.value == "us-central1" ? "3738" : "625"
+        "autoscaling.knative.dev/maxScale"         = each.value == "us-central1" ? "5000" : "2240"
         "run.googleapis.com/cloudsql-instances"    = local.pkgsite_db
         "run.googleapis.com/execution-environment" = "gen2"
       }
