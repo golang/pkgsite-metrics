@@ -55,6 +55,7 @@ DOCKER_AUTH_ARGS := -v "$(HOME)/.config/gcloud:/creds" \
 
 DOCKER_RUN_ARGS := --rm --privileged -p 8080:8080 \
 	--env GO_ECOSYSTEM_BINARY_BUCKET=go-ecosystem \
+	--env GOOGLE_CLOUD_PROJECT=go-ecosystem \
 	$(DOCKER_AUTH_ARGS)
 
 DOCKER_ID_FILE := /tmp/ecosystem-docker-container-id
