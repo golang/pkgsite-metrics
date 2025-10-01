@@ -203,7 +203,10 @@ func (s *analysisServer) scan(ctx context.Context, req *analysis.ScanRequest, lo
 		defer derrors.Cleanup(&err, func() error { return os.RemoveAll(modDir) })
 
 		jsonTree, err := s.scanInternal(ctx, req, localBinaryPath, modDir)
+		row.Diagnostics = analysis.JSONTreeToDiagnostics(jsonTree)
+		err = errors.Join(err, addSource(ctx, row.Diagnostics, 1))
 		if err != nil {
+			log.Warnf(ctx, "doScan or addSource failed: %v", err)
 			return err
 		}
 		hasGoMod = fileExists(filepath.Join(modDir, "go.mod")) // for precise error breakdown
@@ -213,8 +216,7 @@ func (s *analysisServer) scan(ctx context.Context, req *analysis.ScanRequest, lo
 		}
 		row.Version = info.Version
 		row.CommitTime = info.Time
-		row.Diagnostics = analysis.JSONTreeToDiagnostics(jsonTree)
-		return addSource(ctx, row.Diagnostics, 1)
+		return nil
 	})
 	if err != nil {
 		// The errors are classified as to explicitly make a distinction
@@ -337,6 +339,14 @@ func addSource(ctx context.Context, ds []*analysis.Diagnostic, nContext int) err
 			// position.
 			continue
 		}
+		if d.Position == "-" {
+			// Entries without a file position
+			continue
+		}
+		if strings.HasPrefix(d.Position, "/root/.cache/go-build/") {
+			// TODO: how do we read contents of go-build cache?
+			continue
+		}
 
 		file, line, _, err := parsePosition(d.Position)
 		if err != nil {
@@ -385,8 +395,7 @@ func parsePosition(pos string) (file string, line, col int, err error) {
 // sourceURL creates a URL showing the code corresponding to
 // position pos and highlighting line.
 func sourceURL(pos string, line int) (string, error) {
-	// Trim /tmp/modules/ from the position string.
-	relPos := strings.TrimPrefix(pos, modulesDir+"/")
+	relPos := strings.TrimPrefix(strings.TrimPrefix(pos, "/root/go/pkg/mod/"), modulesDir+"/")
 	if relPos == pos {
 		return "", errors.New("unexpected prefix")
 	}
