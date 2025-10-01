@@ -49,7 +49,7 @@ locals {
   pkgsite_db             = "${var.pkgsite_db_project}:${tolist(var.regions)[0]}:${var.pkgsite_db_name}"
   task_queues = flatten([
     for region in var.regions : [
-      for i in range(7) : {
+      for i in range(14) : {
         name = format("%s-%s-%05s", var.env, region, i)
         region = region
         url = data.google_cloud_run_service.worker[region].status[0].url
