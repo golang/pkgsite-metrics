@@ -476,20 +476,29 @@ func uploadFile(ctx context.Context, localFile, remoteFolder string) (gcsPath st
 		// Ask the users if they want to overwrite the existing file
 		// while providing more info to help them with their decision.
 		updated := attrs.Updated.In(time.Local).Format(time.RFC1123) // use local time zone
-		fmt.Printf("The file %q already exists on GCS.\n", baseName)
+		fmt.Printf("The file %q already exists on GCS but has a different checksum.\n", baseName)
 		fmt.Printf("It was last uploaded on %s", updated)
-		// Communicate uploader info if available.
 		if uploader := attrs.Metadata[uploaderMetadataKey]; uploader != "" {
 			fmt.Printf(" by %s", uploader)
 		}
 		fmt.Println(".")
-		fmt.Print("Do you wish to overwrite it? [y/n] ")
-		var response string
-		fmt.Scanln(&response)
-		if r := strings.TrimSpace(response); r != "y" && r != "Y" {
-			// Accept "Y" and "y" as confirmation.
-			fmt.Println("Cancelling.")
-			return "", true, nil
+		for {
+			fmt.Print("Do you want to [o]verwrite, [u]se existing, or [c]ancel? ")
+			var response string
+			fmt.Scanln(&response)
+			r := strings.TrimSpace(strings.ToLower(response))
+			if r == "o" || r == "overwrite" {
+				break
+			}
+			if r == "u" || r == "use" {
+				fmt.Println("Using existing file on GCS.")
+				return gcsPath, false, nil
+			}
+			if r == "c" || r == "cancel" {
+				fmt.Println("Cancelling.")
+				return "", true, nil
+			}
+			fmt.Println("Invalid choice.")
 		}
 	}
 	fmt.Printf("Uploading.\n")
