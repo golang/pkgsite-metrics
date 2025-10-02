@@ -26,17 +26,21 @@ import (
 	"time"
 	"unicode"
 
+	bq "cloud.google.com/go/bigquery"
 	"cloud.google.com/go/storage"
 	"golang.org/x/oauth2"
 	"golang.org/x/pkgsite-metrics/internal/analysis"
+	"golang.org/x/pkgsite-metrics/internal/bigquery"
 	"golang.org/x/pkgsite-metrics/internal/jobs"
 	"google.golang.org/api/impersonate"
+	"google.golang.org/api/iterator"
 	"google.golang.org/api/option"
 )
 
 const (
 	projectID           = "go-ecosystem"
 	uploaderMetadataKey = "uploader"
+	pollingInterval     = 10 * time.Second
 )
 
 // Common flags
@@ -54,6 +58,7 @@ var (
 	force        bool          // for results
 	errs         bool          // for results
 	outfile      string        // for results
+	stream       bool          // for results
 	userFilter   string        // for list
 )
 
@@ -98,6 +103,7 @@ var commands = []command{
 			fs.BoolVar(&force, "f", false, "download even if unfinished")
 			fs.BoolVar(&errs, "e", false, "also download error results (by default, only non-error results are downloaded)")
 			fs.StringVar(&outfile, "o", "", "output filename")
+			fs.BoolVar(&stream, "stream", false, "stream output")
 		},
 	},
 }
@@ -544,6 +550,12 @@ func copyToGCS(ctx context.Context, object *storage.ObjectHandle, filename strin
 	return dest.Close()
 }
 
+type bqClient interface {
+	QueryWithParams(ctx context.Context, query string, params []bq.QueryParameter) (bigquery.RowIterator, error)
+	FullTableName(tableID string) string
+	Close() error
+}
+
 func doResults(ctx context.Context, args []string) (err error) {
 	if len(args) == 0 {
 		return errors.New("wrong number of args: want [-f] [-e] [-o FILE.json] JOB_ID")
@@ -561,10 +573,6 @@ func doResults(ctx context.Context, args []string) (err error) {
 	if !force && done < job.NumEnqueued {
 		return fmt.Errorf("job not finished (%d/%d completed); use -f for partial results", done, job.NumEnqueued)
 	}
-	results, err := requestJSON[[]*analysis.Result](ctx, fmt.Sprintf("jobs/results?jobid=%s&errors=%t", jobID, errs), ts)
-	if err != nil {
-		return err
-	}
 	out := os.Stdout
 	if outfile != "" {
 		out, err = os.Create(outfile)
@@ -573,9 +581,109 @@ func doResults(ctx context.Context, args []string) (err error) {
 		}
 		defer func() { err = errors.Join(err, out.Close()) }()
 	}
-	enc := json.NewEncoder(out)
-	enc.SetIndent("", "\t")
-	return enc.Encode(results)
+	if !stream {
+		results, err := requestJSON[[]*analysis.Result](ctx, fmt.Sprintf("jobs/results?jobid=%s&errors=%t", jobID, errs), ts)
+		if err != nil {
+			return err
+		}
+		enc := json.NewEncoder(out)
+		enc.SetIndent("", "\t")
+		return enc.Encode(results)
+	}
+
+	bqClient, err := bigquery.NewClientCreate(ctx, projectID, *env)
+	if err != nil {
+		return fmt.Errorf("creating BigQuery client: %w", err)
+	}
+	defer bqClient.Close()
+
+	var lastCreatedAt time.Time
+	var totalResultsCount int
+	processedIDs := make(map[string]struct{})
+
+	fmt.Fprintf(os.Stderr, "Streaming results for job %s...\n", jobID)
+
+	for {
+		job, err := requestJSON[jobs.Job](ctx, "jobs/describe?jobid="+jobID, ts)
+		if err != nil {
+			return fmt.Errorf("could not get job status: %w", err)
+		}
+
+		newResultsCount, err := fetchAndPrintResults(ctx, out, bqClient, jobID, errs, lastCreatedAt, processedIDs)
+		if err != nil {
+			return err
+		}
+		totalResultsCount += newResultsCount
+
+		if job.NumFinished() >= job.NumEnqueued {
+			fmt.Fprintf(os.Stderr, "\nJob finished (%d/%d completed). Found %d results. Stream complete.\n", job.NumFinished(), job.NumEnqueued, totalResultsCount)
+			break
+		}
+
+		fmt.Fprintf(os.Stderr, "\rJob still running (%d/%d)... Found %d results... waiting %v", job.NumFinished(), job.NumEnqueued, totalResultsCount, pollingInterval)
+		select {
+		case <-ctx.Done():
+			fmt.Fprintln(os.Stderr, "\nStream canceled by user.")
+			return ctx.Err()
+		case <-time.After(pollingInterval):
+		}
+	}
+	return nil
+}
+
+func fetchAndPrintResults(ctx context.Context, out io.Writer, bqClient bqClient, jobID string, errs bool, lastCreatedAt time.Time, processedIDs map[string]struct{}) (int, error) {
+	queryStr := fmt.Sprintf(`SELECT * FROM %s WHERE job_id = @jobID`, bqClient.FullTableName(analysis.TableName))
+
+	params := []bq.QueryParameter{
+		{Name: "jobID", Value: jobID},
+	}
+
+	if !errs {
+		queryStr += " AND error = ''"
+	}
+	if !(lastCreatedAt).IsZero() {
+		queryStr += " AND created_at >= @minCreatedAt"
+		params = append(params, bq.QueryParameter{Name: "minCreatedAt", Value: lastCreatedAt})
+	}
+	queryStr += " ORDER BY created_at ASC"
+
+	iter, err := bqClient.QueryWithParams(ctx, queryStr, params)
+	if err != nil {
+		return 0, fmt.Errorf("building BigQuery query failed: %w", err)
+	}
+
+	count := 0
+	for {
+		var r analysis.Result
+		err := iter.Next(&r)
+		if err == iterator.Done {
+			break
+		}
+		if err != nil {
+			return 0, fmt.Errorf("iterating BigQuery results failed: %w", err)
+		}
+		resultID := fmt.Sprintf("%s@%s", r.ModulePath, r.Version)
+		if _, ok := processedIDs[resultID]; ok {
+			continue
+		}
+
+		count++
+		b, err := json.MarshalIndent(&r, "", "  ")
+		if err != nil {
+			return 0, fmt.Errorf("marshalling result: %w", err)
+		}
+		_, err = out.Write(b)
+		if err != nil {
+			return 0, err
+		}
+		fmt.Fprintln(out)
+
+		processedIDs[resultID] = struct{}{}
+		if r.CreatedAt.After(lastCreatedAt) {
+			lastCreatedAt = r.CreatedAt
+		}
+	}
+	return count, nil
 }
 
 // requestJSON requests the path from the worker, then reads the returned body

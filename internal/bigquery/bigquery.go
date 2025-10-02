@@ -32,6 +32,16 @@ type Client struct {
 	deleteDatasetOnClose bool
 }
 
+type RowIterator interface {
+	Next(v interface{}) error
+}
+
+func (c *Client) QueryWithParams(ctx context.Context, query string, params []bq.QueryParameter) (RowIterator, error) {
+	q := c.client.Query(query)
+	q.Parameters = params
+	return q.Read(ctx)
+}
+
 // NewClientCreate creates a new client for connecting to BigQuery, referring
 // to a single dataset. It creates the dataset if it doesn't exist.
 func NewClientCreate(ctx context.Context, projectID, datasetID string) (_ *Client, err error) {
