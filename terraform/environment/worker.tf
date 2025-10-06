@@ -43,13 +43,19 @@ variable "vulndb_bucket_project" {
 }
 
 locals {
+  max_dispatches_per_queue = 500 # Defined by https://cloud.google.com/tasks/docs/quotas?hl=en#limits
+  max_instances = {
+    # These values indicate the max number of container instances per region.
+    "us-central1" = 5000
+    "us-east1" = 2240
+  }
   worker_url             = data.google_cloud_run_service.worker[tolist(var.regions)[0]].status[0].url
   tz                     = "America/New_York"
   worker_service_account = "worker@${var.project}.iam.gserviceaccount.com"
   pkgsite_db             = "${var.pkgsite_db_project}:${tolist(var.regions)[0]}:${var.pkgsite_db_name}"
   task_queues = flatten([
     for region in var.regions : [
-      for i in range(14) : {
+      for i in range(ceil(local.max_instances[region] / local.max_dispatches_per_queue)) : {
         name = format("%s-%s-%05s", var.env, region, i)
         region = region
         url = data.google_cloud_run_service.worker[region].status[0].url
@@ -184,7 +190,7 @@ resource "google_cloud_run_service" "worker" {
     metadata {
       annotations = {
         "autoscaling.knative.dev/minScale"         = "10"
-        "autoscaling.knative.dev/maxScale"         = each.value == "us-central1" ? "5000" : "2240"
+        "autoscaling.knative.dev/maxScale"         = local.max_instances[each.value]
         "run.googleapis.com/cloudsql-instances"    = local.pkgsite_db
         "run.googleapis.com/execution-environment" = "gen2"
       }
