@@ -442,7 +442,7 @@ func readSource(file string, line int, nContext int) (_ string, err error) {
 func (s *analysisServer) handleEnqueue(w http.ResponseWriter, r *http.Request) (err error) {
 	defer derrors.Wrap(&err, "analysisServer.handleEnqueue")
 	ctx := r.Context()
-	params := &analysis.EnqueueParams{Min: defaultMinImportedByCount, Max: defaultMaxImportedByCount, SkipInit: true}
+	params := &analysis.EnqueueParams{Min: defaultMinImportedByCount, Max: defaultMaxImportedByCount, SkipInit: false}
 	if err := scan.ParseParams(r, params); err != nil {
 		return fmt.Errorf("%w: %v", derrors.InvalidArgument, err)
 	}
