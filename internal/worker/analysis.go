@@ -352,6 +352,9 @@ func addSource(ctx context.Context, ds []*analysis.Diagnostic, nContext int) err
 		if err != nil {
 			return err
 		}
+		if strings.HasPrefix(file, "/root/go/pkg/mod") {
+			file = "/bundle/rootfs" + file
+		}
 		source, err := readSource(file, line, nContext)
 		if err != nil {
 			return fmt.Errorf("reading %s:%d: %w", file, line, err)
