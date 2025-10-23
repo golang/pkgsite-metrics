@@ -56,7 +56,6 @@ var (
 	moduleFile   string        // for start
 	waitInterval time.Duration // for wait
 	force        bool          // for results
-	errs         bool          // for results
 	outfile      string        // for results
 	stream       bool          // for results
 	userFilter   string        // for list
@@ -101,7 +100,6 @@ var commands = []command{
 		doResults,
 		func(fs *flag.FlagSet) {
 			fs.BoolVar(&force, "f", false, "download even if unfinished")
-			fs.BoolVar(&errs, "e", false, "also download error results (by default, only non-error results are downloaded)")
 			fs.StringVar(&outfile, "o", "", "output filename")
 			fs.BoolVar(&stream, "stream", false, "stream output")
 		},
@@ -558,7 +556,7 @@ type bqClient interface {
 
 func doResults(ctx context.Context, args []string) (err error) {
 	if len(args) == 0 {
-		return errors.New("wrong number of args: want [-f] [-e] [-o FILE.json] JOB_ID")
+		return errors.New("wrong number of args: want [-f] [-o FILE.json] JOB_ID")
 	}
 	jobID := args[0]
 	ts, err := identityTokenSource(ctx)
@@ -582,7 +580,7 @@ func doResults(ctx context.Context, args []string) (err error) {
 		defer func() { err = errors.Join(err, out.Close()) }()
 	}
 	if !stream {
-		results, err := requestJSON[[]*analysis.Result](ctx, fmt.Sprintf("jobs/results?jobid=%s&errors=%t", jobID, errs), ts)
+		results, err := requestJSON[[]*analysis.Result](ctx, fmt.Sprintf("jobs/results?jobid=%s&errors=%t", jobID, true), ts)
 		if err != nil {
 			return err
 		}
@@ -609,7 +607,7 @@ func doResults(ctx context.Context, args []string) (err error) {
 			return fmt.Errorf("could not get job status: %w", err)
 		}
 
-		newResultsCount, err := fetchAndPrintResults(ctx, out, bqClient, jobID, errs, lastCreatedAt, processedIDs)
+		newResultsCount, err := fetchAndPrintResults(ctx, out, bqClient, jobID, lastCreatedAt, processedIDs)
 		if err != nil {
 			return err
 		}
@@ -631,16 +629,13 @@ func doResults(ctx context.Context, args []string) (err error) {
 	return nil
 }
 
-func fetchAndPrintResults(ctx context.Context, out io.Writer, bqClient bqClient, jobID string, errs bool, lastCreatedAt time.Time, processedIDs map[string]struct{}) (int, error) {
+func fetchAndPrintResults(ctx context.Context, out io.Writer, bqClient bqClient, jobID string, lastCreatedAt time.Time, processedIDs map[string]struct{}) (int, error) {
 	queryStr := fmt.Sprintf(`SELECT * FROM %s WHERE job_id = @jobID`, bqClient.FullTableName(analysis.TableName))
 
 	params := []bq.QueryParameter{
 		{Name: "jobID", Value: jobID},
 	}
 
-	if !errs {
-		queryStr += " AND error = ''"
-	}
 	if !(lastCreatedAt).IsZero() {
 		queryStr += " AND created_at >= @minCreatedAt"
 		params = append(params, bq.QueryParameter{Name: "minCreatedAt", Value: lastCreatedAt})

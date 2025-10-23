@@ -56,7 +56,7 @@ func TestFetchAndPrintResults(t *testing.T) {
 	var lastCreatedAt time.Time
 	processedIDs := make(map[string]struct{})
 
-	count, err := fetchAndPrintResults(context.Background(), &out, mockClient, "fake-job-id", false, lastCreatedAt, processedIDs)
+	count, err := fetchAndPrintResults(context.Background(), &out, mockClient, "fake-job-id", lastCreatedAt, processedIDs)
 	if err != nil {
 		t.Fatalf("fetchAndPrintResults failed: %v", err)
 	}
