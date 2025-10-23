@@ -151,8 +151,9 @@ var workerURL string
 
 func run(ctx context.Context) error {
 	wu := os.Getenv("GO_ECOSYSTEM_WORKER_URL_SUFFIX")
+	const defaultWorkerUrl string = "ecosystem-worker-sw7ifzrqua-uc.a.run.app"
 	if wu == "" {
-		return errors.New("need GO_ECOSYSTEM_WORKER_URL_SUFFIX environment variable")
+		wu = defaultWorkerUrl
 	}
 	workerURL = fmt.Sprintf("https://%s-%s", *env, wu)
 	name := flag.Arg(0)
