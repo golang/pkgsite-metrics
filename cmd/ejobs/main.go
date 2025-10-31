@@ -55,7 +55,6 @@ var (
 	noDeps       bool          // for start
 	moduleFile   string        // for start
 	waitInterval time.Duration // for wait
-	force        bool          // for results
 	outfile      string        // for results
 	stream       bool          // for results
 	userFilter   string        // for list
@@ -99,7 +98,6 @@ var commands = []command{
 		"download results as JSON",
 		doResults,
 		func(fs *flag.FlagSet) {
-			fs.BoolVar(&force, "f", false, "download even if unfinished")
 			fs.StringVar(&outfile, "o", "", "output filename")
 			fs.BoolVar(&stream, "stream", false, "stream output")
 		},
@@ -563,14 +561,6 @@ func doResults(ctx context.Context, args []string) (err error) {
 	ts, err := identityTokenSource(ctx)
 	if err != nil {
 		return err
-	}
-	job, err := requestJSON[jobs.Job](ctx, "jobs/describe?jobid="+jobID, ts)
-	if err != nil {
-		return err
-	}
-	done := job.NumFinished()
-	if !force && done < job.NumEnqueued {
-		return fmt.Errorf("job not finished (%d/%d completed); use -f for partial results", done, job.NumEnqueued)
 	}
 	out := os.Stdout
 	if outfile != "" {
