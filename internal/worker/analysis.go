@@ -266,7 +266,7 @@ func (s *analysisServer) scanInternal(ctx context.Context, req *analysis.ScanReq
 		dir:         moduleDir,
 		proxyClient: s.proxyClient,
 		insecure:    req.Insecure,
-		init:        !req.SkipInit,
+		init:        !req.SkipModuleInit,
 		noDeps:      req.NoDeps,
 	}
 	if err := prepareModule(ctx, prepareArgs); err != nil {
@@ -442,7 +442,7 @@ func readSource(file string, line int, nContext int) (_ string, err error) {
 func (s *analysisServer) handleEnqueue(w http.ResponseWriter, r *http.Request) (err error) {
 	defer derrors.Wrap(&err, "analysisServer.handleEnqueue")
 	ctx := r.Context()
-	params := &analysis.EnqueueParams{Min: defaultMinImportedByCount, Max: defaultMaxImportedByCount, SkipInit: false}
+	params := &analysis.EnqueueParams{Min: defaultMinImportedByCount, Max: defaultMaxImportedByCount, SkipModuleInit: false}
 	if err := scan.ParseParams(r, params); err != nil {
 		return fmt.Errorf("%w: %v", derrors.InvalidArgument, err)
 	}
@@ -509,14 +509,14 @@ func createAnalysisQueueTasks(params *analysis.EnqueueParams, jobID string, bina
 				Version: mod.Version,
 			},
 			ScanParams: analysis.ScanParams{
-				Binary:        params.Binary,
-				BinaryVersion: binaryVersion,
-				Args:          params.Args,
-				ImportedBy:    mod.ImportedBy,
-				Insecure:      params.Insecure,
-				JobID:         jobID,
-				SkipInit:      params.SkipInit,
-				NoDeps:        params.NoDeps,
+				Binary:         params.Binary,
+				BinaryVersion:  binaryVersion,
+				Args:           params.Args,
+				ImportedBy:     mod.ImportedBy,
+				Insecure:       params.Insecure,
+				JobID:          jobID,
+				SkipModuleInit: params.SkipModuleInit,
+				NoDeps:         params.NoDeps,
 			},
 		})
 	}

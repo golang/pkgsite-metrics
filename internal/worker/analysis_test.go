@@ -139,12 +139,12 @@ func TestAnalysisScan(t *testing.T) {
 	req := &analysis.ScanRequest{
 		ModuleURLPath: scan.ModuleURLPath{Module: modulePath, Version: version},
 		ScanParams: analysis.ScanParams{
-			Binary:   "analyzer",
-			Args:     "-name GenerateFromPassword",
-			Insecure: true,
-			JobID:    "jid",
-			NoDeps:   false,
-			SkipInit: true,
+			Binary:         "analyzer",
+			Args:           "-name GenerateFromPassword",
+			Insecure:       true,
+			JobID:          "jid",
+			NoDeps:         false,
+			SkipModuleInit: true,
 		},
 	}
 	wv := analysis.WorkVersion{BinaryArgs: "-name GenerateFromPassword", BinaryVersion: "bv", SchemaVersion: "sv"}

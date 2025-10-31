@@ -29,28 +29,28 @@ type ScanRequest struct {
 }
 
 type ScanParams struct {
-	Binary        string // name of analysis binary to run
-	BinaryVersion string // hex-encoded binary hash
-	Args          string // command-line arguments to binary; split on whitespace
-	ImportedBy    int    // imported-by count of module in path
-	Insecure      bool   // if true, run outside sandbox
-	Serve         bool   // serve results back to client instead of writing them to BigQuery
-	JobID         string // ID of job, if non-empty
-	SkipInit      bool   // if true, do not initialize non-module Go projects
-	NoDeps        bool   // if true, do not download module dependencies
+	Binary         string // name of analysis binary to run
+	BinaryVersion  string // hex-encoded binary hash
+	Args           string // command-line arguments to binary; split on whitespace
+	ImportedBy     int    // imported-by count of module in path
+	Insecure       bool   // if true, run outside sandbox
+	Serve          bool   // serve results back to client instead of writing them to BigQuery
+	JobID          string // ID of job, if non-empty
+	SkipModuleInit bool   // if true, do not initialize non-module Go projects
+	NoDeps         bool   // if true, do not download module dependencies
 }
 
 type EnqueueParams struct {
-	Binary   string // name of analysis binary to run
-	Args     string // command-line arguments to binary; split on whitespace
-	Insecure bool   // if true, run outside sandbox
-	Min      int32  // minimum import-by count for a module to be included
-	Max      int32  // maximum import-by count for a module to be included
-	File     string // path to file containing modules; if missing, use DB
-	Suffix   string // appended to task queue IDs to generate unique tasks
-	User     string // user initiating enqueue
-	SkipInit bool   // if true, do not initialize non-module Go projects
-	NoDeps   bool   // if true, do not download module dependencies
+	Binary         string // name of analysis binary to run
+	Args           string // command-line arguments to binary; split on whitespace
+	Insecure       bool   // if true, run outside sandbox
+	Min            int32  // minimum import-by count for a module to be included
+	Max            int32  // maximum import-by count for a module to be included
+	File           string // path to file containing modules; if missing, use DB
+	Suffix         string // appended to task queue IDs to generate unique tasks
+	User           string // user initiating enqueue
+	SkipModuleInit bool   // if true, do not initialize non-module Go projects
+	NoDeps         bool   // if true, do not download module dependencies
 }
 
 // Request implements queue.Task so it can be put on a TaskQueue.
