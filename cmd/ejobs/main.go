@@ -57,6 +57,7 @@ var (
 	waitInterval time.Duration // for wait
 	outfile      string        // for results
 	stream       bool          // for results
+	verbose      bool          // for results
 	userFilter   string        // for list
 )
 
@@ -94,12 +95,13 @@ var commands = []command{
 			fs.DurationVar(&waitInterval, "i", 0, "display updates at this interval")
 		},
 	},
-	{"results", "[-f] [-e] [-o FILE.json] JOBID",
+	{"results", "[-f] [-e] [-o FILE.json] [-stream] [-verbose] JOBID",
 		"download results as JSON",
 		doResults,
 		func(fs *flag.FlagSet) {
 			fs.StringVar(&outfile, "o", "", "output filename")
 			fs.BoolVar(&stream, "stream", false, "stream output")
+			fs.BoolVar(&verbose, "verbose", false, "when streaming, dump the full result, not just diagnostics")
 		},
 	},
 }
@@ -554,6 +556,9 @@ type bqClient interface {
 }
 
 func doResults(ctx context.Context, args []string) (err error) {
+	if verbose && !stream {
+		return errors.New("-verbose flag can only be used with -stream")
+	}
 	if len(args) == 0 {
 		return errors.New("wrong number of args: want [-f] [-o FILE.json] JOB_ID")
 	}
@@ -648,13 +653,21 @@ func fetchAndPrintResults(ctx context.Context, out io.Writer, bqClient bqClient,
 		if err != nil {
 			return 0, fmt.Errorf("iterating BigQuery results failed: %w", err)
 		}
+		if !verbose && r.Diagnostics == nil {
+			continue
+		}
 		resultID := fmt.Sprintf("%s@%s", r.ModulePath, r.Version)
 		if _, ok := processedIDs[resultID]; ok {
 			continue
 		}
 
 		count++
-		b, err := json.MarshalIndent(&r, "", "  ")
+		var b []byte
+		if verbose {
+			b, err = json.MarshalIndent(&r, "", " ")
+		} else {
+			b, err = json.MarshalIndent(r.Diagnostics, "", " ")
+		}
 		if err != nil {
 			return 0, fmt.Errorf("marshalling result: %w", err)
 		}

@@ -48,8 +48,21 @@ func (c *mockBQClient) Close() error                        { return nil }
 func TestFetchAndPrintResults(t *testing.T) {
 	mockClient := &mockBQClient{
 		expectedResults: []*analysis.Result{
-			{ModulePath: "example.com/one", Version: "v1.0.0", CreatedAt: time.Now()},
-			{ModulePath: "example.com/two", Version: "v1.2.3", CreatedAt: time.Now().Add(1 * time.Second)},
+			{
+				ModulePath: "example.com/one",
+				Version:    "v1.0.0",
+				CreatedAt:  time.Now(),
+				Diagnostics: []*analysis.Diagnostic{
+					{
+						PackageID:    "example.com/one [example.com/one.test]",
+						AnalyzerName: "fuzzdetect",
+						Category:     "",
+						Position:     "https://go-mod-viewer.appspot.com/example.com@v1.0.0/one/quorum_test.go#L59",
+						Message:      "found the use of fuzzing",
+						Source:       bq.NullString{StringVal: "\nfunc FuzzCalculateQuorum(f *testing.F) {\n\t// Add examples to our fuzz corpus", Valid: true},
+					},
+				},
+			},
 		},
 	}
 	var out bytes.Buffer
