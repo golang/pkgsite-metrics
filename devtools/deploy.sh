@@ -11,7 +11,7 @@ set -e
 source devtools/lib.sh || { echo "Are you at repo root?"; exit 1; }
 
 usage() {
-  die "usage: $0 [-n] (dev | prod) BIGQUERY_DATASET"
+  die "usage: $0 [-n] (dev | prod) BIGQUERY_DATASET [TAG]"
 }
 
 # Report whether the current repo's workspace has no uncommitted files.
@@ -38,6 +38,9 @@ main() {
     usage
   fi
 
+  local tag=$3
+  local deploy_tag=${tag:-$commit}
+
   if which grants > /dev/null; then
     local allowed=false
     while read _ _ ok _; do
@@ -63,7 +66,7 @@ main() {
   $prefix gcloud builds submit \
     --project $project \
     --config deploy/worker.yaml \
-    --substitutions SHORT_SHA=${commit}${unclean},_ENV=$env,_BQ_DATASET=$dataset
+    --substitutions SHORT_SHA=${commit}${unclean},_ENV=$env,_BQ_DATASET=$dataset,_TAG=$deploy_tag
 }
 
 main "$@"

@@ -10,6 +10,7 @@
 substitutions:
   _ENV: ''
   _BQ_DATASET: ''
+  _TAG: ''
 
 steps:
   - id: Lock
@@ -99,7 +100,8 @@ steps:
         service=${_ENV}-ecosystem-worker
         for region in "us-central1" "us-east1"; do
           args="--project $PROJECT_ID --region $region"
-          gcloud beta run deploy $args $service --image $image --execution-environment=gen2
+          gcloud beta run deploy $args $service --image $image --execution-environment=gen2 \
+                          --labels=deploy_tag=${_TAG}
           # If there was a rollback, `gcloud run deploy` will create a revision but
           # not point traffic to it. The following command ensures that the new revision
           # will get traffic.
