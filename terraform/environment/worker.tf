@@ -189,7 +189,7 @@ resource "google_cloud_run_service" "worker" {
     # Set min and max number of instances.
     metadata {
       annotations = {
-        "autoscaling.knative.dev/minScale"         = "10"
+        "autoscaling.knative.dev/minScale"         = "0"
         "autoscaling.knative.dev/maxScale"         = local.max_instances[each.value]
         "run.googleapis.com/cloudsql-instances"    = local.pkgsite_db
         "run.googleapis.com/execution-environment" = "gen2"
