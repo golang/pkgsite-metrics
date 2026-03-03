@@ -95,7 +95,7 @@ var commands = []command{
 			fs.DurationVar(&waitInterval, "i", 0, "display updates at this interval")
 		},
 	},
-	{"results", "[-f] [-e] [-o FILE.json] [-stream] [-verbose] JOBID",
+	{"results", "[-o FILE.json] [-stream] [-verbose] JOBID",
 		"download results as JSON",
 		doResults,
 		func(fs *flag.FlagSet) {
