@@ -10,6 +10,7 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+	"time"
 
 	"golang.org/x/pkgsite-metrics/internal/config"
 	"golang.org/x/pkgsite-metrics/internal/scan"
@@ -21,6 +22,6 @@ func Open(ctx context.Context, cfg *config.Config) (_ *sql.DB, err error) {
 	return nil, errDoesNotCompile
 }
 
-func ModuleSpecs(ctx context.Context, db *sql.DB, minImportedByCount int) (specs []scan.ModuleSpec, err error) {
+func ModuleSpecs(ctx context.Context, db *sql.DB, minImports, maxImports int32, since time.Time) (specs []scan.ModuleSpec, err error) {
 	return nil, errDoesNotCompile
 }

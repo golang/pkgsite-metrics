@@ -12,6 +12,7 @@ import (
 	"net/http"
 	"sort"
 	"strings"
+	"time"
 
 	"golang.org/x/pkgsite-metrics/internal/config"
 	"golang.org/x/pkgsite-metrics/internal/derrors"
@@ -81,7 +82,7 @@ func createGovulncheckQueueTasks(ctx context.Context, cfg *config.Config, params
 	)
 	for _, mode := range modes {
 		if modspecs == nil {
-			modspecs, err = readModules(ctx, cfg, params.File, params.Min, math.MaxInt32)
+			modspecs, err = readModules(ctx, cfg, params.File, params.Min, math.MaxInt32, time.Time{})
 			if err != nil {
 				return nil, err
 			}

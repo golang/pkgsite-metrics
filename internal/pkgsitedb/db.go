@@ -13,6 +13,7 @@ import (
 	"database/sql"
 	"fmt"
 	"regexp"
+	"time"
 
 	_ "github.com/lib/pq"
 
@@ -52,15 +53,27 @@ func redactPassword(dbinfo string) string {
 // ModuleSpecs retrieves all modules that contain packages that are
 // imported by minImportedByCount or more packages.
 // It looks for the information in the search_documents table of the given pkgsite DB.
-func ModuleSpecs(ctx context.Context, db *sql.DB, minImports, maxImports int32) (specs []scan.ModuleSpec, err error) {
+func ModuleSpecs(ctx context.Context, db *sql.DB, minImports, maxImports int32, since time.Time) (specs []scan.ModuleSpec, err error) {
 	defer derrors.Wrap(&err, "moduleSpecsFromDB")
 	query := `
 		SELECT module_path, version, max(imported_by_count)
-		FROM search_documents
+		FROM search_documents`
+
+	var args []any
+	args = append(args, minImports, maxImports)
+
+	if !since.IsZero() {
+		query += `
+		WHERE version_updated_at >= $3`
+		args = append(args, since)
+	}
+
+	query += `
 		GROUP BY module_path, version
 		HAVING max(imported_by_count) >= $1 AND max(imported_by_count) <= $2
 		ORDER BY max(imported_by_count) desc`
-	rows, err := db.QueryContext(ctx, query, minImports, maxImports)
+
+	rows, err := db.QueryContext(ctx, query, args...)
 	if err != nil {
 		return nil, err
 	}

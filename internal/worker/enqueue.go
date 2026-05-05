@@ -8,6 +8,7 @@ import (
 	"context"
 	"math"
 	"sync"
+	"time"
 
 	"golang.org/x/pkgsite-metrics/internal/config"
 	"golang.org/x/pkgsite-metrics/internal/derrors"
@@ -22,22 +23,22 @@ const (
 	defaultMaxImportedByCount = math.MaxInt32
 )
 
-func readModules(ctx context.Context, cfg *config.Config, file string, minImports, maxImports int32) ([]scan.ModuleSpec, error) {
+func readModules(ctx context.Context, cfg *config.Config, file string, minImports, maxImports int32, since time.Time) ([]scan.ModuleSpec, error) {
 	if file != "" {
 		log.Infof(ctx, "reading modules from file %s", file)
 		return scan.ParseCorpusFile(file, minImports, maxImports)
 	}
 	log.Infof(ctx, "reading modules from DB %s", cfg.PkgsiteDBName)
-	return readFromDB(ctx, cfg, minImports, maxImports)
+	return readFromDB(ctx, cfg, minImports, maxImports, since)
 }
 
-func readFromDB(ctx context.Context, cfg *config.Config, minImports, maxImports int32) ([]scan.ModuleSpec, error) {
+func readFromDB(ctx context.Context, cfg *config.Config, minImports, maxImports int32, since time.Time) ([]scan.ModuleSpec, error) {
 	db, err := pkgsitedb.Open(ctx, cfg)
 	if err != nil {
 		return nil, err
 	}
 	defer db.Close()
-	return pkgsitedb.ModuleSpecs(ctx, db, minImports, maxImports)
+	return pkgsitedb.ModuleSpecs(ctx, db, minImports, maxImports, since)
 }
 
 func enqueueTasks(ctx context.Context, tasks []queue.Task, q queue.Queue, opts *queue.Options) (err error) {

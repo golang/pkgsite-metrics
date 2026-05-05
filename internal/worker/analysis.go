@@ -465,7 +465,20 @@ func (s *analysisServer) handleEnqueue(w http.ResponseWriter, r *http.Request) (
 	if err != nil {
 		return err
 	}
-	mods, err := readModules(ctx, s.cfg, params.File, params.Min, params.Max)
+
+	var since time.Time
+	if s := r.FormValue("since"); s != "" {
+		var err error
+		since, err = time.Parse(time.RFC3339, s)
+		if err != nil {
+			since, err = time.Parse("2006-01-02", s)
+			if err != nil {
+				return fmt.Errorf("%w: analysis: invalid since time: %v", derrors.InvalidArgument, err)
+			}
+		}
+	}
+
+	mods, err := readModules(ctx, s.cfg, params.File, params.Min, params.Max, since)
 	if err != nil {
 		return err
 	}

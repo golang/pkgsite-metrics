@@ -54,6 +54,7 @@ var (
 	maxImporters int           // for start
 	noDeps       bool          // for start
 	moduleFile   string        // for start
+	since        string        // for start
 	waitInterval time.Duration // for wait
 	outfile      string        // for results
 	stream       bool          // for results
@@ -75,7 +76,7 @@ var commands = []command{
 	{"cancel", "JOBID...",
 		"cancel the jobs",
 		doCancel, nil},
-	{"start", "[-min MIN_IMPORTERS] [-file MODULE_FILE] [-nodeps] BINARY ARGS...",
+	{"start", "[-min MIN_IMPORTERS] [-file MODULE_FILE] [-nodeps] [-since DATE] BINARY ARGS...",
 		"start a job",
 		doStart,
 		func(fs *flag.FlagSet) {
@@ -86,6 +87,8 @@ var commands = []command{
 			fs.StringVar(&moduleFile, "file", "",
 				"file with modules to use: each line is MODULE_PATH VERSION NUM_IMPORTERS")
 			fs.BoolVar(&noDeps, "nodeps", false, "do not download dependencies for modules")
+			fs.StringVar(&since, "since", "",
+				"only analyze modules with version_updated_at >= this date (YYYY-MM-DD or RFC3339). Uses the timestamp when the module version was ingested by the system.")
 		},
 	},
 	{"wait", "JOBID",
@@ -382,6 +385,9 @@ func doStart(ctx context.Context, args []string) error {
 	}
 	if maxImporters >= 0 {
 		u += fmt.Sprintf("&max=%d", maxImporters)
+	}
+	if since != "" {
+		u += fmt.Sprintf("&since=%s", url.QueryEscape(since))
 	}
 	if gcsPath != "" {
 		gurl := "gs://" + gcsPath
