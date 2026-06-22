@@ -10,6 +10,10 @@ set -e
 
 source devtools/lib.sh || { echo "Are you at repo root?"; exit 1; }
 
+if [[ -z "$GO_ECOSYSTEM_DEPLOY_GROUPS" && -f vars.env ]]; then
+  source vars.env
+fi
+
 usage() {
   die "usage: $0 [-n] (dev | prod) BIGQUERY_DATASET [TAG]"
 }
@@ -42,6 +46,9 @@ main() {
   local deploy_tag=${tag:-$commit}
 
   if which grants > /dev/null; then
+    if [[ -z "$GO_ECOSYSTEM_DEPLOY_GROUPS" ]]; then
+      die "GO_ECOSYSTEM_DEPLOY_GROUPS is not set. Did you source vars.env?"
+    fi
     local allowed=false
     while read _ _ ok _; do
       if [[ $ok = OK ]]; then
