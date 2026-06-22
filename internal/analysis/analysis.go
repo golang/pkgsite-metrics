@@ -276,9 +276,9 @@ func JSONTreeToDiagnostics(jsonTree JSONTree) []*Diagnostic {
 	return diags
 }
 
-// ReadResults reads non-error rows with binaryName, binaryVersion, and binaryArgs
+// ReadResults reads non-error rows with jobID
 // from the analysis table of c. If errs is "true", error rows are included as well.
-func ReadResults(ctx context.Context, c *bigquery.Client, binaryName, binaryVersion, binaryArgs, errs string) (_ []*Result, err error) {
+func ReadResults(ctx context.Context, c *bigquery.Client, jobID, errs string) (_ []*Result, err error) {
 	defer derrors.Wrap(&err, "ReadResults")
 	q := bigquery.PartitionQuery{
 		From:        c.FullTableName(TableName),
@@ -286,18 +286,19 @@ func ReadResults(ctx context.Context, c *bigquery.Client, binaryName, binaryVers
 		OrderBy:     "created_at DESC",
 	}
 	if errs == "true" {
-		q.Where = fmt.Sprintf("binary_name='%s' AND binary_version='%s' AND binary_args='%s'",
-			binaryName, binaryVersion, binaryArgs)
+		q.Where = "job_id = @job_id"
 	} else {
-		q.Where = fmt.Sprintf("binary_name='%s' AND binary_version='%s' AND binary_args='%s' AND error=''",
-			binaryName, binaryVersion, binaryArgs)
+		q.Where = "job_id = @job_id AND error = ''"
 	}
-	iter, err := c.Query(ctx, q.String())
+	params := []bq.QueryParameter{
+		{Name: "job_id", Value: jobID},
+	}
+	iter, err := c.QueryWithParams(ctx, q.String(), params)
 	if err != nil {
 		return nil, err
 	}
 	var res []*Result
-	err = bigquery.ForEachRow(iter, func(r *Result) bool {
+	err = bigquery.ForEachRow(iter.(*bq.RowIterator), func(r *Result) bool {
 		res = append(res, r)
 		return true
 	})

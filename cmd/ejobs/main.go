@@ -589,7 +589,13 @@ func doResults(ctx context.Context, args []string) (err error) {
 		}
 		enc := json.NewEncoder(out)
 		enc.SetIndent("", "\t")
-		return enc.Encode(results)
+		if err := enc.Encode(results); err != nil {
+			return err
+		}
+		if outfile != "" {
+			fmt.Fprintf(os.Stderr, "Successfully wrote results to %s\n", outfile)
+		}
+		return nil
 	}
 
 	bqClient, err := bigquery.NewClientCreate(ctx, projectID, *env)

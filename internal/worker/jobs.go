@@ -84,14 +84,14 @@ func (s *Server) processJobRequest(ctx context.Context, w io.Writer, path, jobID
 		if jobID == "" {
 			return fmt.Errorf("missing jobid: %w", derrors.InvalidArgument)
 		}
-		job, err := db.GetJob(ctx, jobID)
+		_, err := db.GetJob(ctx, jobID)
 		if err != nil {
 			return err
 		}
 		if s.bqClient == nil {
 			return errors.New("bq client is nil")
 		}
-		results, err := analysis.ReadResults(ctx, s.bqClient, job.Binary, job.BinaryVersion, job.BinaryArgs, errs)
+		results, err := analysis.ReadResults(ctx, s.bqClient, jobID, errs)
 		if err != nil {
 			return err
 		}
