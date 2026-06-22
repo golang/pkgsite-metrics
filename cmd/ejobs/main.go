@@ -246,8 +246,9 @@ func doList(ctx context.Context, _ []string) error {
 				remainingTasks := float64(j.NumEnqueued - done)
 				eta = time.Duration(remainingTasks / rate * float64(time.Second)).Round(time.Minute)
 			}
+			startTime := fmt.Sprintf("%s (%s ago)", j.StartedAt.In(time.Local).Format(time.RFC3339), time.Since(j.StartedAt).Round(time.Second))
 			fmt.Fprintf(tw, "%s\t%s\t%s\t%d\t%d\t%d\t%t\t%s\n",
-				j.ID(), j.User, j.StartedAt.Format(time.RFC3339),
+				j.ID(), j.User, startTime,
 				j.NumStarted,
 				j.NumSkipped+j.NumFailed+j.NumErrored+j.NumSucceeded,
 				j.NumEnqueued,
