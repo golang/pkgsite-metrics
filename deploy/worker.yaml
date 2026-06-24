@@ -14,7 +14,7 @@ substitutions:
 
 steps:
   - id: Lock
-    name: golang:1.25.0
+    name: golang:1.27rc1
     entrypoint: bash
     args:
       - -ec
@@ -28,7 +28,7 @@ steps:
 
   - id: Test
     # Run tests. Do this early, to avoid wasting time if they fail.
-    name: golang:1.25.0
+    name: golang:1.27rc1
     entrypoint: bash
     args:
       - -ec
