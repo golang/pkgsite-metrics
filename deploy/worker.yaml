@@ -64,12 +64,11 @@ steps:
 
         # Download the vuln DB from its bucket to a local directory, and remember
         # its last-modified time in a file.
-        gsutil -m -q cp -r gs://go-vulndb /workspace
-        gsutil stat gs://go-vulndb/index.json | \
-                awk '$$1 == "Update" { for (i = 4; i <= NF; i++) printf("%s ", $$i); printf("\n"); }' \
+        gcloud storage cp --recursive --quiet gs://go-vulndb /workspace
+        gcloud storage objects describe gs://go-vulndb/index.json --format="value(update_time)" \
                 > /workspace/go-vulndb/LAST_MODIFIED
         # Download a tarball of a docker Go image.
-        gsutil cp gs://go-ecosystem/go-image.tar.gz /workspace
+        gcloud storage cp gs://go-ecosystem/go-image.tar.gz /workspace
 
   - id: Build
     # Build the docker image.

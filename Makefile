@@ -11,17 +11,17 @@ default:
 # This is the image that is used by the sandbox.
 # The file must live in the repo directory so that cmd/worker/Dockerfile
 # can access it.
-# We assume that the file exists in the bucket. 
+# We assume that the file exists in the bucket.
 # See the rule below for how to create the image.
 go-image.tar.gz:
-	gsutil cp gs://go-ecosystem/$@ $@
+	gcloud storage cp gs://go-ecosystem/$@ $@
 
 # Use this rule to build a go image for a specific Go version.
 # E.g.
 #	make go-image-1.19.4.tar.gz
 # To change the sandbox image permanently, copy it to GCP:
 #
-#	gsutil cp go-image.1.19.4.tar.gz gs://go-ecosystem/go-image.tar.gz
+#	gcloud storage cp go-image.1.19.4.tar.gz gs://go-ecosystem/go-image.tar.gz
 # Then delete the local copy.
 go-image-%.tar.gz:
 	docker export $(shell docker create golang:$*) | gzip > go-image-$*.tar.gz
@@ -31,15 +31,14 @@ go-image-%.tar.gz:
 #
 # Get the last-modified time of the index.json file, which is reported as the
 # last-modified time of the DB, and save it to a local file. (The last-modified
-# time of the local index.json is not what we want: it is the time that gsutil cp
+# time of the local index.json is not what we want: it is the time that gcloud storage cp
 # wrote the file.)
 #
 # This directory must live in the repo directory so that cmd/worker/Dockerfile
 # can access it.
 go-vulndb:
-	gsutil -m -q cp -r gs://go-vulndb .
-	gsutil stat gs://go-vulndb/index.json | \
-		awk '$$1 == "Update" { for (i = 4; i <= NF; i++) printf("%s ", $$i); printf("\n"); }' \
+	gcloud storage cp --recursive --quiet gs://go-vulndb .
+	gcloud storage objects describe gs://go-vulndb/index.json --format="value(update_time)" \
 		> go-vulndb/LAST_MODIFIED
 
 # Remove comments from a json file.
