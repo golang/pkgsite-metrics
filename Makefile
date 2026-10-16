@@ -29,17 +29,10 @@ go-image-%.tar.gz:
 # Download the Go vulnerability DB to a local directory, so vulndb can access it
 # from the sandbox, which has no network connectivity.
 #
-# Get the last-modified time of the index.json file, which is reported as the
-# last-modified time of the DB, and save it to a local file. (The last-modified
-# time of the local index.json is not what we want: it is the time that gcloud storage cp
-# wrote the file.)
-#
 # This directory must live in the repo directory so that cmd/worker/Dockerfile
 # can access it.
 go-vulndb:
 	gcloud storage cp --recursive --quiet gs://go-vulndb .
-	gcloud storage objects describe gs://go-vulndb/index.json --format="value(update_time)" \
-		> go-vulndb/LAST_MODIFIED
 
 # Remove comments from a json file.
 %.json: %.json.commented

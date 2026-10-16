@@ -62,11 +62,8 @@ steps:
         # Convert the commented config.json file to valid json.
         sed '/^[ \t]*#/d' config.json.commented > /workspace/config.json
 
-        # Download the vuln DB from its bucket to a local directory, and remember
-        # its last-modified time in a file.
+        # Download the vuln DB from its bucket to a local directory.
         gcloud storage cp --recursive --quiet gs://go-vulndb /workspace
-        gcloud storage objects describe gs://go-vulndb/index.json --format="value(update_time)" \
-                > /workspace/go-vulndb/LAST_MODIFIED
         # Download a tarball of a docker Go image.
         gcloud storage cp gs://go-ecosystem/go-image.tar.gz /workspace
 
