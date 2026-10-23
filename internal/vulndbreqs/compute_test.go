@@ -78,8 +78,13 @@ var (
 	// These reflect the contents of testdata/logfile.json,
 	// which is also stored in the "test" directory of the
 	// vulndb logs bucket.
-	testFileDates = map[civil.Date]int{testDate: 13}
-	testFileIPs   = map[string]int{
+	testFileDates  = map[civil.Date]int{testDate: 13}
+	testFileRawIPs = map[string]int{
+		"1.2.3.4":    3,
+		"5.6.7.8":    2,
+		"9.10.11.12": 8,
+	}
+	testFileIPs = map[string]int{
 		obfuscate("1.2.3.4", testHMACKey):    3,
 		obfuscate("5.6.7.8", testHMACKey):    2,
 		obfuscate("9.10.11.12", testHMACKey): 8,
@@ -95,7 +100,7 @@ func TestReadJSONLogEntries(t *testing.T) {
 
 	gotDates := map[civil.Date]int{}
 	gotIPs := map[string]int{}
-	err = readJSONLogEntries("logfile.json", f, testHMACKey, func(e *logEntry) error {
+	err = readJSONLogEntries("logfile.json", f, func(e *logEntry) error {
 		gotDates[civil.DateOf(e.Timestamp)]++
 		gotIPs[e.HTTPRequest.RemoteIP]++
 		return nil
@@ -106,8 +111,8 @@ func TestReadJSONLogEntries(t *testing.T) {
 	if !maps.Equal(gotDates, testFileDates) {
 		t.Errorf("dates:\ngot  %v\nwant %v", gotDates, testFileDates)
 	}
-	if !maps.Equal(gotIPs, testFileIPs) {
-		t.Errorf("IPs:\ngot  %v\nwant %v", gotIPs, testFileIPs)
+	if !maps.Equal(gotIPs, testFileRawIPs) {
+		t.Errorf("IPs:\ngot  %v\nwant %v", gotIPs, testFileRawIPs)
 	}
 }
 

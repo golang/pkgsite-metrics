@@ -237,9 +237,9 @@ func countLogsForObjects(ctx context.Context, bucket *storage.BucketHandle, objN
 	}
 	defer derrors.Wrap(&err, "countLogsForObjects(%q, ...[%d in total])", objNames[0], len(objNames))
 
-	var mu sync.Mutex
+	var mu sync.Mutex // Guards below.
 	byDate = map[civil.Date]int{}
-	byIP = map[string]int{}
+	byRawIP := map[string]int{}
 
 	g, ctx := errgroup.WithContext(ctx)
 	g.SetLimit(10)
@@ -257,25 +257,25 @@ func countLogsForObjects(ctx context.Context, bucket *storage.BucketHandle, objN
 				defer r.Close()
 
 				var (
-					localByDate = map[civil.Date]int{}
-					localByIP   = map[string]int{}
+					localByDate  = map[civil.Date]int{}
+					localByRawIP = map[string]int{}
 				)
-				err = readJSONLogEntries(name, r, hmacKey, func(e *logEntry) error {
+				err = readJSONLogEntries(name, r, func(e *logEntry) error {
 					localByDate[civil.DateOf(e.Timestamp)]++
-					localByIP[e.HTTPRequest.RemoteIP]++
+					localByRawIP[e.HTTPRequest.RemoteIP]++
 					return nil
 				})
 				if err != nil {
 					return err
 				}
 
-				// Obtain the lock and update gloabl byDate & byIP.
+				// Obtain the lock and update global byDate & byRawIP.
 				mu.Lock()
 				for d, c := range localByDate {
 					byDate[d] += c
 				}
-				for ip, c := range localByIP {
-					byIP[ip] += c
+				for ip, c := range localByRawIP {
+					byRawIP[ip] += c
 				}
 				mu.Unlock()
 			}
@@ -284,6 +284,12 @@ func countLogsForObjects(ctx context.Context, bucket *storage.BucketHandle, objN
 	}
 	if err := g.Wait(); err != nil {
 		return nil, nil, err
+	}
+
+	// Convert map keyed with raw ip to map keyed with obfuscated ip.
+	byIP = make(map[string]int, len(byRawIP))
+	for ip, count := range byRawIP {
+		byIP[obfuscate(ip, hmacKey)] += count
 	}
 	return byDate, byIP, nil
 }
@@ -327,8 +333,8 @@ type logEntry struct {
 
 // readJSONLogEntries reads the contents of r, which is named name and must consist of a sequence
 // of JSON objects each of which has the fields of a logEntry.
-// For each entry, after obfuscating the IP using hmacKey, it calls fn on the entry.
-func readJSONLogEntries(name string, r io.Reader, hmacKey []byte, fn func(e *logEntry) error) (err error) {
+// For each entry, it calls fn on the entry.
+func readJSONLogEntries(name string, r io.Reader, fn func(e *logEntry) error) (err error) {
 	defer derrors.Wrap(&err, "readJSONLogEntries(%s)", name)
 	dec := json.NewDecoder(r)
 	for dec.More() {
@@ -336,7 +342,6 @@ func readJSONLogEntries(name string, r io.Reader, hmacKey []byte, fn func(e *log
 		if err := dec.Decode(&e); err != nil {
 			return err
 		}
-		e.HTTPRequest.RemoteIP = obfuscate(e.HTTPRequest.RemoteIP, hmacKey)
 		if err := fn(&e); err != nil {
 			return err
 		}
