@@ -240,13 +240,6 @@ func countLogsForObjects(ctx context.Context, bucket *storage.BucketHandle, objN
 	var mu sync.Mutex
 	byDate = map[civil.Date]int{}
 	byIP = map[string]int{}
-	update := func(e *logEntry) error {
-		mu.Lock()
-		byDate[civil.DateOf(e.Timestamp)]++
-		byIP[e.HTTPRequest.RemoteIP]++
-		mu.Unlock()
-		return nil
-	}
 
 	g, ctx := errgroup.WithContext(ctx)
 	g.SetLimit(10)
@@ -262,9 +255,29 @@ func countLogsForObjects(ctx context.Context, bucket *storage.BucketHandle, objN
 					return err
 				}
 				defer r.Close()
-				if err := readJSONLogEntries(name, r, hmacKey, update); err != nil {
+
+				var (
+					localByDate = map[civil.Date]int{}
+					localByIP   = map[string]int{}
+				)
+				err = readJSONLogEntries(name, r, hmacKey, func(e *logEntry) error {
+					localByDate[civil.DateOf(e.Timestamp)]++
+					localByIP[e.HTTPRequest.RemoteIP]++
+					return nil
+				})
+				if err != nil {
 					return err
 				}
+
+				// Obtain the lock and update gloabl byDate & byIP.
+				mu.Lock()
+				for d, c := range localByDate {
+					byDate[d] += c
+				}
+				for ip, c := range localByIP {
+					byIP[ip] += c
+				}
+				mu.Unlock()
 			}
 			return nil
 		})
