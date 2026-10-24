@@ -14,6 +14,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"hash"
 	"io"
 	"os"
 	"sync"
@@ -157,6 +158,7 @@ func computeFromLogs(ctx context.Context, vulndbBucketProjectID string, date civ
 	// (https://cloud.google.com/logging/docs/reference/v2/rpc/google.logging.v2#google.logging.v2.ListLogEntriesRequest).
 	var logErr error
 	n := 1
+	mac := hmac.New(sha256.New, hmacKey)
 	for {
 		entry, err := it.Next()
 		if err != nil {
@@ -167,7 +169,7 @@ func computeFromLogs(ctx context.Context, vulndbBucketProjectID string, date civ
 		}
 		ip := "NONE"
 		if r := entry.HTTPRequest; r != nil {
-			ip = obfuscate(r.RemoteIP, hmacKey)
+			ip = obfuscate(r.RemoteIP, mac)
 		}
 		counts[ip]++
 		n++
@@ -287,9 +289,10 @@ func countLogsForObjects(ctx context.Context, bucket *storage.BucketHandle, objN
 	}
 
 	// Convert map keyed with raw ip to map keyed with obfuscated ip.
+	mac := hmac.New(sha256.New, hmacKey)
 	byIP = make(map[string]int, len(byRawIP))
 	for ip, count := range byRawIP {
-		byIP[obfuscate(ip, hmacKey)] += count
+		byIP[obfuscate(ip, mac)] += count
 	}
 	return byDate, byIP, nil
 }
@@ -349,8 +352,8 @@ func readJSONLogEntries(name string, r io.Reader, fn func(e *logEntry) error) (e
 	return nil
 }
 
-func obfuscate(ip string, hmacKey []byte) string {
-	mac := hmac.New(sha256.New, hmacKey)
+func obfuscate(ip string, mac hash.Hash) string {
+	mac.Reset()
 	io.WriteString(mac, ip)
 	return hex.EncodeToString(mac.Sum(nil))
 }

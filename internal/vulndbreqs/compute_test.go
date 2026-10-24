@@ -7,6 +7,8 @@ package vulndbreqs
 import (
 	cmppkg "cmp"
 	"context"
+	"crypto/hmac"
+	"crypto/sha256"
 	"maps"
 	"os"
 	"path/filepath"
@@ -72,6 +74,7 @@ func TestComputeFromStorage(t *testing.T) {
 
 var (
 	testHMACKey = []byte("this-is-a-fake-hmac-key")
+	testMAC     = hmac.New(sha256.New, testHMACKey)
 
 	testDate = civil.Date{Year: 2023, Month: 5, Day: 30}
 
@@ -85,9 +88,9 @@ var (
 		"9.10.11.12": 8,
 	}
 	testFileIPs = map[string]int{
-		obfuscate("1.2.3.4", testHMACKey):    3,
-		obfuscate("5.6.7.8", testHMACKey):    2,
-		obfuscate("9.10.11.12", testHMACKey): 8,
+		obfuscate("1.2.3.4", testMAC):    3,
+		obfuscate("5.6.7.8", testMAC):    2,
+		obfuscate("9.10.11.12", testMAC): 8,
 	}
 )
 
