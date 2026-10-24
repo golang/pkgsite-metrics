@@ -104,7 +104,11 @@ func TestReadJSONLogEntries(t *testing.T) {
 	gotDates := map[civil.Date]int{}
 	gotIPs := map[string]int{}
 	err = readJSONLogEntries("logfile.json", f, func(e *logEntry) error {
-		gotDates[civil.DateOf(e.Timestamp)]++
+		d, err := civil.ParseDate(e.Timestamp[:len("2006-01-02")])
+		if err != nil {
+			return err
+		}
+		gotDates[d]++
 		gotIPs[e.HTTPRequest.RemoteIP]++
 		return nil
 	})

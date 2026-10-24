@@ -7,11 +7,12 @@
 package vulndbreqs
 
 import (
+	"bufio"
+	"bytes"
 	"context"
 	"crypto/hmac"
 	"crypto/sha256"
 	"encoding/hex"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"hash"
@@ -240,7 +241,7 @@ func countLogsForObjects(ctx context.Context, bucket *storage.BucketHandle, objN
 	defer derrors.Wrap(&err, "countLogsForObjects(%q, ...[%d in total])", objNames[0], len(objNames))
 
 	var mu sync.Mutex // Guards below.
-	byDate = map[civil.Date]int{}
+	byRawDate := map[string]int{}
 	byRawIP := map[string]int{}
 
 	g, ctx := errgroup.WithContext(ctx)
@@ -259,11 +260,14 @@ func countLogsForObjects(ctx context.Context, bucket *storage.BucketHandle, objN
 				defer r.Close()
 
 				var (
-					localByDate  = map[civil.Date]int{}
-					localByRawIP = map[string]int{}
+					localByRawDate = map[string]int{}
+					localByRawIP   = map[string]int{}
 				)
 				err = readJSONLogEntries(name, r, func(e *logEntry) error {
-					localByDate[civil.DateOf(e.Timestamp)]++
+					if len(e.Timestamp) < len("2006-01-02") {
+						return errors.New("invalid timestamp")
+					}
+					localByRawDate[e.Timestamp[:len("2006-01-02")]]++
 					localByRawIP[e.HTTPRequest.RemoteIP]++
 					return nil
 				})
@@ -271,10 +275,10 @@ func countLogsForObjects(ctx context.Context, bucket *storage.BucketHandle, objN
 					return err
 				}
 
-				// Obtain the lock and update global byDate & byRawIP.
+				// Obtain the lock and update global byRawDate & byRawIP.
 				mu.Lock()
-				for d, c := range localByDate {
-					byDate[d] += c
+				for d, c := range localByRawDate {
+					byRawDate[d] += c
 				}
 				for ip, c := range localByRawIP {
 					byRawIP[ip] += c
@@ -286,6 +290,16 @@ func countLogsForObjects(ctx context.Context, bucket *storage.BucketHandle, objN
 	}
 	if err := g.Wait(); err != nil {
 		return nil, nil, err
+	}
+
+	// Convert map keyed with raw date to map keyed with civil.Date.
+	byDate = make(map[civil.Date]int, len(byRawDate))
+	for rawDate, count := range byRawDate {
+		d, err := civil.ParseDate(rawDate)
+		if err != nil {
+			return nil, nil, err
+		}
+		byDate[d] += count
 	}
 
 	// Convert map keyed with raw ip to map keyed with obfuscated ip.
@@ -328,28 +342,58 @@ func objectNamesForDate(ctx context.Context, bucket *storage.BucketHandle, logPr
 }
 
 type logEntry struct {
-	Timestamp   time.Time `json:"timestamp"`
+	Timestamp   string `json:"timestamp"`
 	HTTPRequest struct {
 		RemoteIP string `json:"remoteIp"`
 	} `json:"httpRequest"`
 }
 
+var (
+	remoteIPKey  = []byte(`"remoteIp":"`)
+	timestampKey = []byte(`"timestamp":"`)
+	quoteByte    = []byte(`"`)
+)
+
 // readJSONLogEntries reads the contents of r, which is named name and must consist of a sequence
-// of JSON objects each of which has the fields of a logEntry.
+// of JSON objects each of which has the fields of a logEntry, one per line.
 // For each entry, it calls fn on the entry.
 func readJSONLogEntries(name string, r io.Reader, fn func(e *logEntry) error) (err error) {
 	defer derrors.Wrap(&err, "readJSONLogEntries(%s)", name)
-	dec := json.NewDecoder(r)
-	for dec.More() {
-		var e logEntry
-		if err := dec.Decode(&e); err != nil {
-			return err
+	scanner := bufio.NewScanner(r)
+	for scanner.Scan() {
+		line := bytes.TrimSpace(scanner.Bytes())
+		if len(line) == 0 {
+			continue
 		}
+
+		var e logEntry
+		{
+			_, rest, ok := bytes.Cut(line, remoteIPKey)
+			if !ok {
+				return errors.New("missing remoteIp")
+			}
+			ip, _, ok := bytes.Cut(rest, quoteByte)
+			if !ok {
+				return errors.New("unterminated remoteIp")
+			}
+			e.HTTPRequest.RemoteIP = string(ip)
+
+			_, tsRest, ok := bytes.Cut(line, timestampKey)
+			if !ok {
+				return errors.New("missing timestamp")
+			}
+			ts, _, ok := bytes.Cut(tsRest, quoteByte)
+			if !ok {
+				return errors.New("unterminated timestamp")
+			}
+			e.Timestamp = string(ts)
+		}
+
 		if err := fn(&e); err != nil {
 			return err
 		}
 	}
-	return nil
+	return scanner.Err()
 }
 
 func obfuscate(ip string, mac hash.Hash) string {
