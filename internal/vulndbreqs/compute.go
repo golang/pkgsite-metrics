@@ -245,7 +245,7 @@ func countLogsForObjects(ctx context.Context, bucket *storage.BucketHandle, objN
 	byRawIP := map[string]int{}
 
 	g, ctx := errgroup.WithContext(ctx)
-	g.SetLimit(10)
+	g.SetLimit(64)
 	for _, name := range objNames {
 		name := name
 		g.Go(func() error {
