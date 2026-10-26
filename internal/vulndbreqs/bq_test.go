@@ -40,19 +40,19 @@ func TestBigQuery(t *testing.T) {
 		return civil.Date{Year: y, Month: time.Month(m), Day: d}
 	}
 
-	counts := []*IPRequestCount{
-		{Date: date(2022, 10, 1), IP: "A", Count: 1},
-		{Date: date(2022, 10, 3), IP: "B", Count: 3},
-		{Date: date(2022, 10, 4), IP: "C", Count: 4},
+	counts := []*RequestCount{
+		{Date: date(2022, 10, 1), Count: 1},
+		{Date: date(2022, 10, 3), Count: 3},
+		{Date: date(2022, 10, 4), Count: 4},
 	}
-	must(writeToBigQuery(ctx, client, sumRequestCounts(counts), counts))
+	must(writeToBigQuery(ctx, client, counts))
 	// Insert duplicates with a later time; we expect to get these, not the originals.
 	time.Sleep(50 * time.Millisecond)
 	for _, row := range counts {
 		row.Count++
 	}
-	want := sumRequestCounts(counts)
-	must(writeToBigQuery(ctx, client, want, counts))
+	want := counts
+	must(writeToBigQuery(ctx, client, want))
 
 	got, err := ReadRequestCountsFromBigQuery(ctx, client)
 	if err != nil {

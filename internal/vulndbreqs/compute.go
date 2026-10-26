@@ -10,12 +10,8 @@ import (
 	"bufio"
 	"bytes"
 	"context"
-	"crypto/hmac"
-	"crypto/sha256"
-	"encoding/hex"
 	"errors"
 	"fmt"
-	"hash"
 	"io"
 	"os"
 	"sync"
@@ -43,7 +39,7 @@ var (
 
 // ComputeAndStore computes Vuln DB request counts from the last date we have
 // data for, and writes them to BigQuery.
-func ComputeAndStore(ctx context.Context, vulndbBucketProjectID string, client *bigquery.Client, hmacKey []byte) error {
+func ComputeAndStore(ctx context.Context, vulndbBucketProjectID string, client *bigquery.Client) error {
 	rcs, err := ReadRequestCountsFromBigQuery(ctx, client)
 	if err != nil {
 		return err
@@ -58,7 +54,7 @@ func ComputeAndStore(ctx context.Context, vulndbBucketProjectID string, client *
 	// Compute one day at a time, so if it fails after a few days we at least make some progress.
 	for d := startDate; d.Before(today); d = d.AddDays(1) {
 		if !have[d] {
-			if err := ComputeAndStoreDate(ctx, vulndbBucketProjectID, client, hmacKey, d); err != nil {
+			if err := ComputeAndStoreDate(ctx, vulndbBucketProjectID, client, d); err != nil {
 				return err
 			}
 		}
@@ -68,58 +64,33 @@ func ComputeAndStore(ctx context.Context, vulndbBucketProjectID string, client *
 
 // ComputeAndStoreDate computes the request counts for the given date and writes them to BigQuery.
 // It does so even if there is already stored information for that date.
-func ComputeAndStoreDate(ctx context.Context, vulndbBucketProjectID string, client *bigquery.Client, hmacKey []byte, date civil.Date) error {
-	ircs, err := Compute(ctx, vulndbBucketProjectID, date, hmacKey)
+func ComputeAndStoreDate(ctx context.Context, vulndbBucketProjectID string, client *bigquery.Client, date civil.Date) error {
+	count, err := Compute(ctx, vulndbBucketProjectID, date)
 	if err != nil {
 		return err
 	}
-	if len(ircs) == 0 {
-		ircs = []*IPRequestCount{{Date: date, IP: "NONE", Count: 0}}
-	}
-	count := 0
-	for _, rc := range ircs {
-		count += rc.Count
-	}
-	log.Infof(ctx, "writing request count %d for %s; %d distinct IPs", count, date, len(ircs))
-	return writeToBigQuery(ctx, client, []*RequestCount{{Date: date, Count: count}}, ircs)
-}
-
-func sumRequestCounts(ircs []*IPRequestCount) []*RequestCount {
-	counts := map[civil.Date]int{}
-	for _, irc := range ircs {
-		counts[irc.Date] += irc.Count
-	}
-	var rcs []*RequestCount
-	for date, count := range counts {
-		rcs = append(rcs, &RequestCount{Date: date, Count: count})
-	}
-	return rcs
+	log.Infof(ctx, "writing request count %d for %s", count, date)
+	return writeToBigQuery(ctx, client, []*RequestCount{{Date: date, Count: count}})
 }
 
 // Compute computes counts for all vuln DB requests on the given date.
-// It returns request counts grouped by obfuscated IP address.
-func Compute(ctx context.Context, vulndbBucketProjectID string, date civil.Date, hmacKey []byte) ([]*IPRequestCount, error) {
+func Compute(ctx context.Context, vulndbBucketProjectID string, date civil.Date) (int, error) {
 	if date.Before(gcsStartDate) {
-		return computeFromLogs(ctx, vulndbBucketProjectID, date, hmacKey, 0)
+		return computeFromLogs(ctx, vulndbBucketProjectID, date, 0)
 	}
-	return computeFromStorage(ctx, date, hmacKey, 0)
+	return computeFromStorage(ctx, date, 0)
 }
 
 // computeFromLogs queries the vulndb load balancer logs for all vuln DB
 // requests on the given date. It returns request counts for the date.
 // If limit is positive, it reads no more than limit entries from the log (for testing only).
-func computeFromLogs(ctx context.Context, vulndbBucketProjectID string, date civil.Date, hmacKey []byte, limit int) ([]*IPRequestCount, error) {
-	if len(hmacKey) < 16 {
-		return nil, errors.New("HMAC secret must be at least 16 bytes")
-	}
+func computeFromLogs(ctx context.Context, vulndbBucketProjectID string, date civil.Date, limit int) (int, error) {
 	log.Infof(ctx, "computing request counts for %s from logs", date)
 	client, err := logadmin.NewClient(ctx, vulndbBucketProjectID)
 	if err != nil {
-		return nil, err
+		return 0, err
 	}
 	defer client.Close()
-
-	counts := map[string]int{} // key is obfuscated IP address
 
 	it := newEntryIterator(ctx, client,
 		// This filter has three sections, marked with blank lines. It is more
@@ -154,95 +125,80 @@ func computeFromLogs(ctx context.Context, vulndbBucketProjectID string, date civ
 
 		timestamp>=`+date.String()+`
 		timestamp<`+date.AddDays(1).String())
-	// Count each log entry we see, bucketing by date.
+	// Count each log entry we see.
 	// The timestamps are in order from oldest to newest
 	// (https://cloud.google.com/logging/docs/reference/v2/rpc/google.logging.v2#google.logging.v2.ListLogEntriesRequest).
 	var logErr error
-	n := 1
-	mac := hmac.New(sha256.New, hmacKey)
+	count := 0
 	for {
-		entry, err := it.Next()
+		_, err := it.Next()
 		if err != nil {
 			if err != iterator.Done {
 				logErr = err
 			}
 			break
 		}
-		ip := "NONE"
-		if r := entry.HTTPRequest; r != nil {
-			ip = obfuscate(r.RemoteIP, mac)
-		}
-		counts[ip]++
-		n++
-		if limit > 0 && n > limit {
+		count++
+		if limit > 0 && count >= limit {
 			break
 		}
 	}
 	if logErr != nil {
 		log.Errorf(ctx, logErr, "when reading load balancer logs, no progress")
-		return nil, logErr
+		return 0, logErr
 	}
 
-	return mapToCountSlice(counts, date), nil
+	return count, nil
 }
 
 // computeFromStorage counts requests for the given date from the files in the
 // vulndb logs bucket.
 // If maxFiles is positive, only that many files are read (for testing).
-func computeFromStorage(ctx context.Context, date civil.Date, hmacKey []byte, maxFiles int) (_ []*IPRequestCount, err error) {
+func computeFromStorage(ctx context.Context, date civil.Date, maxFiles int) (_ int, err error) {
 	defer derrors.Wrap(&err, "computeFromStorage(%s)", date)
 
 	log.Infof(ctx, "computing request counts for %s from storage bucket", date)
 	client, err := storage.NewClient(ctx)
 	if err != nil {
-		return nil, err
+		return 0, err
 	}
 	defer client.Close()
 	bucketName := os.Getenv("GOOGLE_CLOUD_PROJECT") + bucketSuffix
 	bucket := client.Bucket(bucketName)
 	names, err := objectNamesForDate(ctx, bucket, logPrefix, date)
 	if err != nil {
-		return nil, err
+		return 0, err
 	}
 	if maxFiles > 0 && len(names) > maxFiles {
 		names = names[:maxFiles]
 	}
 
-	byDate, byIP, err := countLogsForObjects(ctx, bucket, names, hmacKey)
+	byDate, err := countLogsForObjects(ctx, bucket, names)
 	if err != nil {
-		return nil, err
+		return 0, err
 	}
 	if len(byDate) != 1 {
-		return nil, fmt.Errorf("got %d dates, want 1", len(byDate))
+		return 0, fmt.Errorf("got %d dates, want 1", len(byDate))
 	}
-	if _, present := byDate[date]; !present {
-		return nil, fmt.Errorf("no data for %s", date)
+	count, present := byDate[date]
+	if !present {
+		return 0, fmt.Errorf("no data for %s", date)
 	}
-	return mapToCountSlice(byIP, date), nil
-}
-
-// mapToCountSlice Converts the map to a slice of IPRequestCounts.
-func mapToCountSlice(countsByIP map[string]int, date civil.Date) []*IPRequestCount {
-	var ircs []*IPRequestCount
-	for ip, count := range countsByIP {
-		ircs = append(ircs, &IPRequestCount{Date: date, IP: ip, Count: count})
-	}
-	return ircs
+	return count, nil
 }
 
 // countLogsForObjects reads the JSON log files given by objNames from the bucket
-// and sums their entries by date and obfuscated IP.
-func countLogsForObjects(ctx context.Context, bucket *storage.BucketHandle, objNames []string, hmacKey []byte) (
-	byDate map[civil.Date]int, byIP map[string]int, err error) {
+// and sums their entries by date.
+func countLogsForObjects(ctx context.Context, bucket *storage.BucketHandle, objNames []string) (
+	byDate map[civil.Date]int, err error) {
 
 	if len(objNames) == 0 {
-		return nil, nil, nil
+		return nil, nil
 	}
 	defer derrors.Wrap(&err, "countLogsForObjects(%q, ...[%d in total])", objNames[0], len(objNames))
 
 	var mu sync.Mutex // Guards below.
 	byRawDate := map[string]int{}
-	byRawIP := map[string]int{}
 
 	g, ctx := errgroup.WithContext(ctx)
 	g.SetLimit(64)
@@ -259,29 +215,22 @@ func countLogsForObjects(ctx context.Context, bucket *storage.BucketHandle, objN
 				}
 				defer r.Close()
 
-				var (
-					localByRawDate = map[string]int{}
-					localByRawIP   = map[string]int{}
-				)
+				localByRawDate := map[string]int{}
 				err = readJSONLogEntries(name, r, func(e *logEntry) error {
 					if len(e.Timestamp) < len("2006-01-02") {
 						return errors.New("invalid timestamp")
 					}
 					localByRawDate[e.Timestamp[:len("2006-01-02")]]++
-					localByRawIP[e.HTTPRequest.RemoteIP]++
 					return nil
 				})
 				if err != nil {
 					return err
 				}
 
-				// Obtain the lock and update global byRawDate & byRawIP.
+				// Obtain the lock and update global byRawDate.
 				mu.Lock()
 				for d, c := range localByRawDate {
 					byRawDate[d] += c
-				}
-				for ip, c := range localByRawIP {
-					byRawIP[ip] += c
 				}
 				mu.Unlock()
 			}
@@ -289,7 +238,7 @@ func countLogsForObjects(ctx context.Context, bucket *storage.BucketHandle, objN
 		})
 	}
 	if err := g.Wait(); err != nil {
-		return nil, nil, err
+		return nil, err
 	}
 
 	// Convert map keyed with raw date to map keyed with civil.Date.
@@ -297,18 +246,11 @@ func countLogsForObjects(ctx context.Context, bucket *storage.BucketHandle, objN
 	for rawDate, count := range byRawDate {
 		d, err := civil.ParseDate(rawDate)
 		if err != nil {
-			return nil, nil, err
+			return nil, err
 		}
 		byDate[d] += count
 	}
-
-	// Convert map keyed with raw ip to map keyed with obfuscated ip.
-	mac := hmac.New(sha256.New, hmacKey)
-	byIP = make(map[string]int, len(byRawIP))
-	for ip, count := range byRawIP {
-		byIP[obfuscate(ip, mac)] += count
-	}
-	return byDate, byIP, nil
+	return byDate, nil
 }
 
 // Suffix to append to project name to get the name of the logs bucket.
@@ -342,14 +284,10 @@ func objectNamesForDate(ctx context.Context, bucket *storage.BucketHandle, logPr
 }
 
 type logEntry struct {
-	Timestamp   string `json:"timestamp"`
-	HTTPRequest struct {
-		RemoteIP string `json:"remoteIp"`
-	} `json:"httpRequest"`
+	Timestamp string `json:"timestamp"`
 }
 
 var (
-	remoteIPKey  = []byte(`"remoteIp":"`)
 	timestampKey = []byte(`"timestamp":"`)
 	quoteByte    = []byte(`"`)
 )
@@ -367,37 +305,19 @@ func readJSONLogEntries(name string, r io.Reader, fn func(e *logEntry) error) (e
 		}
 
 		var e logEntry
-		{
-			_, rest, ok := bytes.Cut(line, remoteIPKey)
-			if !ok {
-				return errors.New("missing remoteIp")
-			}
-			ip, _, ok := bytes.Cut(rest, quoteByte)
-			if !ok {
-				return errors.New("unterminated remoteIp")
-			}
-			e.HTTPRequest.RemoteIP = string(ip)
-
-			_, tsRest, ok := bytes.Cut(line, timestampKey)
-			if !ok {
-				return errors.New("missing timestamp")
-			}
-			ts, _, ok := bytes.Cut(tsRest, quoteByte)
-			if !ok {
-				return errors.New("unterminated timestamp")
-			}
-			e.Timestamp = string(ts)
+		_, tsRest, ok := bytes.Cut(line, timestampKey)
+		if !ok {
+			return errors.New("missing timestamp")
 		}
+		ts, _, ok := bytes.Cut(tsRest, quoteByte)
+		if !ok {
+			return errors.New("unterminated timestamp")
+		}
+		e.Timestamp = string(ts)
 
 		if err := fn(&e); err != nil {
 			return err
 		}
 	}
 	return scanner.Err()
-}
-
-func obfuscate(ip string, mac hash.Hash) string {
-	mac.Reset()
-	io.WriteString(mac, ip)
-	return hex.EncodeToString(mac.Sum(nil))
 }

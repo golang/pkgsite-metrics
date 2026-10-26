@@ -16,7 +16,6 @@ import (
 	"log"
 
 	"cloud.google.com/go/civil"
-	"golang.org/x/pkgsite-metrics/internal"
 	"golang.org/x/pkgsite-metrics/internal/bigquery"
 	"golang.org/x/pkgsite-metrics/internal/config"
 	"golang.org/x/pkgsite-metrics/internal/vulndbreqs"
@@ -57,21 +56,11 @@ func run(ctx context.Context) error {
 	}
 	defer client.Close()
 
-	keyName := "projects/" + cfg.ProjectID + "/secrets/vulndb-hmac-key"
-	var hmacKey []byte
-	if flag.Arg(0) == "add" || flag.Arg(0) == "compute" {
-		hk, err := internal.GetSecret(ctx, keyName)
-		if err != nil {
-			return err
-		}
-		hmacKey = []byte(hk)
-	}
-
 	switch flag.Arg(0) {
 	case "add":
-		err = doAdd(ctx, cfg.VulnDBBucketProjectID, client, hmacKey, flag.Arg(1))
+		err = doAdd(ctx, cfg.VulnDBBucketProjectID, client, flag.Arg(1))
 	case "compute":
-		err = doCompute(ctx, cfg.VulnDBBucketProjectID, hmacKey)
+		err = doCompute(ctx, cfg.VulnDBBucketProjectID)
 	case "show":
 		err = doShow(ctx, client)
 	default:
@@ -80,29 +69,27 @@ func run(ctx context.Context) error {
 	return err
 }
 
-func doAdd(ctx context.Context, projectID string, client *bigquery.Client, hmacKey []byte, date string) error {
+func doAdd(ctx context.Context, projectID string, client *bigquery.Client, date string) error {
 	if date == "" {
-		return vulndbreqs.ComputeAndStore(ctx, projectID, client, hmacKey)
+		return vulndbreqs.ComputeAndStore(ctx, projectID, client)
 	}
 	d, err := civil.ParseDate(date)
 	if err != nil {
 		return err
 	}
-	return vulndbreqs.ComputeAndStoreDate(ctx, projectID, client, hmacKey, d)
+	return vulndbreqs.ComputeAndStoreDate(ctx, projectID, client, d)
 }
 
-func doCompute(ctx context.Context, projectID string, hmacKey []byte) error {
+func doCompute(ctx context.Context, projectID string) error {
 	d, err := civil.ParseDate(*date)
 	if err != nil {
 		return err
 	}
-	rcs, err := vulndbreqs.Compute(ctx, projectID, d, hmacKey)
+	count, err := vulndbreqs.Compute(ctx, projectID, d)
 	if err != nil {
 		return err
 	}
-	for _, rc := range rcs {
-		fmt.Printf("%s\t%d\t%s\n", rc.Date, rc.Count, rc.IP)
-	}
+	fmt.Printf("%s\t%d\n", d, count)
 	return nil
 }
 

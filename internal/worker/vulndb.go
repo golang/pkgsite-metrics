@@ -19,7 +19,6 @@ import (
 	"cloud.google.com/go/storage"
 	"google.golang.org/api/iterator"
 
-	"golang.org/x/pkgsite-metrics/internal"
 	"golang.org/x/pkgsite-metrics/internal/bigquery"
 	"golang.org/x/pkgsite-metrics/internal/derrors"
 	"golang.org/x/pkgsite-metrics/internal/log"
@@ -38,12 +37,7 @@ func (s *Server) handleComputeRequests(w http.ResponseWriter, r *http.Request) (
 	if err != nil {
 		return err
 	}
-	keyName := "projects/" + s.cfg.ProjectID + "/secrets/vulndb-hmac-key"
-	hmacKey, err := internal.GetSecret(ctx, keyName)
-	if err != nil {
-		return err
-	}
-	err = vulndbreqs.ComputeAndStore(ctx, s.cfg.VulnDBBucketProjectID, vClient, []byte(hmacKey))
+	err = vulndbreqs.ComputeAndStore(ctx, s.cfg.VulnDBBucketProjectID, vClient)
 	if err != nil {
 		return err
 	}

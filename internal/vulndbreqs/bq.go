@@ -16,9 +16,8 @@ import (
 
 const (
 	// Vuln DB requests live in their own dataset that doesn't vary.
-	DatasetName             = "vulndb"
-	RequestCountTableName   = "requests"
-	IPRequestCountTableName = "ip-requests"
+	DatasetName           = "vulndb"
+	RequestCountTableName = "requests"
 )
 
 func init() {
@@ -27,11 +26,6 @@ func init() {
 		panic(err)
 	}
 	bigquery.AddTable(RequestCountTableName, s)
-	s, err = bigquery.InferSchema(IPRequestCount{})
-	if err != nil {
-		panic(err)
-	}
-	bigquery.AddTable(IPRequestCountTableName, s)
 }
 
 // RequestCount holds the number of requests made on a date.
@@ -44,30 +38,13 @@ type RequestCount struct {
 // SetUploadTime is used by Client.Upload.
 func (r *RequestCount) SetUploadTime(t time.Time) { r.CreatedAt = t }
 
-// IPRequestCount holds the number of requests for a single IP on a date.
-type IPRequestCount struct {
-	CreatedAt time.Time  `bigquery:"created_at"`
-	Date      civil.Date `bigquery:"date"` // year-month-day without a timezone
-	IP        string     `bigquery:"ip"`   // obfuscated IP address
-	Count     int        `bigquery:"count"`
-}
-
-// SetUploadTime is used by Client.Upload.
-func (r *IPRequestCount) SetUploadTime(t time.Time) { r.CreatedAt = t }
-
 // writeToBigQuery writes request counts to BigQuery.
-func writeToBigQuery(ctx context.Context, client *bigquery.Client, rcs []*RequestCount, ircs []*IPRequestCount) (err error) {
+func writeToBigQuery(ctx context.Context, client *bigquery.Client, rcs []*RequestCount) (err error) {
 	defer derrors.Wrap(&err, "vulndbreqs.writeToBigQuery")
 	if _, err := client.CreateOrUpdateTable(ctx, RequestCountTableName); err != nil {
 		return err
 	}
-	if err := bigquery.UploadMany(ctx, client, RequestCountTableName, rcs, 100); err != nil {
-		return err
-	}
-	if _, err := client.CreateOrUpdateTable(ctx, IPRequestCountTableName); err != nil {
-		return err
-	}
-	return bigquery.UploadMany(ctx, client, IPRequestCountTableName, ircs, 100)
+	return bigquery.UploadMany(ctx, client, RequestCountTableName, rcs, 100)
 }
 
 // ReadRequestCountsFromBigQuery returns daily counts for requests to the vuln DB, most recent first.
