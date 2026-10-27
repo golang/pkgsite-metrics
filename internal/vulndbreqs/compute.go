@@ -7,23 +7,17 @@
 package vulndbreqs
 
 import (
-	"bufio"
-	"bytes"
 	"context"
-	"errors"
 	"fmt"
-	"io"
 	"os"
-	"sync"
 	"time"
 
+	bq "cloud.google.com/go/bigquery"
 	"cloud.google.com/go/civil"
 	"cloud.google.com/go/logging/logadmin"
-	"cloud.google.com/go/storage"
 	"golang.org/x/pkgsite-metrics/internal/bigquery"
 	"golang.org/x/pkgsite-metrics/internal/derrors"
 	"golang.org/x/pkgsite-metrics/internal/log"
-	"golang.org/x/sync/errgroup"
 	"google.golang.org/api/iterator"
 )
 
@@ -78,7 +72,7 @@ func Compute(ctx context.Context, vulndbBucketProjectID string, date civil.Date)
 	if date.Before(gcsStartDate) {
 		return computeFromLogs(ctx, vulndbBucketProjectID, date, 0)
 	}
-	return computeFromStorage(ctx, date, 0)
+	return computeFromStorage(ctx, logPrefix, date)
 }
 
 // computeFromLogs queries the vulndb load balancer logs for all vuln DB
@@ -151,31 +145,62 @@ func computeFromLogs(ctx context.Context, vulndbBucketProjectID string, date civ
 	return count, nil
 }
 
-// computeFromStorage counts requests for the given date from the files in the
-// vulndb logs bucket.
-// If maxFiles is positive, only that many files are read (for testing).
-func computeFromStorage(ctx context.Context, date civil.Date, maxFiles int) (_ int, err error) {
-	defer derrors.Wrap(&err, "computeFromStorage(%s)", date)
+// computeFromStorage counts requests for the given date from the JSON log files
+// in the vulndb logs bucket under logPrefix/YYYY/MM/DD/.
+//
+// The counting is done with a BigQuery query over a temporary external table
+// backed by the files, so no file contents are transferred to this process.
+// See https://cloud.google.com/bigquery/docs/external-data-sources.
+func computeFromStorage(ctx context.Context, logPrefix string, date civil.Date) (_ int, err error) {
+	defer derrors.Wrap(&err, "computeFromStorage(%q, %s)", logPrefix, date)
 
 	log.Infof(ctx, "computing request counts for %s from storage bucket", date)
-	client, err := storage.NewClient(ctx)
+	projID := os.Getenv("GOOGLE_CLOUD_PROJECT")
+	client, err := bq.NewClient(ctx, projID)
 	if err != nil {
 		return 0, err
 	}
 	defer client.Close()
-	bucketName := os.Getenv("GOOGLE_CLOUD_PROJECT") + bucketSuffix
-	bucket := client.Bucket(bucketName)
-	names, err := objectNamesForDate(ctx, bucket, logPrefix, date)
-	if err != nil {
-		return 0, err
-	}
-	if maxFiles > 0 && len(names) > maxFiles {
-		names = names[:maxFiles]
+
+	uri := fmt.Sprintf("gs://%s%s/%s/%04d/%02d/%02d/*", projID, bucketSuffix, logPrefix, date.Year, date.Month, date.Day)
+
+	// Every log entry must have a valid timestamp: an invalid timestamp fails
+	// CAST in BigQuery, and a missing (NULL) timestamp fails iter.Next below
+	// when decoding into civil.Date.
+	q := client.Query(`
+		SELECT CAST(SUBSTR(timestamp, 1, 10) AS DATE) AS date, COUNT(*) AS count
+		FROM temp_logs
+		GROUP BY date
+	`)
+	q.TableDefinitions = map[string]bq.ExternalData{
+		"temp_logs": &bq.ExternalDataConfig{
+			SourceFormat:        bq.JSON,
+			SourceURIs:          []string{uri},
+			IgnoreUnknownValues: true,
+			Schema: bq.Schema{
+				{Name: "timestamp", Type: bq.StringFieldType},
+			},
+		},
 	}
 
-	byDate, err := countLogsForObjects(ctx, bucket, names)
+	iter, err := q.Read(ctx)
 	if err != nil {
 		return 0, err
+	}
+	byDate := make(map[civil.Date]int)
+	for {
+		var r struct {
+			Date  civil.Date `bigquery:"date"`
+			Count int        `bigquery:"count"`
+		}
+		err := iter.Next(&r)
+		if err == iterator.Done {
+			break
+		}
+		if err != nil {
+			return 0, err
+		}
+		byDate[r.Date] += r.Count
 	}
 	if len(byDate) != 1 {
 		return 0, fmt.Errorf("got %d dates, want 1", len(byDate))
@@ -187,137 +212,8 @@ func computeFromStorage(ctx context.Context, date civil.Date, maxFiles int) (_ i
 	return count, nil
 }
 
-// countLogsForObjects reads the JSON log files given by objNames from the bucket
-// and sums their entries by date.
-func countLogsForObjects(ctx context.Context, bucket *storage.BucketHandle, objNames []string) (
-	byDate map[civil.Date]int, err error) {
-
-	if len(objNames) == 0 {
-		return nil, nil
-	}
-	defer derrors.Wrap(&err, "countLogsForObjects(%q, ...[%d in total])", objNames[0], len(objNames))
-
-	var mu sync.Mutex // Guards below.
-	byRawDate := map[string]int{}
-
-	g, ctx := errgroup.WithContext(ctx)
-	g.SetLimit(64)
-	for _, name := range objNames {
-		name := name
-		g.Go(func() error {
-			select {
-			case <-ctx.Done():
-				return nil // context cancelled, likely another routine erred
-			default:
-				r, err := bucket.Object(name).NewReader(ctx)
-				if err != nil {
-					return err
-				}
-				defer r.Close()
-
-				localByRawDate := map[string]int{}
-				err = readJSONLogEntries(name, r, func(e *logEntry) error {
-					if len(e.Timestamp) < len("2006-01-02") {
-						return errors.New("invalid timestamp")
-					}
-					localByRawDate[e.Timestamp[:len("2006-01-02")]]++
-					return nil
-				})
-				if err != nil {
-					return err
-				}
-
-				// Obtain the lock and update global byRawDate.
-				mu.Lock()
-				for d, c := range localByRawDate {
-					byRawDate[d] += c
-				}
-				mu.Unlock()
-			}
-			return nil
-		})
-	}
-	if err := g.Wait(); err != nil {
-		return nil, err
-	}
-
-	// Convert map keyed with raw date to map keyed with civil.Date.
-	byDate = make(map[civil.Date]int, len(byRawDate))
-	for rawDate, count := range byRawDate {
-		d, err := civil.ParseDate(rawDate)
-		if err != nil {
-			return nil, err
-		}
-		byDate[d] += count
-	}
-	return byDate, nil
-}
-
 // Suffix to append to project name to get the name of the logs bucket.
 const bucketSuffix = "-vulndb-logs"
 
 // Start of object names for vulndb request logs.
 const logPrefix = "requests"
-
-// objectNamesForDate returns the names of all objects in the bucket
-// corresponding to the logPrefix and date.
-// It assumes that the bucket is organized like a Cloud Logging storage sink for
-// vulndb requests, with all files for a date in the directory
-// logPrefix/YYYY/MM/DD.
-func objectNamesForDate(ctx context.Context, bucket *storage.BucketHandle, logPrefix string, date civil.Date) (names []string, err error) {
-	defer derrors.Wrap(&err, "objectNamesForDate(%q, %s)", logPrefix, date)
-
-	q := &storage.Query{Prefix: fmt.Sprintf("%s/%04d/%02d/%02d/", logPrefix, date.Year, date.Month, date.Day)}
-	q.SetAttrSelection([]string{"Name"}) // Retrieve only the name of the JSON file.
-	iter := bucket.Objects(ctx, q)
-	for {
-		attrs, err := iter.Next()
-		if err == iterator.Done {
-			break
-		}
-		if err != nil {
-			return nil, err
-		}
-		names = append(names, attrs.Name)
-	}
-	return names, nil
-}
-
-type logEntry struct {
-	Timestamp string `json:"timestamp"`
-}
-
-var (
-	timestampKey = []byte(`"timestamp":"`)
-	quoteByte    = []byte(`"`)
-)
-
-// readJSONLogEntries reads the contents of r, which is named name and must consist of a sequence
-// of JSON objects each of which has the fields of a logEntry, one per line.
-// For each entry, it calls fn on the entry.
-func readJSONLogEntries(name string, r io.Reader, fn func(e *logEntry) error) (err error) {
-	defer derrors.Wrap(&err, "readJSONLogEntries(%s)", name)
-	scanner := bufio.NewScanner(r)
-	for scanner.Scan() {
-		line := bytes.TrimSpace(scanner.Bytes())
-		if len(line) == 0 {
-			continue
-		}
-
-		var e logEntry
-		_, tsRest, ok := bytes.Cut(line, timestampKey)
-		if !ok {
-			return errors.New("missing timestamp")
-		}
-		ts, _, ok := bytes.Cut(tsRest, quoteByte)
-		if !ok {
-			return errors.New("unterminated timestamp")
-		}
-		e.Timestamp = string(ts)
-
-		if err := fn(&e); err != nil {
-			return err
-		}
-	}
-	return scanner.Err()
-}
