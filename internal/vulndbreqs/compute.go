@@ -21,18 +21,13 @@ import (
 	"google.golang.org/api/iterator"
 )
 
-var (
-	// First date for which we want log data.
-	startDate = civil.Date{Year: 2023, Month: time.January, Day: 1}
+// First date for which the GCS logs bucket has a full day of data. (There
+// is a directory for the day before, but doesn't include a whole day's
+// data.)
+var gcsStartDate = civil.Date{Year: 2023, Month: time.May, Day: 31}
 
-	// First date for which the GCS logs bucket has a full day of data. (There
-	// is a directory for the day before, but doesn't include a whole day's
-	// data.)
-	gcsStartDate = civil.Date{Year: 2023, Month: time.May, Day: 31}
-)
-
-// ComputeAndStore computes Vuln DB request counts from the last date we have
-// data for, and writes them to BigQuery.
+// ComputeAndStore computes missing Vuln DB request counts within the 30-day
+// GCS log retention window, and writes them to BigQuery.
 func ComputeAndStore(ctx context.Context, vulndbBucketProjectID string, client *bigquery.Client) error {
 	rcs, err := ReadRequestCountsFromBigQuery(ctx, client)
 	if err != nil {
@@ -42,11 +37,15 @@ func ComputeAndStore(ctx context.Context, vulndbBucketProjectID string, client *
 	for _, rc := range rcs {
 		have[rc.Date] = true
 	}
-	today := civil.DateOf(time.Now())
-	// Compute requests for every day that we don't have, up until yesterday.
+	today := civil.DateOf(time.Now().UTC())
+	// The GCS logs bucket has a 30-day retention lifecycle rule. Start at
+	// today-29 rather than today-30 so we never read a boundary day whose
+	// early-hour files have already expired while late-hour files remain.
+	fromDate := today.AddDays(-29)
+	// Compute requests for every missing day in [fromDate, today).
 	// Since today is not yet over, the request count for it will be short.
 	// Compute one day at a time, so if it fails after a few days we at least make some progress.
-	for d := startDate; d.Before(today); d = d.AddDays(1) {
+	for d := fromDate; d.Before(today); d = d.AddDays(1) {
 		if !have[d] {
 			if err := ComputeAndStoreDate(ctx, vulndbBucketProjectID, client, d); err != nil {
 				return err
