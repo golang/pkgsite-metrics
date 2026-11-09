@@ -13,7 +13,7 @@
 # installed here will be shadowed.
 
 
-FROM golang:1.27
+FROM golang:1.27.3
 
 LABEL maintainer="Go Ecosystem Team <go-ecosystem-team@google.com>"
 
